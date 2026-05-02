@@ -1,0 +1,51 @@
+# Local tooling
+.codex
+.agents/
+.vscode/
+.idea/
+.DS_Store
+*:Zone.Identifier
+
+# Environment files
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.*.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Dependencies
+**/node_modules/
+**/vendor/
+
+# Build outputs
+**/dist/
+**/dist-ssr/
+**/build/
+
+# Laravel generated files
+backend/storage/*.key
+backend/storage/app/settings/
+backend/storage/debug-dump/
+backend/storage/app/geoip/
+backend/bootstrap/cache/*
+!backend/bootstrap/cache/.gitkeep
+
+# Databases and secrets
+*.sqlite
+*.db
+*.sql
+*.pem
+*.p12
+*.pfx
+*.jks
+*.key
+credentials.json
+service-account.json
+id_rsa
+id_ed25519

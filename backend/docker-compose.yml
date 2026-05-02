@@ -1,0 +1,43 @@
+services:
+  web:
+    build: ./docker/php
+    container_name: rollerCoaster_web
+    ports:
+      - "11000:80"
+    volumes:
+      - .:/var/www/html
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    depends_on:
+      - db
+
+  db:
+    image: mariadb:10.11
+    container_name: rollerCoaster_db
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: QG1c2NCizM2rHss5
+      MARIADB_DATABASE: rollerCoaster
+      MARIADB_USER: rollerCoaster
+      MARIADB_PASSWORD: QG1c2NCizM2rHss5
+    ports:
+      - "5432:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+
+  # frontend:
+  #   image: node:20
+  #   container_name: rollerCoaster_frontend
+  #   working_dir: /app
+  #   ports:
+  #     - "12000:5173"
+  #   volumes:
+  #     - ../frontend:/app
+  #   command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+  #   depends_on:
+  #     - web
+
+volumes:
+  db_data:
