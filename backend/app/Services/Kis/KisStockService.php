@@ -3,16 +3,27 @@
 namespace App\Services\Kis;
 
 use Illuminate\Support\Facades\Http;
-use RuntimeException;
 
 class KisStockService
 {
     public function getPrice(string $code)
     {
+        if (! preg_match('/^\d{6}$/', $code)) {
+            return [
+                'success' => false,
+                'message' => '종목 코드는 6자리 숫자여야 합니다.',
+                'statusCode' => 422,
+            ];
+        }
+
         $token = app(KisTokenService::class)->getToken();
 
         if (!$token) {
-            throw new RuntimeException('한국투자증권 토큰 발급 실패');
+            return [
+                'success' => false,
+                'message' => '한국투자증권 API 설정 또는 토큰 발급에 실패했습니다.',
+                'statusCode' => 503,
+            ];
         }
 
         $response = Http::withHeaders([
@@ -31,6 +42,7 @@ class KisStockService
             return [
                 'success' => false,
                 'message' => $json['msg1'] ?? '한국투자증권 시세 조회 실패',
+                'statusCode' => 502,
                 'raw' => $json,
             ];
         }

@@ -2,7 +2,7 @@
   <component
     :is="as"
     :class="[
-      'rounded-sm border border-border bg-surface text-text-primary',
+      'rounded-lg border border-border bg-surface text-text-primary',
       interactive ? 'transition hover:border-border-strong hover:shadow-card' : '',
       padded ? paddingClass : '',
       shadow ? 'shadow-card' : ''

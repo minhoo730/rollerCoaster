@@ -10,6 +10,9 @@ class KisTokenService
     public function getToken()
     {
         return Cache::remember('kis_access_token', 60 * 60 * 23, function () {
+            if (! config('kis.app_key') || ! config('kis.app_secret') || ! config('kis.base_url')) {
+                return null;
+            }
 
             $response = Http::post(
                 config('kis.base_url') . '/oauth2/tokenP',
