@@ -23,7 +23,7 @@ services:
       MARIADB_USER: rollerCoaster
       MARIADB_PASSWORD: QG1c2NCizM2rHss5
     ports:
-      - "5432:3306"
+      - "3307:3306"
     volumes:
       - db_data:/var/lib/mysql
 

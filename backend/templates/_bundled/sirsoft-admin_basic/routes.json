@@ -191,6 +191,14 @@
         "title": "$t:admin.schedules.page_title",
         "permission": "core.schedules.read"
       }
+    },
+    {
+      "path": "*/admin/external-apis/list",
+      "layout": "admin_external_apis_list",
+      "auth_required": true,
+      "meta": {
+        "title": "$t:admin.external_apis.page_title"
+      }
     }
   ]
 }

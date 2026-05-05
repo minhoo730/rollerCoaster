@@ -3,7 +3,7 @@ import laravel from 'laravel-vite-plugin';
 import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
-    base: '/damin/',
+    base: '/admin/',
     server: {
         host: '0.0.0.0',
         port: 12000,

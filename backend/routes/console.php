@@ -152,3 +152,9 @@ if (file_exists(base_path('.env'))) {
         Log::debug('확장 스케줄 등록 스킵', ['error' => $e->getMessage()]);
     }
 }
+
+// 국내주식 종목 마스터 정기 갱신 (한국투자증권/KRX)
+Schedule::command('stocks:import-kis')
+    ->dailyAt('06:10')
+    ->withoutOverlapping(60)
+    ->onOneServer();

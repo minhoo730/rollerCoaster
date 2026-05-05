@@ -3,32 +3,43 @@
 namespace App\Http\Controllers\Api\Stock;
 
 use App\Http\Controllers\Controller;
+use App\Models\Stocks\Stock;
+use App\Services\Kis\KisStockMetaService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use App\Models\Stock;
+use Illuminate\Validation\Rule;
+use Throwable;
 
 class StockMetaController extends Controller
 {
-    // 1. 전체 종목 리스트
-    public function index(Request $request)
-    {
-        $market = $request->query('market'); // kospi / kosdaq
+    public function __construct(
+        private KisStockMetaService $kisStockMetaService
+    ) {}
 
-        $query = Stock::query();
+    public function index(Request $request): JsonResponse
+    {
+        $market = $request->query('market');
+        $venue = $request->query('venue');
+
+        $query = Stock::query()->where('is_active', true);
 
         if ($market) {
             $query->where('market', $market);
         }
 
+        if ($venue) {
+            $query->where('venue', $venue);
+        }
+
         return response()->json(
-            $query->select('code', 'name', 'market')
+            $query->select('code', 'name', 'market', 'venue', 'sector', 'is_active')
                   ->orderBy('name')
                   ->limit(1000)
                   ->get()
         );
     }
 
-    // 2. 종목 검색
-    public function search(Request $request)
+    public function search(Request $request): JsonResponse
     {
         $q = $request->query('q');
 
@@ -37,22 +48,56 @@ class StockMetaController extends Controller
         }
 
         return response()->json(
-            Stock::where('name', 'like', "%{$q}%")
-                ->orWhere('code', 'like', "%{$q}%")
+            Stock::where('is_active', true)
+                ->where(function ($query) use ($q) {
+                    $query->where('name', 'like', "%{$q}%")
+                        ->orWhere('code', 'like', "%{$q}%");
+                })
                 ->limit(20)
-                ->get(['code', 'name', 'market'])
+                ->get(['code', 'name', 'market', 'venue', 'sector'])
         );
     }
 
-    // 3. 종목 기본정보
-    public function show($code)
+    public function show($code): JsonResponse
     {
-        $stock = Stock::where('code', $code)->first();
+        $venue = request()->query('venue', 'krx');
+        $stock = Stock::where('code', $code)
+            ->where('venue', $venue)
+            ->first();
 
         if (!$stock) {
             return response()->json(['message' => 'Not found'], 404);
         }
 
         return response()->json($stock);
+    }
+
+    public function importKis(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'markets' => ['sometimes', 'array'],
+            'markets.*' => ['string', Rule::in(['kospi', 'kosdaq', 'konex'])],
+            'include_nxt' => ['sometimes', 'boolean'],
+            'chunk_size' => ['sometimes', 'integer', 'min:1', 'max:5000'],
+            'use_upsert' => ['sometimes', 'boolean'],
+        ]);
+
+        try {
+            $result = $this->kisStockMetaService->import(
+                markets: $validated['markets'] ?? [],
+                includeNxt: (bool) ($validated['include_nxt'] ?? false),
+                chunkSize: $validated['chunk_size'] ?? null,
+                useUpsert: $validated['use_upsert'] ?? null,
+            );
+
+            return response()->json($result, $result['success'] ? 200 : 207);
+        } catch (Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'message' => '종목 마스터 수집에 실패했습니다.',
+            ], 500);
+        }
     }
 }

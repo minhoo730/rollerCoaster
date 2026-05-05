@@ -43,6 +43,10 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 
+// API 라우트 파일을 기능별로 분리하여 관리
+use App\Http\Controllers\Api\Admin\ExternalApiController;
+
+
 /*
 |--------------------------------------------------------------------------
 | API Routes
@@ -514,6 +518,19 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'check.user_status', 'admin'
     });
 });
 
+
+# 관리자 페이지 외부 API 라우트 - 인증 방식이 다르거나 공개 API인 경우 별도의 라우트 파일로 분리
+Route::middleware(['auth:sanctum'])
+    ->prefix('admin')
+    ->group(function () {
+        Route::get('/external-apis', [ExternalApiController::class, 'index']);
+        Route::post('/external-apis/{id}/run', [ExternalApiController::class, 'run']);
+    });
+
+
+
 # 외부 API 라우트 KissAPI 등 - 인증 방식이 다르거나 공개 API인 경우 별도의 라우트 파일로 분리
+Route::group([], base_path('routes/apis/stockMeta.php'));
+
 Route::prefix('stocks')
     ->group(base_path('routes/apis/stock.php'));
