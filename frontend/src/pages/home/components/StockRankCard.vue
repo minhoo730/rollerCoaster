@@ -19,6 +19,7 @@
         </span>
         <span class="text-right">
           <span v-if="metric === 'turnover'" class="block text-body-sm font-semibold text-text-primary">{{ formatTurnover(stock.turnover) }}</span>
+          <span v-else-if="metric === 'volume'" class="block text-body-sm font-semibold text-text-primary">{{ formatVolume(stock.volume) }}</span>
           <span v-else :class="['block text-body-sm font-semibold', stock.changeRate >= 0 ? 'text-rise' : 'text-fall']">
             {{ formatPercent(stock.changeRate) }}
           </span>
@@ -57,5 +58,9 @@ defineProps({
 
 function formatTurnover(value) {
   return `${formatNumber(value)}억`
+}
+
+function formatVolume(value) {
+  return `${formatNumber(value)}주`
 }
 </script>

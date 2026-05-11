@@ -158,3 +158,11 @@ Schedule::command('stocks:import-kis')
     ->dailyAt('06:10')
     ->withoutOverlapping(60)
     ->onOneServer();
+
+// 메인 화면 국내주식 Top10 랭킹 캐시 갱신
+Schedule::command('stocks:refresh-rankings')
+    ->weekdays()
+    ->between('08:55', '15:40')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(10)
+    ->onOneServer();

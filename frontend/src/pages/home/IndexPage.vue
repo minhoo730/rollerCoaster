@@ -13,9 +13,14 @@
 
       <div class="mt-6 space-y-6">
         <TopMovers
+          v-model:active-type="activeRankingType"
           :gainers="topGainers"
           :losers="topLosers"
+          :volume-stocks="volumeStocks"
           :turnover-stocks="turnoverStocks"
+          :loading="isRankingsLoading"
+          :error="rankingsError"
+          @select="loadRanking"
         />
 
         <section class="grid gap-6 lg:grid-cols-[1.35fr_0.65fr]">
@@ -45,15 +50,20 @@ import { useHomeStocks } from './composables/useHomeStocks'
 import { communityPosts, marketOptions } from './data/homeStocks'
 
 const {
+  activeRankingType,
   communityStocks,
   filteredWatchlist,
   handleSearch,
+  isRankingsLoading,
   lastUpdatedAt,
+  loadRanking,
   marketFilter,
   marketSummary,
+  rankingsError,
   searchCode,
   topGainers,
   topLosers,
   turnoverStocks,
+  volumeStocks,
 } = useHomeStocks()
 </script>

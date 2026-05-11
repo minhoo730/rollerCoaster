@@ -9,10 +9,24 @@ use Illuminate\Http\Request;
 
 class ExternalApiController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
+        $perPage = $request->integer('per_page', 20);
+        $externalApis = DB::table('stocks')->paginate($perPage);
+
         return response()->json([
-            'data' => DB::table('stocks')->limit(20)->get(),
+            'data' => [
+                'data' => $externalApis->items(),
+                'pagination' => [
+                    'current_page' => $externalApis->currentPage(),
+                    'last_page' => $externalApis->lastPage(),
+                    'per_page' => $externalApis->perPage(),
+                    'total' => $externalApis->total(),
+                    'from' => $externalApis->firstItem(),
+                    'to' => $externalApis->lastItem(),
+                    'has_more_pages' => $externalApis->hasMorePages(),
+                ],
+            ],
         ]);
     }
 

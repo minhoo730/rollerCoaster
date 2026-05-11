@@ -22,13 +22,19 @@
       "auto_fetch": true,
       "auth_required": true,
       "loading_strategy": "progressive",
+      "params": {
+        "page": "{{query.page ?? 1}}",
+        "per_page": 20
+      },
       "fallback": {
         "data": {
           "data": [],
-          "current_page": 1,
-          "last_page": 1,
-          "per_page": 20,
-          "total": 0
+          "pagination": {
+            "current_page": 1,
+            "last_page": 1,
+            "per_page": 20,
+            "total": 0
+          }
         }
       }
     }
@@ -125,11 +131,29 @@
               "pagination": true,
               "alwaysShowPagination": true,
               "pageSize": 20,
-              "serverSidePagination": false,
+              "serverSidePagination": true,
+              "serverCurrentPage": "{{external_apis?.data?.pagination?.current_page ?? 1}}",
+              "serverTotalPages": "{{external_apis?.data?.pagination?.last_page ?? 1}}",
               "idField": "id",
               "responsiveBreakpoint": 768,
               "emptyMessage": "표시할 외부 API 데이터가 없습니다."
-            }
+            },
+            "actions": [
+              {
+                "event": "onPageChange",
+                "type": "change",
+                "handler": "navigate",
+                "params": {
+                  "path": "/admin/external-apis/list",
+                  "replace": true,
+                  "mergeQuery": true,
+                  "query": {
+                    "page": "{{$args[0]}}"
+                  },
+                  "transition_overlay_target": "external_apis_data_grid__body"
+                }
+              }
+            ]
           }
         ]
       }

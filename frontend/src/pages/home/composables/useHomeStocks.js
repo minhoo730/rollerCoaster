@@ -2,20 +2,33 @@ import { computed, onMounted, ref } from 'vue'
 import axios from 'axios'
 
 import { marketBrief, marketIndices, turnoverLeaders, watchSeeds } from '../data/homeStocks'
+import { stocksApi } from '@/api/stocks'
 import { formatPercent, getToneByRate } from '@/utils/stockFormatters'
 
 const stockRequestDelayMs = 350
+const rankingTypes = ['gainers', 'losers', 'volume', 'turnover']
+const rankingLabels = {
+  gainers: '급등',
+  losers: '급락',
+  volume: '거래량',
+  turnover: '거래대금',
+}
 
 export function useHomeStocks() {
+  const activeRankingType = ref('gainers')
   const marketFilter = ref('all')
   const searchCode = ref('')
   const featuredCode = ref('')
   const featuredStock = ref(null)
   const watchlist = ref(watchSeeds.map((stock) => ({ ...stock, loading: true, error: false })))
+  const rankings = ref(createEmptyRankings())
+  const rankingsError = ref('')
+  const isRankingsLoading = ref(false)
   const isFeaturedLoading = ref(true)
   const featuredError = ref('')
   const lastUpdatedAt = ref('')
   let featuredRequestId = 0
+  let rankingRequestId = 0
 
   const marketSummary = computed(() => {
     const items = filteredMarketItems.value
@@ -88,20 +101,42 @@ export function useHomeStocks() {
   })
 
   const topGainers = computed(() => {
+    if (rankings.value.gainers.length) {
+      return rankings.value.gainers
+    }
+
     return [...filteredMarketItems.value]
       .filter((item) => item.changeRate > 0)
       .sort((a, b) => b.changeRate - a.changeRate)
-      .slice(0, 5)
+      .slice(0, 10)
   })
 
   const topLosers = computed(() => {
+    if (rankings.value.losers.length) {
+      return rankings.value.losers
+    }
+
     return [...filteredMarketItems.value]
       .filter((item) => item.changeRate < 0)
       .sort((a, b) => a.changeRate - b.changeRate)
-      .slice(0, 5)
+      .slice(0, 10)
+  })
+
+  const volumeStocks = computed(() => {
+    if (rankings.value.volume.length) {
+      return rankings.value.volume
+    }
+
+    return [...filteredMarketItems.value]
+      .sort((a, b) => b.volume - a.volume)
+      .slice(0, 10)
   })
 
   const turnoverStocks = computed(() => {
+    if (rankings.value.turnover.length) {
+      return rankings.value.turnover
+    }
+
     return turnoverLeaders.map((leader) => {
       const liveStock = watchlist.value.find((item) => item.code === leader.code)
 
@@ -121,9 +156,48 @@ export function useHomeStocks() {
     }, {})
   })
 
-  onMounted(async () => {
-    await loadWatchlist()
+  onMounted(() => {
+    loadRanking(activeRankingType.value)
+    loadWatchlist()
   })
+
+  async function loadRanking(type = activeRankingType.value) {
+    const rankingType = rankingTypes.includes(type) ? type : 'gainers'
+    const requestId = ++rankingRequestId
+
+    activeRankingType.value = rankingType
+    isRankingsLoading.value = true
+    rankingsError.value = ''
+
+    try {
+      const response = await stocksApi.rankings({ limit: 10, type: rankingType })
+      const rankingData = response.data?.data?.rankings ?? {}
+
+      if (requestId !== rankingRequestId) {
+        return
+      }
+
+      rankings.value = {
+        ...rankings.value,
+        [rankingType]: mapRankingItems(rankingData[rankingType]),
+      }
+
+      if (response.data?.data?.asOf) {
+        lastUpdatedAt.value = formatKoreanTime(response.data.data.asOf)
+      }
+    } catch (error) {
+      if (requestId !== rankingRequestId) {
+        return
+      }
+
+      console.error(`${rankingLabels[rankingType]} 랭킹 로딩 실패:`, error)
+      rankingsError.value = `${rankingLabels[rankingType]} 랭킹을 불러오지 못했습니다`
+    } finally {
+      if (requestId === rankingRequestId) {
+        isRankingsLoading.value = false
+      }
+    }
+  }
 
   async function loadWatchlist() {
     watchlist.value = watchSeeds.map((stock) => ({ ...stock, loading: true, error: false }))
@@ -211,6 +285,7 @@ export function useHomeStocks() {
   }
 
   return {
+    activeRankingType,
     featuredCode,
     featuredError,
     featuredStock,
@@ -219,16 +294,20 @@ export function useHomeStocks() {
     handleSearch,
     handleSelectStock,
     isFeaturedLoading,
+    isRankingsLoading,
     lastUpdatedAt,
+    loadRanking,
     loadWatchlist,
     marketFilter,
     marketPulse,
     marketSummary,
+    rankingsError,
     searchCode,
     strongestStock,
     topGainers,
     topLosers,
     turnoverStocks,
+    volumeStocks,
     weakestStock,
   }
 }
@@ -291,6 +370,40 @@ function createEmptyStock(seed, error = false) {
     per: 0,
     pbr: 0,
   }
+}
+
+function createEmptyRankings() {
+  return {
+    gainers: [],
+    losers: [],
+    volume: [],
+    turnover: [],
+  }
+}
+
+function formatKoreanTime(value) {
+  return new Intl.DateTimeFormat('ko-KR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value))
+}
+
+function mapRankingItems(items = []) {
+  return items.map((item) => ({
+    code: item.code,
+    name: item.name,
+    market: item.market,
+    venue: item.venue,
+    sector: item.sector,
+    price: Number(item.price ?? 0),
+    change: Number(item.change ?? 0),
+    changeRate: Number(item.changeRate ?? item.change_rate ?? 0),
+    volume: Number(item.volume ?? 0),
+    turnover: Number(item.turnover ?? 0),
+    turnoverAmount: Number(item.turnoverAmount ?? item.turnover_amount ?? 0),
+    reason: item.reason,
+    asOf: item.asOf ?? item.as_of,
+  }))
 }
 
 function delay(ms) {

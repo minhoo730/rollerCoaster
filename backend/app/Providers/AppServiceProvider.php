@@ -36,6 +36,12 @@ class AppServiceProvider extends ServiceProvider
             \App\Services\ChannelReadinessService::class
         );
 
+        // 국내주식 시세 Provider — 프론트는 이 추상화 뒤의 백엔드 API만 호출
+        $this->app->bind(
+            \App\Contracts\MarketData\BrokerProvider::class,
+            \App\Services\Brokers\Kis\KisBrokerProvider::class
+        );
+
         // TODO: TemplateManagerInterface 바인딩을 추가해야 함
 
         // PluginManagerInterface 바인딩
