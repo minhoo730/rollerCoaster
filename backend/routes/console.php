@@ -29,6 +29,12 @@ Schedule::command('dashboard:broadcast-resources')
 // 만료된 레이아웃 미리보기 정리 (30분마다)
 Schedule::command('layout-previews:cleanup')->everyThirtyMinutes();
 
+// 언어팩 업데이트 확인 (주 1회, GitHub 기반 언어팩 latest_version 갱신)
+Schedule::command('language-pack:check-updates')
+    ->weekly()
+    ->runInBackground()
+    ->withoutOverlapping(60);
+
 // Sitemap 생성 스케줄
 if (file_exists(base_path('.env'))) {
     $sitemapEnabled = (bool) g7_core_settings('seo.sitemap_enabled', true);
@@ -152,17 +158,3 @@ if (file_exists(base_path('.env'))) {
         Log::debug('확장 스케줄 등록 스킵', ['error' => $e->getMessage()]);
     }
 }
-
-// 국내주식 종목 마스터 정기 갱신 (한국투자증권/KRX)
-Schedule::command('stocks:import-kis')
-    ->dailyAt('06:10')
-    ->withoutOverlapping(60)
-    ->onOneServer();
-
-// 메인 화면 국내주식 Top10 랭킹 캐시 갱신
-Schedule::command('stocks:refresh-rankings')
-    ->weekdays()
-    ->between('08:55', '15:40')
-    ->everyFiveMinutes()
-    ->withoutOverlapping(10)
-    ->onOneServer();

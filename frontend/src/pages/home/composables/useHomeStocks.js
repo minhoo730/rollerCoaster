@@ -346,8 +346,8 @@ function resolveSearchDestination(keyword) {
 }
 
 async function fetchPrice(code) {
-  const response = await axios.get(`/api/stocks/${code}/price`)
-
+  const response = await stocksApi.fetchPrice(code)
+  console.log(response);
   if (response.data?.success === false) {
     throw new Error(response.data.message ?? '시세 조회에 실패했습니다')
   }

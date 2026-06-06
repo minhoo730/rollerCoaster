@@ -3,9 +3,6 @@
 use App\Http\Controllers\Api\Public\SitemapController;
 use Illuminate\Support\Facades\Route;
 
-
-Route::redirect('/', '/admin');
-
 // 개발용 라우트 - 디버그 모드 + 관리자 인증 필수
 Route::get('/dev', function () {
     // 1. 디버그 모드 확인

@@ -51,7 +51,7 @@ return [
     'php_modules' => 'PHP 모듈',
     'directory_permissions' => '디렉토리 권한',
     'disk_space' => '디스크 공간',
-    'https_enabled' => 'HTTPS 활성화',
+    'https' => 'HTTPS',
     'required' => '필수',
     'enabled' => '활성화됨',
     'not_enabled' => '비활성화됨',
@@ -138,9 +138,17 @@ return [
     'recommendation_env_permission' => '.env 파일 권한을 644로 설정하세요 (chmod 644 .env)',
     'recommendation_https' => '프로덕션 환경에서는 반드시 HTTPS를 사용하세요',
 
+    // .env 권한 보안 강화 안내 (Step 5 완료 화면, 0600 미적용 시 조건부 노출)
+    'env_hardening_hint_title' => '.env 권한 보안 강화 (선택)',
+    'env_hardening_hint_current_status' => '현재 .env 권한은 %s 입니다 (소유자: %s). 가장 안전한 권한은 0600 (소유자만 읽기·쓰기) 이며, 다음 두 명령 중 환경에 맞는 쪽을 sudo 로 실행하여 추가 보안 강화를 적용할 수 있습니다.',
+    'env_hardening_hint_option_strict' => '명령줄 사용자 = 웹 서버 사용자 (단일 사용자 환경)',
+    'env_hardening_hint_option_group' => '명령줄 사용자 ≠ 웹 서버 사용자 (자체 구축 서버 등 — 그룹 읽기 허용 절충안)',
+    'env_hardening_hint_note' => '명령 실행 전 환경을 확인하세요. 잘못된 권한 적용 시 웹 서버가 .env 를 읽지 못해 사이트가 응답하지 않을 수 있습니다.',
+
     // Step 5: 완료
     'installation_info' => '설치 정보',
     'installation_complete_message' => '그누보드7이 성공적으로 설치되었습니다!',
+    'installed_version_label' => '설치된 버전:',
     'site_url' => '사이트 URL',
     'installed_at' => '설치 완료 일시',
     'go_to_admin_login' => '관리자 로그인',
@@ -163,7 +171,6 @@ return [
     'error_db_name_required' => '데이터베이스 이름은 필수입니다.',
     'error_db_username_required' => '데이터베이스 사용자명을 입력해주세요.',
     'error_db_credentials_required' => '데이터베이스명과 사용자명은 필수입니다.',
-    'error_db_connection_failed' => '데이터베이스 연결에 실패했습니다.',
     'error_db_privileges_insufficient' => '데이터베이스에 필요한 권한이 부족합니다.',
     'error_db_not_tested' => '데이터베이스 연결 테스트를 먼저 수행해주세요.',
     'error_write_db_not_tested' => 'Write DB 연결 테스트를 먼저 수행해주세요.',
@@ -258,6 +265,7 @@ return [
     'task_plugin_activate' => '플러그인 활성화',
     'task_user_template_install' => '사용자 템플릿 설치',
     'task_user_template_activate' => '사용자 템플릿 활성화',
+    'task_language_pack_install' => '언어팩 설치',
     'task_cache_clear' => '임시 파일 정리',
     'task_create_settings_json' => '설정 파일 생성',
     'task_complete_flag' => '설치 완료 처리',
@@ -270,6 +278,7 @@ return [
     'task_group_modules' => '모듈',
     'task_group_plugins' => '플러그인',
     'task_group_user_templates' => '사용자 템플릿',
+    'task_group_language_packs' => '언어팩',
     'task_group_finalize' => '마무리',
 
     // 그룹 상태 레이블
@@ -353,6 +362,11 @@ return [
     // 로그 메시지 - Worker (User Template)
     'log_user_template_install_success' => '사용자 템플릿 설치 완료',
     'log_user_template_activate_success' => '사용자 템플릿 활성화 완료',
+
+    // 에러/로그 메시지 - Worker (Language Pack)
+    'error_language_pack_install_failed' => '언어팩 설치에 실패했습니다',
+    'log_language_pack_install_success' => '언어팩 설치 완료',
+    'warning_language_pack_install_partial' => '언어팩 일부 설치에 실패했습니다: :identifier (계속 진행)',
 
     // 에러 메시지 - Worker (Cache)
     'error_cache_clear_failed' => '캐시 클리어에 실패했습니다',
@@ -570,6 +584,7 @@ ini_set(\'zlib.output_compression\', \'off\');
     'installation_mode_polling_title' => '호환성 모드 (폴링)',
     'installation_mode_polling_desc' => 'Nginx 프록시, 공유 호스팅 등 SSE 연결 오류가 발생하는 환경에서 사용하세요. 1초마다 상태를 확인합니다.',
     'sse_fallback_confirm' => 'SSE 연결에 실패했습니다.\n\n호환성 모드(폴링)로 다시 시도하시겠습니까?',
+    'sse_probe_incompat_use_polling' => "현재 환경에서는 SSE 실시간 연결을 사용할 수 없습니다.\n\n호환성 모드(폴링)로 설치를 진행하시겠습니까?\n\n[확인] 폴링 모드로 설치 시작\n[취소] 설치 시작 화면으로 돌아가기",
     'start_installation_button' => '설치 시작',
 
     // Step 4 의존성 경고
@@ -597,7 +612,6 @@ ini_set(\'zlib.output_compression\', \'off\');
     'error_db_cleanup_consent_required' => '기존 테이블 삭제에 동의하셔야 다음 단계로 진행할 수 있습니다.',
     'db_force_proceed_drop' => '기존 테이블 모두 삭제 후 설치',
     'db_force_proceed_confirmed' => '강제 진행 모드 (설치 시 기존 테이블 삭제)',
-    'cancel' => '취소',
     'log_db_cleanup_skipped' => '기존 테이블 정리 건너뛰기 (액션 없음)',
     'log_db_cleanup_empty' => '기존 테이블이 없습니다. 정리 건너뛰기',
     'log_db_cleanup_dropping' => '기존 테이블 {count}개 삭제 시작...',
@@ -620,11 +634,47 @@ ini_set(\'zlib.output_compression\', \'off\');
     'modules_description' => '설치할 모듈을 선택하세요. 모듈은 게시판, 이커머스 등 주요 기능을 제공합니다.',
     'plugins' => '플러그인',
     'plugins_description' => '설치할 플러그인을 선택하세요. 플러그인은 결제, 알림 등 부가 기능을 제공합니다.',
+    'language_packs' => '언어팩',
+    'language_packs_description' => '추가 언어 지원을 위한 번들 언어팩을 선택하세요. 종속 확장이 함께 선택되어야 활성화됩니다.',
     'optional' => '선택',
     'no_extensions_found' => '사용 가능한 확장이 없습니다.',
     'no_user_templates' => '사용 가능한 사용자 템플릿이 없습니다.',
     'no_modules' => '사용 가능한 모듈이 없습니다.',
     'no_plugins' => '사용 가능한 플러그인이 없습니다.',
+    'no_language_packs' => '사용 가능한 번들 언어팩이 없습니다.',
+    'language_pack_disabled_by_extension' => '종속된 확장이 선택되지 않아 비활성화되었습니다.',
+    'language_pack_scope_core' => '코어',
+    'language_pack_scope_module' => '모듈',
+    'language_pack_scope_plugin' => '플러그인',
+    'language_pack_scope_template' => '템플릿',
+    'bulk_select_all_optional' => '선택 가능한 모든 항목 선택',
+    'bulk_select_section' => '전체 선택',
+
+    // 브랜드명
+    'brand_name' => '그누보드7',
+
+    // Step 3 — Vendor 설치 방식
+    'vendor_mode_title' => 'Vendor 설치 방식',
+    'vendor_mode_description' => 'PHP 패키지 의존성(vendor/) 을 어떤 방식으로 설치할지 선택합니다.',
+    'vendor_mode_auto_title' => '자동',
+    'vendor_mode_auto_description' => 'Composer 사용 가능 시 Composer, 불가 시 번들 vendor 사용',
+    'vendor_mode_auto_status_ok' => '환경 자동 감지',
+    'vendor_mode_composer_title' => 'Composer 실행',
+    'vendor_mode_composer_description' => 'composer install 명령으로 최신 버전 설치 (인터넷 + proc_open 필수)',
+    'vendor_mode_composer_status_ok' => 'proc_open 사용 가능',
+    'vendor_mode_composer_status_blocked' => 'proc_open() 차단됨 — 사용 불가',
+    'vendor_mode_bundled_title' => '번들 Vendor 사용',
+    'vendor_mode_bundled_description' => 'vendor-bundle.zip 을 추출 (오프라인 설치, composer 불필요)',
+    'vendor_mode_bundled_status_ok' => 'vendor-bundle.zip 발견',
+    'vendor_mode_bundled_status_no_ziparchive' => 'ZipArchive 확장 미설치 — 사용 불가',
+    'vendor_mode_bundled_status_no_zip' => 'vendor-bundle.zip 파일 없음 — 사용 불가',
+    'vendor_mode_badge_recommended' => '권장',
+    'vendor_mode_badge_dev' => '개발 환경',
+    'vendor_mode_badge_shared' => '공유 호스팅',
+    'vendor_mode_change_later_html' => '이 설정은 추후 <code>php artisan core:update --vendor-mode=...</code> 옵션으로 변경할 수 있습니다.',
+
+    // 설치 진행 중단 감지
+    'error_installation_stuck' => '설치가 응답하지 않습니다. 서버 워커가 명령 실행 중 멈췄을 수 있습니다. 새로고침하거나 재시도하세요. 문제가 반복되면 storage/logs/installation.log 를 확인해주세요.',
     'extension_load_failed' => '확장 기능 목록을 불러오는데 실패했습니다.',
     'no_admin_template_error' => '관리자 템플릿이 필요하지만 찾을 수 없습니다. templates 디렉토리에 최소 1개 이상의 관리자 템플릿이 있는지 확인해주세요.',
     'selection_summary' => '선택 요약',
@@ -687,6 +737,8 @@ ini_set(\'zlib.output_compression\', \'off\');
     'rollback_seed_error' => '시드 처리 중 오류: :error',
     'rollback_env_flag_removed' => '.env에서 INSTALLER_COMPLETED를 제거했습니다.',
     'rollback_installed_flag_removed' => 'g7_installed 파일을 삭제했습니다.',
+    'rollback_runtime_removed' => '인스톨러 런타임 설정 파일을 정리했습니다.',
+    'error_worker_busy' => '다른 인스톨 워커가 진행 중입니다. 잠시 후 다시 시도하세요.',
     'rollback_complete_flag_removed' => '설치 완료 플래그를 제거했습니다: :details',
     'rollback_complete_flag_error' => '완료 플래그 제거 중 오류: :error',
     'rollback_no_current_task' => '롤백할 현재 작업이 없습니다. (current_task가 null)',
@@ -717,12 +769,12 @@ ini_set(\'zlib.output_compression\', \'off\');
     'abort_api_status_change' => '[중단 API] installation_status를 "aborted"로 변경합니다.',
     'abort_api_save_result' => '[중단 API] state.json 저장 결과: :result',
     'abort_api_verify_status' => '[중단 API] 저장 후 확인 - installation_status: :status',
-    'api_method_not_allowed' => '허용되지 않는 메서드입니다.',
     'error_state_management' => '상태 관리 오류',
     'error_log_prefix' => '[오류] :error',
 
     // functions.php 다국어 키
     'error_db_name_username_required' => '데이터베이스 이름과 사용자명은 필수입니다.',
+    'error_db_invalid_parameter' => '데이터베이스 :field 값에 허용되지 않는 문자가 포함되어 있습니다.',
     'error_db_connection_failed' => '데이터베이스 연결 실패: :error',
     'error_privilege_check_failed' => '권한 검증 중 오류 발생',
 
@@ -758,9 +810,10 @@ ini_set(\'zlib.output_compression\', \'off\');
     'dir_templates_pending' => '템플릿 대기 디렉토리',
 
     // save-extensions.php 다국어 키
-    'log_extensions_selected' => '확장 기능 선택 완료: 관리자 템플릿 :admin개, 사용자 템플릿 :user개, 모듈 :modules개, 플러그인 :plugins개',
+    'log_extensions_selected' => '확장 기능 선택 완료: 관리자 템플릿 :admin개, 사용자 템플릿 :user개, 모듈 :modules개, 플러그인 :plugins개, 언어팩 :language_packs개',
     'log_extensions_saved' => '확장 기능 선택이 저장되었습니다.',
     'error_admin_template_required' => '관리자 템플릿을 최소 1개 이상 선택해주세요.',
+    'error_invalid_extension_identifier' => '확장 식별자 ":identifier" 가 허용된 형식이 아닙니다 (그룹: :group). 영문/숫자/`._-` 만 사용할 수 있습니다.',
 
     // 코어 업데이트 설정
     'core_update_settings' => '코어 업데이트 설정 (선택)',
@@ -779,6 +832,7 @@ ini_set(\'zlib.output_compression\', \'off\');
     'error_core_pending_not_writable' => '디렉토리(:path)에 쓰기 권한이 없습니다.',
     'error_core_pending_parent_not_writable' => '상위 디렉토리(:path)에 쓰기 권한이 없어 자동 생성이 불가합니다.',
     'error_path_required' => '경로를 입력해주세요.',
+    'error_core_pending_path_invalid' => '입력한 경로가 유효한 디렉토리가 아니거나 허용되지 않은 형식입니다.',
 
     // PHP CLI / Composer 설정
     'php_cli_settings' => 'PHP CLI 설정 (선택)',
@@ -806,6 +860,14 @@ ini_set(\'zlib.output_compression\', \'off\');
     'error_composer_path_not_exists' => '파일이 존재하지 않습니다: :path',
     'error_composer_exec_failed' => 'Composer 실행 실패: :path',
     'error_composer_version_parse_failed' => 'Composer 버전을 파싱할 수 없습니다.',
+    'error_check_failed' => '확인 요청에 실패했습니다. 네트워크 또는 서버 상태를 확인해 주세요.',
+    'session_cookie_blocked_title' => '세션 쿠키 차단 감지',
+    'session_cookie_blocked_description' => '브라우저가 인스톨러의 세션 쿠키(PHPSESSID)를 보존하지 않아 설치 도중 진행이 멈출 수 있습니다. 그대로 진행은 가능하지만 권장하지 않으며, 아래 회피 방법 중 하나를 시도해 주세요.',
+    'session_cookie_blocked_remedy_1' => '다른 브라우저로 다시 접속해 주세요. 시크릿/프라이빗 창은 보통 쿠키 정책이 더 엄격하므로 일반 창 사용을 권장합니다.',
+    'session_cookie_blocked_remedy_2' => '브라우저의 쿠키/사이트 데이터 차단 설정을 해제한 뒤 새로고침 해 주세요.',
+    'session_cookie_blocked_remedy_3' => '도메인 대신 IP 또는 localhost 로 접속해 보세요. 예: http://localhost:포트/install/',
+    'session_cookie_blocked_technical_detail' => '기술 상세: 인스톨러 세션 쿠키 round-trip 검증이 실패했습니다. (SameSite 정책, 비표준 포트, 브라우저 추적 보호 등의 조합으로 인한 차단 추정)',
+    'session_cookie_blocked_dismiss' => '경고 닫기',
     'success_composer_version' => ':path — Composer :version ✓',
     'composer_install_guide_title' => 'Composer 설치 안내',
     'composer_install_guide_message' => 'Composer가 설치되어 있지 않습니다. 아래 방법으로 설치할 수 있습니다:',

@@ -1,25 +1,18 @@
 <template>
-  <section class="rounded-2xl border border-border bg-surface p-4 shadow-card lg:p-5">
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <p class="text-caption font-semibold uppercase text-primary">My Watchlist</p>
+  <div class="rounded-2xl border border-border bg-surface p-4 shadow-card lg:p-5 w-full">
+    <div class="flex flex-col gap-3 sm:items-start sm:justify-between">
+      <!-- <div> -->
+        <!-- <p class="text-caption font-semibold uppercase text-primary">My Watchlist</p> -->
         <h2 class="mt-1 text-title font-semibold text-text-primary">관심종목</h2>
-      </div>
+      <!-- </div> -->
 
-      <div class="flex rounded-lg bg-surface-muted p-1">
-        <button
-          v-for="option in marketOptions"
-          :key="option.value"
-          :class="[
-            'rounded-md px-3 py-2 text-caption font-semibold transition',
-            marketFilter === option.value ? 'bg-white text-primary shadow-card' : 'text-text-secondary hover:text-text-primary'
-          ]"
-          type="button"
-          @click="$emit('update:marketFilter', option.value)"
-        >
-          {{ option.label }}
-        </button>
-      </div>
+      <BaseTabs
+        :model-value="marketFilter"
+        :options="marketOptions"
+        aria-label="관심종목 시장 필터"
+        size="sm"
+        @update:model-value="$emit('update:marketFilter', $event)"
+      />
     </div>
 
     <div class="mt-5 overflow-hidden rounded-xl border border-border">
@@ -47,10 +40,11 @@
         </span>
       </a>
     </div>
-  </section>
+  </div>
 </template>
 
 <script setup>
+import BaseTabs from '@/components/base/BaseTabs.vue'
 import { formatCurrency, formatNumber, formatPercent } from '@/utils/stockFormatters'
 
 const props = defineProps({

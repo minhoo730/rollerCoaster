@@ -65,6 +65,52 @@ class EnvironmentDetectorTest extends TestCase
         $this->assertSame($hint, $result);
     }
 
+    /**
+     * stat 가드 완화 회귀 — 시놀로지 DSM 등 open_basedir 환경에서 정상 절대경로
+     * 가 false negative 로 거부되지 않고 hint/config 후보로 채택되어야 함.
+     * 실제 실행 가능 여부는 canExecuteComposer 의 proc_open 결과로 최종 판정.
+     */
+    public function test_find_composer_binary_accepts_safe_absolute_path_hint_without_stat(): void
+    {
+        $detector = new EnvironmentDetector;
+        $detector->resetCache();
+
+        // 실제로 존재하지 않는 경로지만 메타문자 없음 — stat 가드 제거로 채택됨
+        $hint = '/usr/local/bin/composer';
+        $result = $detector->findComposerBinary($hint);
+
+        $this->assertSame($hint, $result);
+    }
+
+    public function test_find_composer_binary_rejects_single_token_hint_with_shell_metachars(): void
+    {
+        $detector = new EnvironmentDetector;
+        $detector->resetCache();
+
+        $original = config('process.composer_binary');
+        config(['process.composer_binary' => null]);
+
+        try {
+            // 단일 토큰(공백 없음) 셸 메타문자 hint 는 isExecutableCandidate 가 거부.
+            // 공백 포함 hint 는 .env 값을 신뢰하는 운영자 자기 책임 영역이라 별도 분기.
+            foreach ([
+                '/bin/composer;id',
+                '/bin/composer$(id)',
+                '`/bin/composer`',
+                '/bin/composer|nc',
+                '/bin/composer&id',
+            ] as $payload) {
+                $detector->resetCache();
+                $result = $detector->findComposerBinary($payload);
+
+                // 메타문자 hint 는 절대 채택되지 않음 — 결과는 PATH 검색 결과 또는 null
+                $this->assertNotSame($payload, $result, "메타문자 hint 거부: {$payload}");
+            }
+        } finally {
+            config(['process.composer_binary' => $original]);
+        }
+    }
+
     public function test_summarize_returns_complete_report(): void
     {
         $report = $this->detector->summarize();
@@ -91,5 +137,64 @@ class EnvironmentDetectorTest extends TestCase
         // 재호출 시 예외 없이 동작해야 함
         $result = $this->detector->canExecuteComposer();
         $this->assertIsBool($result);
+    }
+
+    public function test_build_composer_env_includes_superuser_flag(): void
+    {
+        $env = EnvironmentDetector::buildComposerEnv();
+
+        $this->assertArrayHasKey('COMPOSER_ALLOW_SUPERUSER', $env);
+        $this->assertSame('1', $env['COMPOSER_ALLOW_SUPERUSER']);
+    }
+
+    public function test_build_composer_env_includes_no_interaction_flag(): void
+    {
+        $env = EnvironmentDetector::buildComposerEnv();
+
+        $this->assertArrayHasKey('COMPOSER_NO_INTERACTION', $env);
+        $this->assertSame('1', $env['COMPOSER_NO_INTERACTION']);
+    }
+
+    public function test_build_composer_env_preserves_existing_env(): void
+    {
+        $original = $_ENV['PATH'] ?? null;
+        $_ENV['PATH'] = '/sentinel/test/path';
+
+        try {
+            $env = EnvironmentDetector::buildComposerEnv();
+
+            $this->assertArrayHasKey('PATH', $env);
+            $this->assertSame('/sentinel/test/path', $env['PATH']);
+        } finally {
+            if ($original === null) {
+                unset($_ENV['PATH']);
+            } else {
+                $_ENV['PATH'] = $original;
+            }
+        }
+    }
+
+    public function test_build_composer_env_overrides_external_false_values(): void
+    {
+        $originalAllow = $_ENV['COMPOSER_ALLOW_SUPERUSER'] ?? null;
+        $originalNoInteraction = $_ENV['COMPOSER_NO_INTERACTION'] ?? null;
+
+        $_ENV['COMPOSER_ALLOW_SUPERUSER'] = '0';
+        $_ENV['COMPOSER_NO_INTERACTION'] = '0';
+
+        try {
+            $env = EnvironmentDetector::buildComposerEnv();
+
+            $this->assertSame('1', $env['COMPOSER_ALLOW_SUPERUSER']);
+            $this->assertSame('1', $env['COMPOSER_NO_INTERACTION']);
+        } finally {
+            foreach (['COMPOSER_ALLOW_SUPERUSER' => $originalAllow, 'COMPOSER_NO_INTERACTION' => $originalNoInteraction] as $key => $value) {
+                if ($value === null) {
+                    unset($_ENV[$key]);
+                } else {
+                    $_ENV[$key] = $value;
+                }
+            }
+        }
     }
 }

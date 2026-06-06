@@ -63,6 +63,22 @@ function getDatabaseConnection(array $config, bool $isReadDb = false): PDO
         throw new PDOException(lang('error_db_name_username_required'));
     }
 
+    // DSN 키-밸류 구분자(`;`, `=`) 와 NUL 바이트가 포함된 입력을 거부 — DSN 파라미터 주입 차단.
+    // 호스트/포트/DB 이름은 정상 입력에서 이 문자가 들어갈 일이 없다.
+    foreach ([
+        'host' => $host,
+        'port' => $port,
+        'database' => $database,
+    ] as $field => $val) {
+        $val = (string) $val;
+        if ($val === '' && $field !== 'database') {
+            continue;
+        }
+        if (preg_match('/[;=\0\r\n]/', $val)) {
+            throw new PDOException(lang('error_db_invalid_parameter', ['field' => $field]));
+        }
+    }
+
     $dsn = "mysql:host={$host};port={$port};dbname={$database};charset=utf8mb4";
 
     try {
@@ -137,6 +153,39 @@ function checkDatabasePrivileges(PDO $pdo, string $database, bool $isReadDb = fa
             'required' => $requiredPrivileges,
             'found' => [],
             'missing' => $requiredPrivileges,
+        ];
+    }
+}
+
+/**
+ * 현재 PHP 프로세스에 composer root/non-interactive 환경변수를 적용합니다.
+ *
+ * exec() 자식 프로세스는 부모의 환경변수를 상속하므로 putenv() 시점에 설정해두면
+ * 후속 composer 자식 프로세스가 root 환경에서도 정상 동작합니다.
+ *
+ * Synology DSM 등 PHP-FPM root 실행 환경 + 비대화형 컨텍스트 대응.
+ */
+if (!function_exists('applyInstallerComposerEnvVars')) {
+    function applyInstallerComposerEnvVars(): void
+    {
+        putenv('COMPOSER_ALLOW_SUPERUSER=1');
+        putenv('COMPOSER_NO_INTERACTION=1');
+    }
+}
+
+/**
+ * proc_open() 5번째 인자에 병합할 composer 환경변수 배열을 반환합니다.
+ *
+ * 호출자는 기존 $env 와 array_merge 하여 사용합니다.
+ *
+ * @return array<string, string>
+ */
+if (!function_exists('buildInstallerComposerEnv')) {
+    function buildInstallerComposerEnv(): array
+    {
+        return [
+            'COMPOSER_ALLOW_SUPERUSER' => '1',
+            'COMPOSER_NO_INTERACTION' => '1',
         ];
     }
 }
@@ -262,22 +311,24 @@ function loadTranslations(string $lang): array
  * @param string $key 번역 키 (예: 'welcome_title', 'next_step')
  * @param array $replace 치환할 플레이스홀더 배열 (예: ['current' => '8.2', 'min' => '8.2'])
  */
-function lang(string $key, array $replace = []): string
-{
-    global $translations;
+if (! function_exists('lang')) {
+    function lang(string $key, array $replace = []): string
+    {
+        global $translations;
 
-    if (!isset($translations) || !is_array($translations)) {
-        return $key;
+        if (!isset($translations) || !is_array($translations)) {
+            return $key;
+        }
+
+        $message = $translations[$key] ?? $key;
+
+        // 플레이스홀더 치환 (:placeholder 형식)
+        foreach ($replace as $placeholder => $value) {
+            $message = str_replace(":{$placeholder}", $value, $message);
+        }
+
+        return $message;
     }
-
-    $message = $translations[$key] ?? $key;
-
-    // 플레이스홀더 치환 (:placeholder 형식)
-    foreach ($replace as $placeholder => $value) {
-        $message = str_replace(":{$placeholder}", $value, $message);
-    }
-
-    return $message;
 }
 
 /**
@@ -563,9 +614,10 @@ function getSvgIcon(string $type): string
  * @param string $titleKey 제목 번역 키
  * @param string $messageKey 메시지 번역 키 (failure인 경우 동적)
  * @param string $buttonsHtml 버튼 HTML
+ * @param string $extraHtml 메시지 하단에 추가로 렌더링할 HTML (이미 escape 된 상태로 전달)
  * @return string 결과 섹션 HTML
  */
-function renderInstallResultSection(string $sectionId, string $iconType, string $titleKey, string $messageKey, string $buttonsHtml): string
+function renderInstallResultSection(string $sectionId, string $iconType, string $titleKey, string $messageKey, string $buttonsHtml, string $extraHtml = ''): string
 {
     $icon = getSvgIcon($iconType);
     $title = htmlspecialchars(lang($titleKey));
@@ -583,6 +635,7 @@ function renderInstallResultSection(string $sectionId, string $iconType, string 
                 <div class="result-text">
                     <h3 class="result-title">{$title}</h3>
                     {$message}
+                    {$extraHtml}
                 </div>
             </div>
             <div class="result-button-group">
@@ -591,6 +644,33 @@ function renderInstallResultSection(string $sectionId, string $iconType, string 
         </div>
     </div>
     HTML;
+}
+
+/**
+ * 코어 애플리케이션 버전을 추출합니다.
+ *
+ * 우선순위: .env(설치 후) → .env.example(설치 전) → 'unknown'
+ * 인스톨러는 Laravel 부팅 전이므로 config('app.version') 을 쓸 수 없습니다.
+ *
+ * @return string 코어 버전 문자열 (예: '7.0.0-beta.4')
+ */
+function getCoreAppVersion(): string
+{
+    foreach (['/.env', '/.env.example'] as $relative) {
+        $path = BASE_PATH . $relative;
+        if (!is_readable($path)) {
+            continue;
+        }
+        $content = @file_get_contents($path);
+        if ($content === false) {
+            continue;
+        }
+        if (preg_match('/^APP_VERSION=(.+)$/m', $content, $matches)) {
+            return trim($matches[1], "\"' \t\r\n");
+        }
+    }
+
+    return 'unknown';
 }
 
 /**
@@ -949,6 +1029,12 @@ function loadLicenseFile(string $lang): string
  */
 function escapeEnvValue(string $value): string
 {
+    // 개행 문자는 .env 라인 구분자이므로 사용자 입력에 포함되면 추가 변수 라인이 주입될 수 있다.
+    // CR/LF 모두 제거 — DB 비밀번호·바이너리 경로·토큰 등 정상 값에는 개행이 들어갈 일이 없다.
+    if ($value !== '') {
+        $value = str_replace(["\r", "\n"], '', $value);
+    }
+
     // 빈 값은 빈 따옴표로
     if ($value === '') {
         return '""';
@@ -1148,7 +1234,7 @@ function checkExistingTables(PDO $pdo, string $database, string $tablePrefix = '
         ];
     }
 
-    // G7 핵심 시그니처 테이블 — PO 결정: 4개 모두 일치 시 "G7 설치됨"으로 판단
+    // G7 핵심 시그니처 테이블 — 정책 결정: 4개 모두 일치 시 "G7 설치됨"으로 판단
     // 테이블 prefix를 적용하여 비교 (예: prefix='g7_'이면 'g7_users', 'g7_migrations' 등)
     $coreSignatures = ['users', 'migrations', 'roles', 'permissions'];
     $g7Signatures = array_map(fn ($t) => $tablePrefix . $t, $coreSignatures);

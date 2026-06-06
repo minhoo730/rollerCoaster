@@ -12,23 +12,24 @@
       />
 
       <div class="mt-6 space-y-6">
-        <TopMovers
-          v-model:active-type="activeRankingType"
-          :gainers="topGainers"
-          :losers="topLosers"
-          :volume-stocks="volumeStocks"
-          :turnover-stocks="turnoverStocks"
-          :loading="isRankingsLoading"
-          :error="rankingsError"
-          @select="loadRanking"
-        />
-
-        <section class="grid gap-6 lg:grid-cols-[1.35fr_0.65fr]">
+        <div class="flex flex-col gap-6 lg:flex-row lg:items-start">
+          <TopMovers
+            v-model:active-type="activeRankingType"
+            :gainers="topGainers"
+            :losers="topLosers"
+            :volume-stocks="volumeStocks"
+            :turnover-stocks="turnoverStocks"
+            :loading="isRankingsLoading"
+            :error="rankingsError"
+            @select="loadRanking"
+          />
           <PersonalWatchlist
             v-model:market-filter="marketFilter"
             :stocks="filteredWatchlist"
             :market-options="marketOptions"
           />
+        </div>
+        <section class="grid gap-6 lg:grid-cols-[1.35fr_0.65fr]">
 
           <CommunityHighlights
             :posts="communityPosts"

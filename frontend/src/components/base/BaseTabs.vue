@@ -11,20 +11,16 @@
       v-for="option in options"
       :key="option.value"
       :ref="(element) => setTabRef(option.value, element)"
-      type="button"
       role="tab"
       :aria-selected="isActive(option.value)"
       :tabindex="isActive(option.value) ? 0 : -1"
       :disabled="option.disabled"
       :class="[
-        'rounded-md font-semibold outline-none transition',
-        'focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2 focus-visible:ring-offset-bg',
-        'disabled:pointer-events-none disabled:opacity-50',
+        'rounded-md px-3 py-2 text-caption font-semibold transition',
         full ? 'flex-1' : '',
         sizeClass,
         isActive(option.value)
-          ? 'bg-surface text-text-primary shadow-sm'
-          : 'text-text-secondary hover:bg-surface hover:text-text-primary'
+          ? 'bg-white text-primary shadow-card' : 'text-text-secondary hover:text-text-primary'
       ]"
       @click="selectTab(option)"
       @keydown="handleKeydown($event, option.value)"

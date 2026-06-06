@@ -192,7 +192,7 @@ class ModuleCleanupStaleEntriesTest extends TestCase
 
     /**
      * uninstall(deleteData=false) 시 권한·메뉴·역할이 보존되어 재설치 경로를 비파괴적으로 만드는지 검증.
-     * PO 정책: "동적 권한/메뉴는 데이터 삭제 옵션 체크 시에만 삭제".
+     * 운영 정책: "동적 권한/메뉴는 데이터 삭제 옵션 체크 시에만 삭제".
      */
     public function test_uninstall_without_delete_data_preserves_permissions(): void
     {
@@ -262,14 +262,20 @@ class ModuleCleanupStaleEntriesTest extends TestCase
         $body = substr($source, $start, $end - $start);
 
         $autoloadPos = strpos($body, '$this->extensionManager->updateComposerAutoload();');
+        // updateModule 은 cleanupStaleModuleEntries 를 직접 호출하거나 syncDeclarativeArtifacts
+        // 위임으로 호출한다 (위임이 내부적으로 cleanup 실행). 어느 형태든 해당 호출이
+        // updateComposerAutoload 이후에 위치해야 한다.
         $cleanupPos = strpos($body, '$this->cleanupStaleModuleEntries(');
+        if ($cleanupPos === false) {
+            $cleanupPos = strpos($body, '$this->syncDeclarativeArtifacts(');
+        }
 
         $this->assertNotFalse($autoloadPos, 'updateComposerAutoload 호출을 찾을 수 없습니다.');
-        $this->assertNotFalse($cleanupPos, 'cleanupStaleModuleEntries 호출을 찾을 수 없습니다.');
+        $this->assertNotFalse($cleanupPos, 'cleanupStaleModuleEntries 또는 syncDeclarativeArtifacts 호출을 찾을 수 없습니다.');
         $this->assertLessThan(
             $cleanupPos,
             $autoloadPos,
-            'updateComposerAutoload 는 cleanupStaleModuleEntries 보다 먼저 호출되어야 한다. '
+            'updateComposerAutoload 는 cleanupStale (또는 syncDeclarativeArtifacts 위임) 보다 먼저 호출되어야 한다. '
             .'(동적 hook 의 모듈 클래스 autoload 보장)'
         );
     }
@@ -293,13 +299,16 @@ class ModuleCleanupStaleEntriesTest extends TestCase
 
         $autoloadPos = strpos($body, '$this->extensionManager->updateComposerAutoload();');
         $cleanupPos = strpos($body, '$this->cleanupStalePluginEntries(');
+        if ($cleanupPos === false) {
+            $cleanupPos = strpos($body, '$this->syncDeclarativeArtifacts(');
+        }
 
         $this->assertNotFalse($autoloadPos);
         $this->assertNotFalse($cleanupPos);
         $this->assertLessThan(
             $cleanupPos,
             $autoloadPos,
-            'updateComposerAutoload 는 cleanupStalePluginEntries 보다 먼저 호출되어야 한다.'
+            'updateComposerAutoload 는 cleanupStale (또는 syncDeclarativeArtifacts 위임) 보다 먼저 호출되어야 한다.'
         );
     }
 

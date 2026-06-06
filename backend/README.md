@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="#"><img src="https://img.shields.io/badge/version-7.0.0--beta.3-blue" alt="Version"></a>
+  <a href="#"><img src="https://img.shields.io/badge/version-7.0.0--beta.7-blue" alt="Version"></a>
   <a href="#"><img src="https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white" alt="PHP"></a>
   <a href="#"><img src="https://img.shields.io/badge/Laravel-12.x-FF2D20?logo=laravel&logoColor=white" alt="Laravel"></a>
   <a href="#"><img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black" alt="React"></a>
@@ -43,16 +43,19 @@ Laravel과 React를 기반으로, 보안부터 아키텍처까지 처음부터 �
 | 영역 | 설명 |
 |------|------|
 | **모듈 아키텍처** | 모듈 + 플러그인 + 템플릿 3중 확장 구조. 코어 수정 없이 독립적 모듈(게시판, 커머스 등) 개발이 가능합니다. Hook 기반 기능 주입으로 Service-Repository 패턴의 명확한 계층 분리를 유지합니다 |
-| **현지화** | 백엔드부터 프론트엔드까지 일관된 다국어 개발 환경을 제공합니다. 로케일 기반 UI, 확장 가능한 언어 팩을 지원합니다 |
+| **언어팩 시스템** | 새 언어를 코어 수정 없이 ZIP 또는 GitHub URL 로 설치할 수 있습니다. 일본어 등 공식 번들 언어팩을 즉시 사용할 수 있고, 운영자가 직접 수정한 라벨은 언어팩이 덮어쓰지 않도록 sub-key 단위로 보존합니다. 모듈/플러그인/템플릿 단위로 별도 적용 가능 |
+| **현지화** | 백엔드부터 프론트엔드까지 일관된 다국어 개발 환경을 제공합니다. 활성 언어팩이 알림 채널 라벨, Provider/Registry 페이로드, 환경설정 카탈로그(결제수단·통화·배송 가능 국가)까지 자동 보강되며, 모듈/플러그인이 자기 도메인 라벨을 자기 영역에서 자기설명하도록 활동 로그·메시지 영역도 분리되어 있습니다 |
 | **해외 결제** | 로컬 비즈니스를 넘어 글로벌 커머스로 도약하기 위한 기반을 제공합니다 `정식버전에서 지원예정` |
 | **권한 제어** | 역할별 메뉴와 기능, 데이터 범위까지 제어할 수 있습니다. 역할(Role) + 권한(Permission) + 스코프(Scope) 3단계 접근 제어로 조직 구조에 맞는 유연한 접근 관리를 제공합니다 |
-| **보안** | 입력값 자동 검증과 토큰 기반 인증을 제공합니다. 설계부터 보안을 고려한 다층 방어 구조(CSRF/XSS/SQL Injection)를 구현합니다 |
+| **본인인증 (IDV)** | 회원가입·비밀번호 재설정·민감 작업 등 모든 본인인증 시점을 라우트/훅 단위 선언형 정책으로 통합 관리합니다. 코어가 메일 프로바이더를 기본 내장하고, 외부 KCP·이니시스·SMS·PortOne·Stripe Identity 등은 동일한 Provider 계약으로 붙일 수 있는 확장점을 제공합니다. 서버가 HTTP 428 응답을 반환하면 프론트엔드 인터셉터가 자동으로 인증 모달을 띄우고 인증 성공 시 원 요청을 재실행합니다 |
+| **보안** | 입력값 자동 검증과 토큰 기반 인증을 제공합니다. 설계부터 보안을 고려한 다층 방어 구조(CSRF/XSS/SQL Injection), 로그인 시도 제한·계정 잠금(HTTP 423) 실제 구현, 설치 완료 후 인스톨러 엔드포인트 자동 차단(HTTP 410) 까지 다층 방어를 구성합니다 |
 | **유연한 화면 구성** | 화면 구조를 정의하면 즉시 반영할 수 있습니다. 프론트엔드 인프라 없이 JSON 선언만으로 웹앱 수준의 동적 화면 구현이 가능합니다 |
 | **레이아웃 편집기** | 위지윅 기반 레이아웃 편집 기능으로 화면 블록을 직접 배치하고 수정 결과를 바로 확인할 수 있습니다 `정식버전에서 지원예정` |
 | **검증된 기반** | Laravel + React 기반을 제공합니다. 글로벌 기업이 채택한 기술 스택으로 높은 확장성과 유연한 UI 구현이 가능합니다 |
 | **공통 캐시 시스템** | `CacheInterface` 와 코어/모듈/플러그인 3종 드라이버로 키 접두사(`g7:core:`, `g7:module.{id}:`, `g7:plugin.{id}:`) 를 자동 격리합니다. 태그 기반 자동 무효화와 `g7_core_settings('cache.*_ttl')` 중앙 관리로 하드코딩 없이 운영할 수 있습니다 |
-| **알림 시스템** | 알림 정의(Definition) × 템플릿(Template) × 수신자(Recipients) 3계층 구조로 메일/DB/실시간 브로드캐스트(Reverb) 다채널 독립 발송을 지원합니다. 작성자·역할·특정 사용자 단위 타겟팅과 훅 기반 발송으로 모듈이 자체 알림을 자유롭게 등록할 수 있습니다 |
-| **활동 로그** | 관리자·사용자 활동 이력을 자동으로 기록하고 조회할 수 있습니다. Monolog 기반 구조로 확장이 용이합니다 |
+| **알림 시스템** | 알림 정의(Definition) × 템플릿(Template) × 수신자(Recipients) 3계층 구조로 메일/DB/실시간 브로드캐스트(Reverb) 다채널 독립 발송을 지원합니다. 작성자·역할·특정 사용자·권한 보유자 단위 타겟팅과 훅 기반 발송으로 모듈이 자체 알림을 자유롭게 등록할 수 있습니다 |
+| **SEO** | `jaybizzle/crawler-detect` 기반으로 약 1,000종 봇(검색엔진·SNS unfurl·AI 검색)을 자동 감지하여 봇 요청에는 정적 HTML 을, 일반 사용자에게는 SPA 를 응답합니다. OG/Twitter 카드 메타와 모듈이 선언한 도메인 스키마(Article/Product/Offer/AggregateRating), Sitemap 자동·수동 생성, Generator 메타 태그까지 표준 SEO 표면을 코어에서 제공합니다 |
+| **활동 로그** | 관리자·사용자 활동 이력을 자동으로 기록하고 조회할 수 있습니다. Monolog 기반 구조로 확장이 용이하며, 액션 라벨이 모듈/플러그인 자체 다국어 파일에서 우선 해석되어 도메인별 자기설명이 가능합니다 |
 | **검색** | Laravel Scout 기반 전문 검색을 지원합니다. 상품, 게시글 등 주요 콘텐츠를 대상으로 검색 기능을 제공합니다 |
 
 ---
@@ -77,12 +80,16 @@ Gnuboard7
 │   ├── Controller → FormRequest → Service → Repository → Model
 │   ├── Hook System (Action / Filter)
 │   ├── Permission (Role → Permission → Scope)
+│   ├── Identity Verification (Policy × Purpose × Provider × Message)
+│   ├── Language Pack (가상 보호 행 + ZIP/GitHub 설치 + sub-key 보존)
+│   ├── Notification (Definition × Template × Recipients)
 │   └── SEO (Bot Detection → Static HTML → Cache → Sitemap)
 │
 ├── Extensions
 │   ├── Modules    — 게시판, 쇼핑몰, 페이지 ...
 │   ├── Plugins    — 결제, 인증, 마케팅 ...
-│   └── Templates  — 관리자 UI, 사용자 UI
+│   ├── Templates  — 관리자 UI, 사용자 UI
+│   └── LanguagePacks — 일본어 등 공식/외부 언어팩
 │
 └── Template Engine
     ├── JSON Layout → React Components
@@ -294,6 +301,48 @@ HookManager::doAction('sirsoft-ecommerce.order.after_confirm', $order);
 - 실시간 브로드캐스트는 Laravel Reverb (WebSocket) 기반. Reverb 미구성 환경에서는 graceful skip 으로 오류 없이 동작
 - `GenericNotification` 단일 클래스가 모든 알림을 처리 — 신규 알림 타입 추가 시 개별 Notification 클래스 작성 불필요
 
+#### 5. 언어팩 시스템
+
+새 언어를 코어 수정 없이 추가할 수 있는 운영 도구로, 모듈/플러그인/템플릿 관리와 동일한 라이프사이클(설치 → 활성화 → 업데이트 → 제거 + 자동 백업/롤백) 을 제공합니다.
+
+| 영역 | 동작 |
+| --- | --- |
+| 설치 경로 | ZIP 업로드 / GitHub URL / `lang-packs/_bundled` 번들 디렉토리 (코어 업데이트 시 일괄 동기화) |
+| 적용 범위 | 코어, 모듈, 플러그인, 템플릿 별도 적용 — 모듈 언어팩은 해당 코어 언어팩이 활성일 때만 활성화 |
+| 사용자 수정 보존 | 다국어 JSON 컬럼은 sub-key 단위 (`name.ko` / `name.ja`) 로 user override 기록 — 한 언어 라벨만 수정해도 그 언어만 보존, 신규 언어는 자동 동기화 |
+| 활성화 시점 | 활성/비활성 시 영향받는 모듈/플러그인의 entity 시더가 자동 재실행 → 메뉴·권한·역할·매니페스트·알림 라벨 즉시 DB 반영 |
+| 가상 보호 행 | 코어/번들 확장에 내장된 한국어/영어는 별도 설치 없이 항상 활성/보호 상태로 노출 (수정/제거 차단) |
+| 보안 | 언어 번역 외의 PHP 실행 코드 포함 시 설치 차단 |
+
+공식 일본어(ja) 번들 12종(코어 + 주요 모듈/플러그인/템플릿) 이 즉시 사용 가능하며, 인스톨러 4단계에서 모듈/플러그인/템플릿 선택과 종속된 언어팩 카드가 자동 연동되어 함께 설치할 수 있습니다.
+
+> 상세: [docs/extension/language-packs.md](docs/extension/language-packs.md)
+
+#### 6. 본인인증 (Identity Verification)
+
+회원가입·비밀번호 재설정·민감 작업·결제 직전 등 모든 본인인증 시점을 라우트/훅 단위 선언형 정책으로 통합 관리합니다.
+
+```text
+┌────────────────────┐    ┌─────────────────────┐    ┌──────────────────────┐
+│ Policy             │    │ Purpose             │    │ Provider             │
+│ (강제 시점·실패 모드│    │ (인증 목적·허용 채널│    │ (메일·KCP·이니시스   │
+│  ·단계·conditions) │ ◀▶ │  ·source 추적)      │ ◀▶ │  ·SMS·외부 IDV ...)  │
+└────────────────────┘    └─────────────────────┘    └──────────────────────┘
+            │                                                  │
+            └──────────▶ Message Template (정책×목적 매핑) ◀───┘
+                                    │
+                              GenericNotification
+```
+
+- **정책 SSoT** — 정책 enable 토글이 라우트 코드 수정 없이 즉시 적용. 모든 API 라우트가 정책 DB 와 자동 매칭
+- **428 인터셉터** — 서버가 HTTP 428 응답을 반환하면 프론트엔드가 자동으로 인증 모달을 띄우고 인증 성공 시 원 요청을 자동 재실행
+- **선언형 등록** — 모듈/플러그인은 `module.php::getIdentityPolicies()` / `getIdentityPurposes()` / `getIdentityMessages()` 만 선언하면 활성화/업데이트 시 자동 등록되며 운영자 편집값 보존
+- **메시지 템플릿** — 프로바이더와 (목적/정책)별로 다국어 제목/본문을 개별 정의. 정책 → 목적 → 프로바이더 기본값 순서로 fallback
+- **외부 Provider 슬롯** — 플러그인이 KCP·PortOne·토스인증·Stripe Identity 등을 G7 표준 Extension Point 패턴으로 자기 SDK UI 를 주입 가능
+- **이력 관리** — 관리자 화면에서 인증 수단 탭, 통합 검색, 상태/목적/채널/IP 멀티 필터, 보관주기(180일) 일괄 파기 제공
+
+> 상세: [docs/backend/identity-policies.md](docs/backend/identity-policies.md), [docs/backend/identity-providers.md](docs/backend/identity-providers.md), [docs/backend/identity-messages.md](docs/backend/identity-messages.md)
+
 ---
 
 ## 빠른 시작
@@ -348,6 +397,35 @@ cp .env.example .env
 |--------|------|
 | **sirsoft-admin_basic** | 관리자 기본 템플릿 |
 | **sirsoft-basic** | 사용자 기본 템플릿 |
+
+### 번들 언어팩
+
+설치 시 함께 동반 설치할 수 있는 공식 언어팩입니다. 코어 + 주요 모듈/플러그인/템플릿이 일관된 번역으로 즉시 사용 가능합니다.
+
+| 식별자 | 설명 |
+| ------ | ---- |
+| **g7-core-ja** | 코어 일본어 |
+| **g7-module-sirsoft-board-ja** | 게시판 모듈 일본어 |
+| **g7-module-sirsoft-ecommerce-ja** | 이커머스 모듈 일본어 |
+| **g7-module-sirsoft-page-ja** | 페이지 모듈 일본어 |
+| **g7-plugin-sirsoft-ckeditor5-ja** | CKEditor5 플러그인 일본어 |
+| **g7-plugin-sirsoft-marketing-ja** | 마케팅 플러그인 일본어 |
+| **g7-plugin-sirsoft-tosspayments-ja** | 토스페이먼츠 플러그인 일본어 |
+| **g7-template-sirsoft-admin_basic-ja** | 관리자 기본 템플릿 일본어 |
+| **g7-template-sirsoft-basic-ja** | 사용자 기본 템플릿 일본어 |
+
+> 한국어/영어는 코어/번들 확장에 내장되어 있으며 설치 없이 항상 활성 상태로 동작합니다. 새 언어는 ZIP 또는 GitHub URL 로 자유롭게 추가할 수 있습니다.
+
+### 학습용 샘플 확장
+
+확장 시스템 학습을 위한 최소 구현 샘플입니다. 관리자 UI 에서 "숨김 포함" 토글로 노출되며 CLI 에서는 항상 보입니다.
+
+| 식별자 | 종류 | 설명 |
+| ------ | ---- | ---- |
+| **gnuboard7-hello_module** | 모듈 | Memo CRUD + 훅 발행 시연 |
+| **gnuboard7-hello_plugin** | 플러그인 | Action/Filter 훅 구독 시연 |
+| **gnuboard7-hello_admin_template** | Admin 템플릿 | Basic 컴포넌트 최소 셋 |
+| **gnuboard7-hello_user_template** | User 템플릿 | 홈 + Memo 리스트 연동 |
 
 ---
 
@@ -433,7 +511,7 @@ cp .env.example .env
 
 ## 보안 취약점
 
-보안 취약점을 발견하셨다면 [GitHub Issues](https://github.com/gnuboard/g7/issues)에 보고해 주세요.
+보안 취약점을 발견하셨다면 [SIR 문의게시판](https://sir.kr/boards/co_qa)에 비밀글로 제보해 주세요.
 
 ---
 

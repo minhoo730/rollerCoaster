@@ -126,6 +126,84 @@ return new class extends Migration
 };
 ```
 
+### 마이그레이션 멱등성
+
+```
+필수: Schema::table 안의 컬럼 추가 (`$table->{type}('{column}')`) 는 Schema::hasColumn 가드와 함께 작성
+배경: 코어 업그레이드 도중 마이그레이션이 부분 적용된 채 fatal 한 경우, `core:update --force` 재실행 시 이미 적용된 컬럼이 재시도되어 "Column already exists" SQL error 가 발생
+면제: `// audit:allow migration-idempotency-guard reason: ...` 인라인 주석 (의도적 비-멱등 사유 기재)
+```
+
+#### 멱등 작성 예시
+
+```php
+// ✅ 올바른 패턴 — Schema::hasColumn 가드
+public function up(): void
+{
+    Schema::table('users', function (Blueprint $table): void {
+        if (! Schema::hasColumn('users', 'locked_until')) {
+            $table->timestamp('locked_until')->nullable()->after('email');
+        }
+        if (! Schema::hasColumn('users', 'last_failed_login_at')) {
+            $table->timestamp('last_failed_login_at')->nullable();
+        }
+    });
+}
+
+// ❌ 잘못된 패턴 — 가드 부재
+public function up(): void
+{
+    Schema::table('users', function (Blueprint $table): void {
+        $table->timestamp('locked_until')->nullable();      // partial migrate 후 재실행 시 fatal
+        $table->timestamp('last_failed_login_at')->nullable();
+    });
+}
+```
+
+#### 인덱스 추가의 멱등성
+
+인덱스 추가는 Laravel 의 Schema 빌더가 멱등 가드를 직접 제공하지 않으므로 다음 패턴 중 하나 적용:
+
+```php
+// 방식 1 — Schema::hasIndex (Laravel 11+ Schema::getIndexes 기반)
+public function up(): void
+{
+    Schema::table('users', function (Blueprint $table): void {
+        if (! collect(Schema::getIndexes('users'))->pluck('name')->contains('users_email_idx')) {
+            $table->index('email', 'users_email_idx');
+        }
+    });
+}
+
+// 방식 2 — try/catch (인덱스명이 명시되지 않은 경우)
+public function up(): void
+{
+    try {
+        Schema::table('users', function (Blueprint $table): void {
+            $table->index('email');
+        });
+    } catch (\Throwable $e) {
+        // 이미 존재 — 멱등 skip
+    }
+}
+```
+
+#### `->change()` 패턴의 멱등성
+
+`->change()` 는 이미 존재하는 컬럼의 타입/제약 변경이므로 컬럼 부재 fatal 위험은 없다. 단, MariaDB/MySQL 의 일부 ALTER 가 비-멱등인 경우 (예: enum 값 추가 후 재실행) 가 있으므로 마이그레이션 작성자가 의도 검증 필요. audit rule `migration-idempotency-guard` 는 `->change()` 라인을 자동 제외하므로 false positive 미발생.
+
+#### 검증 절차
+
+단일 마이그레이션의 dry-run 출력을 두 번 적용해도 동일 출력인지 확인:
+
+```bash
+php artisan migrate --pretend --path=database/migrations/2026_05_05_172526_add_login_attempt_columns_to_users_table.php
+```
+
+신규 마이그레이션 작성 후에는 같은 마이그레이션을 두 번 실행하는 시나리오를 PHPUnit Feature 테스트로 작성해 SQL error 미발생을 검증한다 (`tests/Feature/Upgrades/MultiVersionUpgradePathTest.php` 의 `hasColumn_가드된_마이그레이션은_두_번_적용해도_SQL_error_없다` 사례 참조).
+
+---
+
 ### 모듈/플러그인 마이그레이션 down() 메서드
 
 ```
@@ -684,7 +762,45 @@ public function getLocalizedName(?string $locale = null): string
 | **사용 예** | 언어 선택자, 미들웨어 | DB JSON 필드, FormRequest |
 | **검증 위치** | 런타임 (미들웨어) | 데이터 입력 시 (FormRequest) |
 
+#### 언어팩 시스템과의 관계
+
+`config/app.php` 의 `supported_locales` / `translatable_locales` / `locale_names` 는 boot 시점에 `LanguagePackServiceProvider::refreshSupportedLocales()` 가 활성 코어 언어팩의 locale 을 합쳐 동적으로 갱신합니다. 따라서:
+
+- 새 locale 은 **`config/app.php` 편집이 아니라 언어팩 설치/활성화** 로 추가합니다.
+- 코드에서 `config('app.supported_locales')` / `config('app.translatable_locales')` 를 호출하면 이미 활성 언어팩이 반영된 결과가 반환됩니다.
+- 두 config 는 항상 동기화됩니다. `supported_locales` 에는 ja 가 있는데 `translatable_locales` 에는 없는 상태가 되지 않도록 provider 가 함께 갱신합니다.
+
+#### 다국어 fallback chain 정책
+
+다국어 JSON 필드 (`permissions.name`, `module.name`, 모듈 모델의 `name`/`description` 등) 에서 현재 locale 의 값을 반환할 때는 **`config('app.fallback_locale', 'ko')` 기반 fallback chain** 을 사용합니다.
+
+```php
+// ✅ DO: app.fallback_locale config 기반
+return $name[$locale]
+    ?? $name[config('app.fallback_locale', 'ko')]
+    ?? (! empty($name) ? array_values($name)[0] : '')
+    ?? '';
+
+// ❌ DON'T: ko / en 하드코딩
+return $name[$locale]
+    ?? $name['ko']
+    ?? $name['en']
+    ?? '';
+```
+
+운영자가 `APP_FALLBACK_LOCALE` 환경변수로 폴백 locale 을 ko 외 값으로 변경할 수 있도록 하기 위함입니다. ko 가 fallback 인 환경에서는 두 패턴이 동일 결과지만, 환경 변경 시 하드코딩 패턴은 의도와 어긋난 ko 폴백을 보입니다.
+
 #### 새 언어 추가 절차
+
+권장: **언어팩 시스템 사용**
+
+1. 번들 언어팩 패키지 준비 (`lang-packs/_bundled/g7-core-{locale}/` 디렉토리에 매니페스트와 backend/frontend 파일 작성)
+2. 설치 + 활성화: `php artisan language-pack:install g7-core-{locale} --source=bundled`
+3. provider 가 boot 시 자동으로 supported_locales / translatable_locales / locale_names 갱신
+
+상세: [extension/language-packs.md](extension/language-packs.md)
+
+레거시 (config 직접 편집) 방식:
 
 1. **`config/app.php` 업데이트**:
    ```php

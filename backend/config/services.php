@@ -41,9 +41,4 @@ return [
         ],
     ],
 
-    // 한국투자증권 API 설정
-    'kis' => [
-        'kospi_master_url' => env('KIS_KOSPI_MASTER_URL'),
-        'kosdaq_master_url' => env('KIS_KOSDAQ_MASTER_URL'),
-    ],
 ];

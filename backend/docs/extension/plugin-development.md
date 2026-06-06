@@ -210,6 +210,16 @@ class Plugin implements PluginInterface
 
 > **`license` 필드**: `plugin.json`에 `"license": "MIT"` 등의 라이선스 정보를 포함합니다. `getLicense()` 메서드로 값을 읽으며, API 리소스의 `license` 필드로 노출됩니다. 또한 각 플러그인 루트에 `LICENSE` 파일을 포함하여 라이선스 전문을 제공해야 합니다.
 
+### hidden 필드 (선택)
+
+`plugin.json` 에 `"hidden": true` 를 설정하면 관리자 UI 의 플러그인 목록에서 기본 제외됩니다. 학습용 샘플 플러그인, 내부 운영 전용 플러그인을 일반 사용자에게 감출 때 사용합니다.
+
+- 제외 대상: 관리자 UI (`GET /api/admin/plugins` 기본 응답)
+- 제외 대상 아님: artisan CLI (`plugin:list`, `plugin:install`, `plugin:activate` 등), 설치/제거/업데이트 감지
+- 슈퍼관리자는 "숨김 포함" 토글로 일시 조회 가능 (`?include_hidden=1`)
+- artisan CLI 에서도 기본 목록에서는 숨기고, `php artisan plugin:list --hidden` 으로 숨김 포함 목록을 조회할 수 있습니다
+- 사용 사례: 학습용 샘플 플러그인(예: `gnuboard7-hello_plugin`), 내부 전용 연동 플러그인
+
 ### 자동 추론 메서드 (final - 오버라이드 불가)
 
 | 메서드 | 반환 타입 | 설명 |
@@ -230,7 +240,7 @@ class Plugin implements PluginInterface
 | `getDynamicRoleIdentifiers()` | `[]` | 런타임 생성 역할 식별자 — stale cleanup 보존 대상 |
 | `getDependencies()` | `[]` | 의존하는 모듈/플러그인 목록 |
 | `getHookListeners()` | `[]` | 훅 리스너 클래스 목록 |
-| `upgrades()` | `[]` | 업그레이드 스텝 (`upgrades/` 디렉토리 자동 발견) |
+| `upgrades()` | `[]` | 업그레이드 스텝 (`upgrades/` 디렉토리 자동 발견). **`g7_version >= 7.0.0-beta.5` 인 플러그인은 신규 step 이 `AbstractUpgradeStep` 상속 의무** ([upgrade-step-guide §13](upgrade-step-guide.md)) — 미상속 시 `PluginManager::runUpgradeSteps` 가 `RuntimeException` throw |
 
 > **동적 식별자 보존 규칙**: `Permission::updateOrCreate()` / `Role::firstOrCreate()` 등으로 런타임에 생성한 엔티티는 업데이트 시 `cleanupStalePluginEntries` 에 의해 "정적 정의에 없는 고아 레코드" 로 판정되어 삭제될 위험이 있습니다. 이를 방지하려면 동적 식별자 목록을 위 3개 훅에서 반환하세요 — 정적 정의 + 동적 식별자가 병합된 expected 목록을 기준으로 판정되어 보존됩니다. 상세는 [extension-update-system.md](extension-update-system.md) 참조.
 
@@ -286,8 +296,14 @@ plugins/_bundled/sirsoft-payment/
 ├── LICENSE                      # 라이선스 전문 (MIT)
 ├── composer.json                 # PSR-4 오토로딩 + 외부 패키지 의존성
 ├── vendor/                      # Composer 의존성 (자동 생성, gitignore 대상)
-├── upgrades/                    # 버전 업그레이드 스텝 (UpgradeStepInterface 구현)
-│   └── Upgrade_1_1_0.php        # 1.1.0 버전 업그레이드 로직
+├── upgrades/                    # 버전 업그레이드 스텝 (AbstractUpgradeStep 상속 — g7_version >= 7.0.0-beta.5 플러그인 의무)
+│   ├── Upgrade_1_1_0.php        # 1.1.0 버전 업그레이드 스텝 (extends AbstractUpgradeStep)
+│   └── data/                    # 버전별 데이터 스냅샷 — 카탈로그 delta / Applier / Migration 동결
+│       └── 1.1.0/
+│           ├── manifest.json    # kind → delta JSON 매핑
+│           ├── *.delta.json     # added/removed/renamed 시드
+│           ├── appliers/        # SnapshotApplier 구현 (버전 namespace)
+│           └── migrations/      # DataMigration 구현 (변환/핫픽스, 버전 namespace)
 ├── config/                      # 플러그인 설정
 │   ├── payment.php
 │   └── settings/

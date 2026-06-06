@@ -1,12 +1,14 @@
 <template>
-  <section class="space-y-4">
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+  <div class="rounded-2xl border border-border bg-surface p-4 shadow-card lg:p-5 w-full">
+    <div class="flex flex-col gap-3 sm:items-start sm:justify-between">
+      <h2 class="mt-1 text-title font-semibold text-text-primary">{{ currentTab.title }}</h2>
+
+
       <BaseTabs
         :model-value="activeType"
         :options="rankingTabs"
         aria-label="주식 랭킹 탭"
-        full
-        class="sm:w-auto"
+        size="sm"
         @update:model-value="$emit('update:activeType', $event)"
         @select="$emit('select', $event)"
       />
@@ -24,7 +26,7 @@
       :metric="currentTab.metric"
       :empty-label="loading ? '랭킹을 불러오는 중입니다' : currentTab.emptyLabel"
     />
-  </section>
+  </div>
 </template>
 
 <script setup>

@@ -4,7 +4,7 @@
       <div>
         <p class="text-caption font-semibold uppercase text-primary">Today Market</p>
         <h1 class="mt-2 text-3xl font-semibold leading-tight text-text-primary sm:text-4xl">오늘의 시장</h1>
-        <p class="mt-3 max-w-3xl text-body leading-7 text-text-secondary">{{ summary.brief.summary }}</p>
+        <!-- <p class="mt-3 max-w-3xl text-body leading-7 text-text-secondary">{{ summary.brief.summary }}</p> -->
       </div>
 
       <div class="rounded-xl bg-surface-muted px-4 py-3 text-body-sm text-text-secondary">
@@ -36,11 +36,11 @@
         </a>
       </div>
 
-      <div class="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+      <div class="grid gap-3 sm:grid-cols-3 lg:grid-rows-1">
         <div
           v-for="item in summary.breadth"
           :key="item.label"
-          class="flex items-center justify-between rounded-xl bg-surface-muted px-4 py-3"
+          class="flex flex-col items-center justify-center gap-2 rounded-xl bg-surface-muted px-4 py-3"
         >
           <span class="text-body-sm text-text-secondary">{{ item.label }}</span>
           <span :class="['text-title-sm font-semibold', item.tone === 'rise' ? 'text-rise' : item.tone === 'fall' ? 'text-fall' : 'text-text-primary']">
