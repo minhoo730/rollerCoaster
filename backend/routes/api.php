@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\Admin\AuthController as AdminAuthController;
 use App\Http\Controllers\Api\Admin\BroadcastCatalogController;
 use App\Http\Controllers\Api\Admin\CoreUpdateController as AdminCoreUpdateController;
 use App\Http\Controllers\Api\Admin\DashboardController as AdminDashboardController;
+use App\Http\Controllers\Api\Admin\ExternalApiController;
 use App\Http\Controllers\Api\Admin\ExtensionRecoveryController as AdminExtensionRecoveryController;
 use App\Http\Controllers\Api\Admin\GeoIpController as AdminGeoIpController;
 use App\Http\Controllers\Api\Admin\Identity\AdminIdentityLogController;
@@ -381,6 +382,19 @@ Route::get('search', [PublicSearchController::class, 'search'])->middleware('opt
 
 // 관리자 API (인증 + 관리자 권한 필요, 속도 제한 적용)
 Route::prefix('admin')->middleware(['auth:sanctum', 'check.user_status', 'admin', 'throttle:'.config('auth.throttle.admin')])->group(function () {
+    // 국내 주식 종목 마스터 관리
+    Route::prefix('external-apis')->group(function () {
+        Route::get('/', [ExternalApiController::class, 'index'])
+            ->middleware('permission:admin,core.settings.read')
+            ->name('api.admin.external-apis.index');
+        Route::patch('{stock}', [ExternalApiController::class, 'update'])
+            ->middleware('permission:admin,core.settings.update')
+            ->name('api.admin.external-apis.update');
+        Route::post('import', [ExternalApiController::class, 'import'])
+            ->middleware('permission:admin,core.settings.update')
+            ->name('api.admin.external-apis.import');
+    });
+
     // 관리자 인증
     Route::prefix('auth')->group(function () {
         Route::post('logout', [AdminAuthController::class, 'logout'])->middleware('start.api.session')->name('api.admin.auth.logout');

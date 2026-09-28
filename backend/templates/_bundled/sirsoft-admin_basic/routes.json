@@ -240,6 +240,15 @@
       "meta": {
         "title": "$t:admin.identity.challenge.title"
       }
+    },
+    {
+      "path": "*/admin/external-apis/list",
+      "layout": "admin_external_apis_list",
+      "auth_required": true,
+      "meta": {
+        "title": "종목 마스터 관리",
+        "permission": "core.settings.read"
+      }
     }
   ]
 }
