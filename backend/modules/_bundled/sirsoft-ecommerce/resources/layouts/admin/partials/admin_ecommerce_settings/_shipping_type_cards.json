@@ -7,11 +7,10 @@
   "type": "basic",
   "name": "Div",
   "props": {
-    "className": "space-y-3"
   },
   "children": [
     {
-      "id": "shipping_type_card",
+      "id": "shipping_type_card_{{tIdx}}",
       "type": "basic",
       "name": "Div",
       "iteration": {
@@ -34,7 +33,7 @@
               "type": "basic",
               "name": "Div",
               "props": {
-                "className": "flex items-center gap-2 min-w-0"
+                "className": "flex-center gap-2 min-w-0"
               },
               "children": [
                 {
@@ -60,11 +59,11 @@
               "type": "basic",
               "name": "Div",
               "props": {
-                "className": "flex items-center gap-2 shrink-0"
+                "className": "flex-center gap-2 shrink-0"
               },
               "children": [
                 {
-                  "type": "basic",
+                  "type": "composite",
                   "name": "Toggle",
                   "props": {
                     "checked": "{{type.is_active ?? false}}",

@@ -120,23 +120,26 @@ describe('리뷰설정 탭 구조 검증 (_tab_review_settings.json)', () => {
     describe('리뷰설정 카드 구조', () => {
         const card = tab.children[0];
 
-        it('card 클래스를 가져야 한다', () => {
-            expect(card.props.className).toBe('card');
+        it('admin-card 클래스를 가져야 한다', () => {
+            expect(card.props.className).toBe('admin-card');
         });
 
-        it('카드 헤더에 제목이 있어야 한다', () => {
-            const header = card.children[0];
-            expect(header.props.className).toBe('card-header');
-            const titleEl = header.children.find((c: any) => c.name === 'H3');
+        it('카드 제목이 직계 자식이어야 한다 (admin-card > card-title 평탄화)', () => {
+            const titleEl = card.children.find(
+                (c: any) => c.name === 'H3' && typeof c?.props?.className === 'string' &&
+                    /\bcard-title\b/.test(c.props.className)
+            );
             expect(titleEl).toBeDefined();
             expect(titleEl.text).toBe(
                 '$t:sirsoft-ecommerce.admin.settings.review_settings.title',
             );
         });
 
-        it('카드 헤더에 설명이 있어야 한다', () => {
-            const header = card.children[0];
-            const descEl = header.children.find((c: any) => c.name === 'P');
+        it('카드 설명이 직계 자식 .card-description Div 여야 한다', () => {
+            const descEl = card.children.find(
+                (c: any) => c.name === 'Div' && typeof c?.props?.className === 'string' &&
+                    /\bcard-description\b/.test(c.props.className)
+            );
             expect(descEl).toBeDefined();
             expect(descEl.text).toBe(
                 '$t:sirsoft-ecommerce.admin.settings.review_settings.description',
@@ -146,9 +149,9 @@ describe('리뷰설정 탭 구조 검증 (_tab_review_settings.json)', () => {
 
     describe('write_deadline_days 설정 항목', () => {
         const card = tab.children[0];
-        // 설정 항목 영역: card.children[1] (space-y-4 Div)
+        // 설정 항목 영역: card.children[2] (row-stack Div, 평탄화 후 card-title + card-description 다음)
         // 첫 번째 항목 (write_deadline_days): children[0]
-        const settingsArea = card.children[1];
+        const settingsArea = card.children[2];
         const writeDeadlineSection = settingsArea.children[0];
 
         it('레이블 텍스트가 다국어 키를 사용해야 한다', () => {
@@ -161,12 +164,14 @@ describe('리뷰설정 탭 구조 검증 (_tab_review_settings.json)', () => {
             );
         });
 
-        it('Input이 type=number, min=1, max=365여야 한다', () => {
+        it('Input이 type=number 이고 허용 범위가 서버 한계값을 바인딩해야 한다', () => {
             const input = writeDeadlineSection.children.find((c: any) => c.name === 'Input');
             expect(input).toBeDefined();
             expect(input.props.type).toBe('number');
-            expect(String(input.props.min)).toBe('1');
-            expect(String(input.props.max)).toBe('365');
+            expect(String(input.props.min)).toContain('limits?.write_deadline_days_min');
+            expect(String(input.props.max)).toContain('limits?.write_deadline_days_max');
+            expect(String(input.props.min)).toContain('?? 1');
+            expect(String(input.props.max)).toContain('?? 365');
         });
 
         it('Input 기본값이 30을 참조해야 한다', () => {
@@ -217,16 +222,20 @@ describe('리뷰설정 탭 구조 검증 (_tab_review_settings.json)', () => {
 
     describe('max_images 설정 항목', () => {
         const card = tab.children[0];
-        const settingsArea = card.children[1];
+        const settingsArea = card.children[2];
         // 구분선(Div, index 1) 다음 max_images 항목(index 2)
         const maxImagesSection = settingsArea.children[2];
 
-        it('Input이 type=number, min=0, max=10여야 한다', () => {
+        // 경계값은 서버 검증(StoreEcommerceSettingsRequest)이 SSoT — 화면이 더 좁으면
+        // 사용자가 저장 가능한 값을 입력조차 못 하고, 더 넓으면 저장 단계에서만 실패한다.
+        it('Input이 type=number 이고 허용 범위가 서버 한계값을 바인딩해야 한다 (max_images)', () => {
             const input = maxImagesSection.children.find((c: any) => c.name === 'Input');
             expect(input).toBeDefined();
             expect(input.props.type).toBe('number');
-            expect(String(input.props.min)).toBe('0');
-            expect(String(input.props.max)).toBe('10');
+            expect(String(input.props.min)).toContain('limits?.max_images_min');
+            expect(String(input.props.max)).toContain('limits?.max_images_max');
+            expect(String(input.props.min)).toContain('?? 0');
+            expect(String(input.props.max)).toContain('?? 20');
         });
 
         it('Input 기본값이 5를 참조해야 한다', () => {
@@ -257,17 +266,21 @@ describe('리뷰설정 탭 구조 검증 (_tab_review_settings.json)', () => {
 
     describe('max_image_size_mb 설정 항목', () => {
         const card = tab.children[0];
-        const settingsArea = card.children[1];
+        const settingsArea = card.children[2];
         // 구분선(index 3) 다음 max_image_size_mb 항목(index 4)
         const maxSizeSection = settingsArea.children[4];
 
-        it('Input이 type=number, min=1, max=20, step=0.5여야 한다', () => {
+        // 서버 규칙이 integer 이므로 step 은 1 이어야 한다 — 0.5 는 화면에서만 허용되고
+        // 저장 단계에서 422 가 되는 값이다.
+        it('Input이 type=number, step=1 이고 허용 범위가 서버 한계값을 바인딩해야 한다', () => {
             const input = maxSizeSection.children.find((c: any) => c.name === 'Input');
             expect(input).toBeDefined();
             expect(input.props.type).toBe('number');
-            expect(String(input.props.min)).toBe('1');
-            expect(String(input.props.max)).toBe('20');
-            expect(String(input.props.step)).toBe('0.5');
+            expect(String(input.props.min)).toContain('limits?.max_image_size_mb_min');
+            expect(String(input.props.max)).toContain('limits?.max_image_size_mb_max');
+            expect(String(input.props.min)).toContain('?? 1');
+            expect(String(input.props.max)).toContain('?? 50');
+            expect(String(input.props.step)).toBe('1');
         });
 
         it('Input 기본값이 5를 참조해야 한다', () => {

@@ -112,7 +112,7 @@ class LanguagePackSeedInjector
             }
 
             foreach ($definitions as $defIdx => $def) {
-                $type = $def['type'] ?? null;
+                $type = $this->resolveDefinitionType($defIdx, $def);
                 if (! $type || ! isset($seed[$type])) {
                     continue;
                 }
@@ -166,7 +166,7 @@ class LanguagePackSeedInjector
                 continue;
             }
             foreach ($definitions as $defIdx => $def) {
-                $type = $def['type'] ?? null;
+                $type = $this->resolveDefinitionType($defIdx, $def);
                 if (! $type || ! isset($seed[$type])) {
                     continue;
                 }
@@ -429,6 +429,43 @@ class LanguagePackSeedInjector
     }
 
     /**
+     * `{type}.{id}.manifest.translations` 필터 — 모듈/플러그인/템플릿의 manifest name/description
+     * 다국어 필드에 활성 언어팩의 manifest seed(`seed/manifest.json`)를 주입합니다.
+     *
+     * seed 형식은 `{ "name": "ja 번역", "description": "ja 번역" }` 평문이며, 각 활성 비-fallback
+     * locale 팩의 번역을 `$manifest['name'][$locale]`, `$manifest['description'][$locale]` 에 추가합니다.
+     * ko/en 등 기존 키는 보존하며, ja 팩이 없으면 입력을 그대로 반환합니다.
+     *
+     * @param  array<string, mixed>  $manifest  `['name' => <multilingual array>, 'description' => <multilingual array>]`
+     * @param  string  $targetIdentifier  모듈/플러그인/템플릿 식별자
+     * @param  string  $scope  module|plugin|template
+     * @return array<string, mixed> locale 키가 보강된 manifest 배열
+     */
+    public function injectExtensionManifest(array $manifest, string $targetIdentifier, string $scope): array
+    {
+        $packs = $this->registry->getActivePacks($scope)
+            ->filter(fn (LanguagePack $pack) => $pack->target_identifier === $targetIdentifier);
+
+        foreach ($packs as $pack) {
+            $seed = $this->loadPackSeed($pack, 'manifest');
+            if (! $seed) {
+                continue;
+            }
+            foreach (['name', 'description'] as $field) {
+                if (! isset($seed[$field]) || ! is_string($seed[$field]) || $seed[$field] === '') {
+                    continue;
+                }
+                if (! isset($manifest[$field]) || ! is_array($manifest[$field])) {
+                    $manifest[$field] = [];
+                }
+                $manifest[$field][$pack->locale] = $seed[$field];
+            }
+        }
+
+        return $manifest;
+    }
+
+    /**
      * `{type}.{id}.permissions.translations` 필터 — 모듈/플러그인의 권한 트리에
      * 활성 언어팩의 permissions seed 를 주입합니다.
      *
@@ -461,7 +498,6 @@ class LanguagePackSeedInjector
      *
      * @param  array<string, mixed>  $config
      * @param  array<string, mixed>  $seed  identifier ⇒ {name, description} 맵
-     * @param  string  $locale
      * @return array<string, mixed>
      */
     private function mergePermissionTranslations(array $config, array $seed, string $locale, ?string $targetIdentifier = null): array
@@ -554,7 +590,6 @@ class LanguagePackSeedInjector
      *
      * @param  array<int, mixed>  $menus
      * @param  array<string, mixed>  $seed  slug ⇒ {name: ...} 맵
-     * @param  string  $locale
      * @return array<int, mixed>
      */
     private function mergeMenuTranslations(array $menus, array $seed, string $locale): array
@@ -686,5 +721,31 @@ class LanguagePackSeedInjector
         $config['categories'] = $categories;
 
         return $config;
+    }
+
+    /**
+     * 정의 배열 항목에서 알림 type 을 해석합니다.
+     *
+     * 코어 시더(`loadConfigSeed('core.notification_definitions', ...)`)는 config 원형
+     * (연관 배열 — 키가 곧 type, 항목에 type 필드 없음)을 그대로 필터에 넘기고,
+     * 확장 시더(ModuleManager/PluginManager)와 [기본값 복원] 경로는 각 항목에 type
+     * 필드를 포함한 리스트를 넘긴다. 양쪽 형태를 모두 수용한다 —
+     * 문자열 키가 있으면 그것이 type 이고, 아니면 항목의 type 필드를 본다.
+     * (형태 불일치 시 예외 없이 전 항목이 스킵되어 ja 가 조용히 주입되지 않는
+     * 회귀가 있었다 — 2026-08-24 #597 보완 실측. NotificationSeedInjectionTest 가 고정.)
+     *
+     * @param  int|string  $defIdx  정의 배열의 키
+     * @param  mixed  $def  정의 항목
+     * @return string|null 해석된 type (해석 불가 시 null)
+     */
+    private function resolveDefinitionType(int|string $defIdx, mixed $def): ?string
+    {
+        if (is_string($defIdx) && $defIdx !== '') {
+            return $defIdx;
+        }
+
+        $type = is_array($def) ? ($def['type'] ?? null) : null;
+
+        return is_string($type) && $type !== '' ? $type : null;
     }
 }

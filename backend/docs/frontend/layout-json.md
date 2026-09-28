@@ -77,7 +77,7 @@
 | `version` | string | ✅ | 스키마 버전 (예: "1.0.0") |
 | `layout_name` | string | ✅ | 레이아웃 식별자 (아래 네이밍 규칙 참조) |
 | `meta` | object | ❌ | 메타 정보 (title, description) |
-| `data_sources` | array | ✅ | API 데이터 소스 정의 |
+| `data_sources` | array | ✅ | API 데이터 소스 정의 (각 항목에 `label_key` `$t:` 키 — 편집기 데이터 연결 피커 친화 명칭) |
 | `init_actions` | array | ❌ | 초기화 액션 (레이아웃 로드 시 실행) |
 | `modals` | array | ❌ | 모달 컴포넌트 정의 |
 | `scripts` | array | ❌ | 외부 스크립트 동적 로드 (engine-v1.8.0+) |
@@ -86,6 +86,25 @@
 | `globalHeaders` | array | ❌ | 전역 HTTP 헤더 규칙 배열 (engine-v1.16.0+) |
 | `meta.seo` | object | ❌ | SEO 페이지 생성기 설정 (아래 참조) |
 | `components` | array | ✅ | 컴포넌트 배열 |
+
+### 한 객체에 같은 키를 두 번 쓰지 않는다
+
+JSON 은 중복 키를 문법 오류로 보지 않는다. 브라우저(`JSON.parse`)도 서버 등록(`json_decode`)도
+**뒤에 온 값이 앞의 값을 덮는다.** 그래서 앞에 쓴 선언은 예외도 경고도 없이 사라지는데,
+파일에는 그대로 남아 있으므로 코드를 읽는 사람에게는 반영된 것처럼 보인다.
+
+가장 자주 걸리는 자리는 `props` 다 — 노드가 `children` **뒤**에 `"props": {}` 를 이미 갖고 있는데
+작성자가 노드 앞머리에 `"props": { ... }` 를 새로 적는 경우다. 노드가 길면 앞머리와 꼬리가
+한 화면에 들어오지 않아 눈으로는 발견되지 않고, 그 속성만 화면에 영영 나타나지 않는다.
+
+| ❌ 금지 | ✅ 올바른 사용 |
+|--------|---------------|
+| 한 노드에 `props`(또는 `comment`·`actions` 등)를 두 번 선언 | 하나로 합친다 — 값을 추가할 때는 그 노드에 **이미 있는** 키를 찾아 거기에 넣는다 |
+| 노드 앞머리에 키를 추가하기 전에 꼬리를 확인하지 않음 | 노드 전체에서 그 키의 존재를 먼저 확인한다 |
+
+의도적으로 재선언해야 하는 예외는 그 객체의 `comment` 에
+`audit:allow layout-json-duplicate-object-key <사유>` 를 남긴다 (JSON 은 주석을 담을 수 없으므로
+표식 자리가 `comment` 값이다). 정적 검사가 차단한다.
 
 ### layout_name 네이밍 규칙
 
@@ -554,7 +573,7 @@ Laravel의 `FormRequest::validated()` 메서드는 `rules()`에 정의된 필드
 | `id` | string | ✅ | 컴포넌트 고유 ID |
 | `type` | string | ✅ | 컴포넌트 타입 (basic/composite/layout) |
 | `name` | string | ✅ | 컴포넌트 이름 (components.json에 등록된 이름) |
-| `comment` | string | ✅ | 시안 추적 코드 및 역할 설명 (예: "F-002: 상품명 검색 필드") |
+| `comment` | string | ✅ | 시안 추적 코드 및 역할 설명 (예: "F-002: 상품명 검색 필드"). 공개 서빙 응답에서는 제거됨 (아래 참조) |
 | `props` | object | ❌ | 컴포넌트에 전달할 props |
 | `text` | string | ❌ | 텍스트 콘텐츠 (최우선 렌더링) |
 | `children` | array | ❌ | 자식 컴포넌트 배열 (레이아웃/집합 컴포넌트에서 사용) |
@@ -574,6 +593,13 @@ Laravel의 `FormRequest::validated()` 메서드는 `rules()`에 정의된 필드
 > - `lifecycle`: [layout-json-components.md](layout-json-components.md#컴포넌트-생명주기-lifecycle)
 > - `actions`: [layout-json-features.md](layout-json-features.md#액션-시스템-actions)
 > - `isolatedState`: [아래 섹션](#격리된-상태-isolatedstate)
+
+### `comment` / `_comment` — 공개 서빙 응답에서 제거
+
+`comment` / `_comment` 는 편집기·개발자용 설명 주석이며 런타임 렌더러는 참조하지 않는다. 공개 레이아웃 서빙(`GET /api/layouts/{template}/{layout}.json`) 응답에서는 전송 크기 절감을 위해 이 두 키가 노드 트리 전체에서 재귀적으로 제거된다(`LayoutService::stripDeveloperComments`).
+
+- 편집 모드 서빙(`?with_source_meta=1`, 편집 권한 필요)에서는 편집기가 `comment` 를 편집 가능한 속성으로 노출하므로 **보존**된다. 공개/편집 응답은 별도 캐시 키로 분리되어 있어 조건부 제거가 안전하다.
+- 따라서 `comment` 는 편집기·저장본에서는 유지되고, 일반 사용자에게 서빙되는 응답에서만 사라진다. 레이아웃 로직이 `comment` 값에 의존해서는 안 된다.
 
 ---
 
@@ -907,6 +933,10 @@ const renderChildren = useMemo(() => {
 |------|------|------|------|
 | `props` | object | ❌ | 주입 컴포넌트에 전달할 데이터 (표현식 평가) |
 | `callbacks` | object | ❌ | 주입 컴포넌트에 전달할 액션 객체 (평가 없이 전달) |
+
+전달된 값은 주입 컴포넌트와 그 자손 전체에서 참조할 수 있습니다.
+
+검색 봇용 화면에서는 `extensionPointProps` 만 해석되고 `extensionPointCallbacks` 는 해석되지 않습니다. 색인되어야 할 내용은 `props` 로 전달하세요. 사용자 작성 콘텐츠를 넘길 때는 평문/HTML 판정 값(`isHtml`)을 함께 전달합니다 — 두 화면 모두 이 값에 따라 이스케이프하거나 위험 요소를 제거한 뒤 출력합니다. 봇 화면의 노드 문법 지원 범위는 [seo-system.md "SEO 렌더러 지원 노드 키"](../backend/seo-system.md), 정화 규칙은 같은 문서의 "봇 화면의 HTML 정화" 를 참조하세요.
 
 ---
 

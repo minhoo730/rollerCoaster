@@ -22,7 +22,7 @@ class UserResource extends BaseApiResource
      */
     public function toArray(Request $request): array
     {
-        return [
+        $data = [
             'uuid' => $this->getValue('uuid'),
             'name' => $this->getValue('name'),
             'nickname' => $this->getValue('nickname'),
@@ -166,6 +166,30 @@ class UserResource extends BaseApiResource
             ...$this->formatTimestamps(),
             ...$this->resourceMeta($request),
         ];
+
+        return $data;
+    }
+
+    /**
+     * 인증 사용자(/api/auth/user, currentUser 출처) 응답용 배열을 반환합니다.
+     *
+     * 기본 toArray() 에 더해 core.user.filter_resource_data 필터를 적용해
+     * 모듈이 자신의 데이터(결제 통화 등)를 병합할 수 있게 한다. 프론트(_user_base.json)는
+     * 로그인 유저면 이 값으로 _global.preferredCurrency 를 초기화해
+     * "로그인 시 계정 통화로 덮어씀"(D-LOGIN-CUR)을 구조적으로 충족한다.
+     *
+     * 주의: 이 메서드는 toArray() 외부에서 수동 호출되므로 $this->when() 대신
+     * 삼항 연산자를 사용해야 한다. (toProfileArray/withAdminInfo 와 동일 규약)
+     *
+     * @param  Request|null  $request  HTTP 요청
+     * @return array<string, mixed> 모듈 필드가 병합된 인증 사용자 데이터
+     */
+    public function toAuthArray(?Request $request = null): array
+    {
+        $data = $this->toArray($request ?? request());
+
+        // Filter 훅: 모듈이 자신의 데이터를 응답에 병합 (toProfileArray 와 동일)
+        return HookManager::applyFilters('core.user.filter_resource_data', $data, $this->resource);
     }
 
     /**
@@ -180,7 +204,10 @@ class UserResource extends BaseApiResource
             'can_create' => 'core.users.create',
             'can_update' => 'core.users.update',
             'can_delete' => 'core.users.delete',
-            'can_assign_roles' => 'core.permissions.update',
+            // 역할 부여는 "사용자 관리"(core.users.update)의 일부다 — "역할 정의 수정"
+            // (core.permissions.update: 역할에 권한을 가감)이 아니다. 부여 가능한 개별 역할의
+            // 범위는 서버 상한(PermissionEscalationGuard)이 역할별로 강제한다.
+            'can_assign_roles' => 'core.users.update',
         ];
     }
 
@@ -236,6 +263,14 @@ class UserResource extends BaseApiResource
             'blocked_at' => $this->getValue('blocked_at')
                 ? $this->formatDateTimeStringForUser($this->getValue('blocked_at'))
                 : null,
+            // 로그인 실패 누적 잠금 상태 — 관리자만 확인·해제할 수 있어야 하므로 관리자 응답에만 노출
+            'failed_login_attempts' => (int) ($this->getValue('failed_login_attempts') ?? 0),
+            'locked_permanently' => (bool) $this->getValue('locked_permanently'),
+            'locked_until' => $this->getValue('locked_until')
+                ? $this->formatDateTimeStringForUser($this->getValue('locked_until'))
+                : null,
+            'is_locked' => (bool) $this->getValue('locked_permanently')
+                || ($this->getValue('locked_until') !== null && $this->resource->locked_until?->isFuture()),
         ]);
 
         // Filter 훅: 모듈이 자신의 데이터를 응답에 병합

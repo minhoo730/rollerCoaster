@@ -58,6 +58,7 @@ return [
             'permissions_deleted' => ':count permissions deleted',
             'menus_deleted' => ':count menus deleted',
             'layouts_deleted' => ':count layouts deleted',
+            'custom_preserved' => 'Operator files (:directory) were archived to :archive.',
             'confirm_prompt' => 'Are you sure you want to uninstall module ":module"?',
             'confirm_details' => [
                 'roles' => '- :count roles will be deleted.',
@@ -104,6 +105,9 @@ return [
             'aborted' => 'Update cancelled.',
             'backup_restored' => 'Previous version has been restored from backup.',
             'force_mode' => 'Force update mode: Skipping version comparison and reinstalling.',
+            'layout_strategy' => 'Layout strategy: :strategy',
+            'modified_extensions_warning' => ':count layout extension(s) edited by an administrator will be overwritten.',
+            'modified_extension_item' => '  - :target (source: :source)',
         ],
     ],
 

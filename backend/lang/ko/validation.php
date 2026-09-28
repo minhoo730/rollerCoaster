@@ -165,9 +165,53 @@ return [
     */
 
     // 레이아웃 구조 검증 메시지
+    'custom_translation' => [
+        'layout_name' => [
+            'required' => '레이아웃 이름은 필수입니다.',
+            'string' => '레이아웃 이름은 문자열이어야 합니다.',
+            'max' => '레이아웃 이름은 :max자를 초과할 수 없습니다.',
+        ],
+        'locale' => [
+            'required' => '로케일은 필수입니다.',
+            'string' => '로케일은 문자열이어야 합니다.',
+        ],
+        'value' => [
+            'required' => '번역 값은 필수입니다.',
+            'string' => '번역 값은 문자열이어야 합니다.',
+        ],
+        'values' => [
+            'required' => '번역 값은 필수입니다.',
+            'array' => '번역 값은 로케일별 객체여야 합니다.',
+        ],
+        'status' => [
+            'in' => '상태는 active 또는 orphaned 여야 합니다.',
+        ],
+        'expected_lock_version' => [
+            'required' => '저장 요청에 expected_lock_version 이 누락되었습니다.',
+            'integer' => 'expected_lock_version 은 정수여야 합니다.',
+            'min' => 'expected_lock_version 은 0 이상이어야 합니다.',
+        ],
+        'ids' => [
+            'required' => '삭제할 다국어 키를 하나 이상 선택해야 합니다.',
+            'array' => '삭제 대상은 ID 배열이어야 합니다.',
+            'min' => '삭제할 다국어 키를 하나 이상 선택해야 합니다.',
+            'integer' => '다국어 키 ID 는 정수여야 합니다.',
+            'exists' => '존재하지 않는 다국어 키가 포함되어 있습니다.',
+        ],
+    ],
+
     'layout' => [
+        // 낙관적 잠금
+        'expected_lock_version' => [
+            'required' => '저장 요청에 expected_lock_version 이 누락되었습니다.',
+            'integer' => 'expected_lock_version 은 정수여야 합니다.',
+            'min' => 'expected_lock_version 은 0 이상이어야 합니다.',
+        ],
+
         'invalid_json' => '유효하지 않은 JSON 형식입니다.',
         'must_be_array' => '레이아웃 데이터는 배열이어야 합니다.',
+        'dangerous_expression' => '허용되지 않는 표현식이 포함되어 있습니다: :snippet',
+        'external_resource_url' => '외부 리소스 URL은 허용되지 않습니다(동일 출처 경로만 허용): :url',
         'required_field_missing' => "필수 필드 ':field'가 누락되었습니다.",
         'version_must_be_string' => 'version 필드는 문자열이어야 합니다.',
         'layout_name_must_be_string' => 'layout_name 필드는 문자열이어야 합니다.',
@@ -238,11 +282,60 @@ return [
             'description' => [
                 'string' => 'meta.description은 문자열이어야 합니다.',
             ],
+            'keywords' => [
+                'string' => 'meta.keywords는 문자열이어야 합니다.',
+            ],
             'auth_required' => [
                 'boolean' => 'meta.auth_required는 불린이어야 합니다.',
             ],
             'is_base' => [
                 'boolean' => 'meta.is_base는 불린이어야 합니다.',
+            ],
+            'guest_only' => [
+                'boolean' => 'meta.guest_only는 불린이어야 합니다.',
+            ],
+            'is_error_layout' => [
+                'boolean' => 'meta.is_error_layout은 불린이어야 합니다.',
+            ],
+            'error_code' => [
+                'integer' => 'meta.error_code는 정수여야 합니다.',
+            ],
+            'seo' => [
+                'array' => 'meta.seo는 배열이어야 합니다.',
+                'enabled' => [
+                    'boolean' => 'meta.seo.enabled는 불린이어야 합니다.',
+                ],
+                'data_sources' => [
+                    'array' => 'meta.seo.data_sources는 배열이어야 합니다.',
+                    'string' => 'meta.seo.data_sources의 각 항목은 문자열이어야 합니다.',
+                ],
+                'priority' => [
+                    'numeric' => 'meta.seo.priority는 숫자여야 합니다.',
+                    'min' => 'meta.seo.priority는 0 이상이어야 합니다.',
+                    'max' => 'meta.seo.priority는 1 이하여야 합니다.',
+                ],
+                'changefreq' => [
+                    'string' => 'meta.seo.changefreq는 문자열이어야 합니다.',
+                    'in' => 'meta.seo.changefreq는 always, hourly, daily, weekly, monthly, yearly, never 중 하나여야 합니다.',
+                ],
+                'og' => [
+                    'array' => 'meta.seo.og는 배열이어야 합니다.',
+                ],
+                'structured_data' => [
+                    'array' => 'meta.seo.structured_data는 배열이어야 합니다.',
+                ],
+                'page_type' => [
+                    'string' => 'meta.seo.page_type은 문자열이어야 합니다.',
+                ],
+                'toggle_setting' => [
+                    'string' => 'meta.seo.toggle_setting은 문자열이어야 합니다.',
+                ],
+                'vars' => [
+                    'array' => 'meta.seo.vars는 배열이어야 합니다.',
+                ],
+                'extensions' => [
+                    'array' => 'meta.seo.extensions는 배열이어야 합니다.',
+                ],
             ],
         ],
         'modals' => [
@@ -259,6 +352,27 @@ return [
         ],
         'init_state' => [
             'array' => 'init_state 필드는 배열이어야 합니다.',
+        ],
+        'initLocal' => [
+            'array' => 'initLocal 필드는 배열이어야 합니다.',
+        ],
+        'initGlobal' => [
+            'array' => 'initGlobal 필드는 배열이어야 합니다.',
+        ],
+        'global_state' => [
+            'array' => 'global_state 필드는 배열이어야 합니다.',
+        ],
+        'errorHandling' => [
+            'array' => 'errorHandling 필드는 배열이어야 합니다.',
+        ],
+        'actions' => [
+            'array' => 'actions 필드는 배열이어야 합니다.',
+        ],
+        'pageConfig' => [
+            'array' => 'pageConfig 필드는 배열이어야 합니다.',
+        ],
+        'schema' => [
+            'array' => 'schema 필드는 배열이어야 합니다.',
         ],
         'routes' => [
             'array' => 'routes 필드는 배열이어야 합니다.',
@@ -322,6 +436,56 @@ return [
         ],
     ],
 
+    // 레이아웃 확장 검증 메시지
+    'layout_extension' => [
+        // 낙관적 잠금
+        'expected_lock_version' => [
+            'required' => '저장 요청에 expected_lock_version 이 누락되었습니다.',
+            'integer' => 'expected_lock_version 은 정수여야 합니다.',
+            'min' => 'expected_lock_version 은 0 이상이어야 합니다.',
+        ],
+
+        'invalid_json' => '유효하지 않은 JSON 형식입니다.',
+        'must_be_array' => '레이아웃 확장 데이터는 배열이어야 합니다.',
+        'target_required' => "확장 정의에는 'extension_point' 또는 'target_layout' 중 하나가 필요합니다.",
+        'target_exclusive' => "'extension_point'와 'target_layout'은 동시에 지정할 수 없습니다.",
+        'extension_point_invalid' => 'extension_point 필드는 비어있지 않은 문자열이어야 합니다.',
+        'target_layout_invalid' => 'target_layout 필드는 비어있지 않은 문자열이어야 합니다.',
+        'components_must_be_array' => 'components 필드는 배열이어야 합니다.',
+        'injections_required' => 'overlay 확장은 injections 필드가 필요합니다.',
+        'injections_must_be_array' => 'injections 필드는 배열이어야 합니다.',
+        'injection_must_be_array' => 'injections[:index]는 배열이어야 합니다.',
+        'injection_target_id_required' => 'injections[:index]에 target_id 필드가 필요합니다.',
+        'injection_position_invalid' => 'injections[:index].position 값이 유효하지 않습니다.',
+        'injection_components_must_be_array' => 'injections[:index].components는 배열이어야 합니다.',
+        'injection_props_must_be_array' => 'injections[:index].props는 배열이어야 합니다.',
+        'section_must_be_array' => ':section 필드는 배열이어야 합니다.',
+        'max_depth_exceeded' => '컴포넌트 중첩 깊이가 최대 허용 깊이(:max)를 초과했습니다.',
+        'component_must_be_array' => 'components[:index]는 배열이어야 합니다.',
+        'component_required_field_missing' => "components[:index]에 필수 필드 ':field'가 누락되었습니다.",
+        'component_name_must_be_string' => 'components[:index].name은 문자열이어야 합니다.',
+        'component_type_invalid' => 'components[:index].type은 basic, composite, layout 중 하나여야 합니다.',
+        'props_must_be_object' => 'components[:index].props는 객체(배열)여야 합니다.',
+        'children_must_be_array' => 'components[:index].children은 배열이어야 합니다.',
+        'content' => [
+            'required' => '확장 콘텐츠는 필수입니다.',
+            'array' => '확장 콘텐츠는 배열이어야 합니다.',
+        ],
+        'priority' => [
+            'integer' => 'priority는 정수여야 합니다.',
+            'min' => 'priority는 0 이상이어야 합니다.',
+            'max' => 'priority는 9999 이하여야 합니다.',
+        ],
+        'data_sources' => [
+            'array' => 'data_sources는 배열이어야 합니다.',
+        ],
+        'preview_layout' => [
+            'string' => '미리보기 레이아웃명은 문자열이어야 합니다.',
+            'max' => '미리보기 레이아웃명은 255자를 초과할 수 없습니다.',
+            'required' => '확장점 미리보기에는 대표 레이아웃 선택이 필요합니다.',
+        ],
+    ],
+
     // API 엔드포인트 검증 메시지
     'endpoint' => [
         'must_be_string' => 'API 엔드포인트는 문자열이어야 합니다.',
@@ -339,6 +503,23 @@ return [
         'data_uri_not_allowed' => 'Data URI 스킴은 허용되지 않습니다.',
         'javascript_uri_not_allowed' => 'JavaScript URI 스킴은 허용되지 않습니다.',
         'dangerous_scheme_detected' => '위험한 URI 스킴이 감지되었습니다: :scheme',
+    ],
+
+    // 서버가 대신 호출하는 URL(외부 API·스케줄 등) 검증 메시지
+    'outbound_url' => [
+        'invalid' => '올바른 형식의 URL이 아닙니다. http 또는 https 로 시작하는 주소를 입력해 주세요.',
+        'internal_not_allowed' => '내부 네트워크 주소(사설 IP·localhost 등)는 사용할 수 없습니다. 외부에서 접속 가능한 주소를 입력해 주세요.',
+    ],
+
+    // 서버에서 실행되는 스케줄 command(쉘·Artisan) 검증 메시지
+    'schedule_command' => [
+        'shell_not_allowed' => '허용되지 않은 쉘 명령입니다. 서버에 등록된 실행 파일만 사용할 수 있으며, 파이프(|)·세미콜론(;) 등 특수문자는 쓸 수 없습니다.',
+        'shell_interpreter_denied' => '인터프리터로 인라인 명령/코드를 실행하거나 안전하지 않은 경로를 지정할 수 없습니다. 인터프리터 뒤에는 절대경로 스크립트 파일만 지정하세요.',
+        'artisan_denied' => '이 Artisan 명령은 보안상 스케줄로 실행할 수 없습니다.',
+        'artisan_not_allowlisted' => '예약 실행이 허용된 Artisan 명령이 아닙니다. 캐시 정리·큐 처리 등 유지보수 명령만 등록할 수 있습니다.',
+        'artisan_malformed' => 'Artisan 명령 형식이 올바르지 않습니다. 따옴표·역슬래시·단축 옵션(-v)은 쓸 수 없고 "명령명 --옵션[=값]" 형태만 등록할 수 있습니다.',
+        'artisan_option_denied' => '이 Artisan 명령에 허용되지 않은 옵션이 포함되어 있습니다.',
+        'artisan_argument_denied' => '이 Artisan 명령에는 추가 인자를 붙일 수 없습니다.',
     ],
 
     // 컴포넌트 존재 여부 검증 메시지
@@ -391,6 +572,12 @@ return [
         'data_source_id_must_be_string' => 'data_sources[:index].id는 문자열이어야 합니다.',
     ],
 
+    // 알림 채널 검증 메시지
+    'notification_channel' => [
+        'invalid' => '알림 채널 식별자가 올바르지 않습니다.',
+        'unavailable' => "사용할 수 없는 알림 채널입니다: ':value'",
+    ],
+
     // 다국어 필드 검증 메시지
     'translatable' => [
         'must_be_array' => '다국어 필드는 배열이어야 합니다.',
@@ -403,24 +590,14 @@ return [
     ],
 
     // 템플릿 검증 메시지
-    'template' => [
-        'type' => [
-            'in' => 'type 파라미터는 user 또는 admin만 가능합니다.',
-        ],
-        'description' => [
-            'string' => '템플릿 설명은 문자열이어야 합니다.',
-            'max' => '템플릿 설명은 :max자를 초과할 수 없습니다.',
-        ],
-        'metadata' => [
-            'array' => 'metadata는 배열이어야 합니다.',
-        ],
-        'status' => [
-            'in' => 'status는 active 또는 inactive여야 합니다.',
-        ],
-    ],
 
     // 메뉴 검증 메시지
     'menu' => [
+        'roles' => [
+            'array' => '역할 목록은 배열이어야 합니다.',
+            'integer' => '역할 ID는 숫자여야 합니다.',
+            'exists' => '선택한 역할을 찾을 수 없습니다.',
+        ],
         'name' => [
             'required' => '메뉴 이름을 입력해주세요.',
         ],
@@ -560,8 +737,20 @@ return [
         'file_type_not_allowed' => '허용되지 않은 파일 타입입니다. 확장자: :extension (허용: :allowed)',
     ],
 
+    // 확장 식별자 검증 메시지 (ValidExtensionIdentifier Rule)
+    'extension_identifier' => [
+        'max' => '확장 식별자는 최대 255자까지 입력 가능합니다.',
+        'must_be_string' => '확장 식별자는 문자열이어야 합니다.',
+        'min_parts' => '확장 식별자는 vendor-name 형식이어야 합니다 (예: sirsoft-board).',
+        'empty_part' => '확장 식별자에 빈 부분이 있습니다. 하이픈이 연속되거나 양끝에 올 수 없습니다.',
+        'invalid_characters' => '확장 식별자는 영문 소문자, 숫자, 언더스코어(_)만 사용할 수 있습니다.',
+        'empty_word' => '확장 식별자에서 언더스코어가 연속되거나 양끝에 올 수 없습니다.',
+        'word_starts_with_digit' => '확장 식별자의 각 단어는 숫자로 시작할 수 없습니다.',
+    ],
+
     // 모듈 경로 검증 메시지
     'module_path' => [
+        'file_type_not_allowed' => '허용되지 않은 파일 타입입니다. 확장자: :extension (허용: :allowed)',
         'must_be_string' => '경로는 문자열이어야 합니다.',
         'traversal_detected' => '경로 트래버설이 감지되었습니다: :pattern',
         'absolute_path_not_allowed' => '절대 경로는 허용되지 않습니다.',
@@ -571,6 +760,7 @@ return [
 
     // 플러그인 경로 검증 메시지
     'plugin_path' => [
+        'file_type_not_allowed' => '허용되지 않은 파일 타입입니다. 확장자: :extension (허용: :allowed)',
         'must_be_string' => '경로는 문자열이어야 합니다.',
         'traversal_detected' => '경로 트래버설이 감지되었습니다: :pattern',
         'absolute_path_not_allowed' => '절대 경로는 허용되지 않습니다.',
@@ -580,6 +770,11 @@ return [
 
     // 인증 관련 검증 메시지
     'auth' => [
+        'two_factor' => [
+            'challenge_required' => '인증 요청 정보가 없습니다. 처음부터 다시 로그인해주세요.',
+            'challenge_invalid' => '인증 요청 정보가 올바르지 않습니다.',
+            'code_required' => '인증번호를 입력해주세요.',
+        ],
         'email' => [
             'required' => '이메일은 필수입니다.',
             'email' => '올바른 이메일 형식이 아닙니다.',
@@ -598,6 +793,14 @@ return [
         ],
         'nickname' => [
             'max' => '닉네임은 :max자를 초과할 수 없습니다.',
+        ],
+        'mobile' => [
+            'max' => '휴대폰번호는 :max자를 초과할 수 없습니다.',
+            'regex' => '휴대폰번호는 숫자와 -, +, (), 공백만 입력할 수 있습니다.',
+        ],
+        'phone' => [
+            'max' => '전화번호는 :max자를 초과할 수 없습니다.',
+            'regex' => '전화번호는 숫자와 -, +, (), 공백만 입력할 수 있습니다.',
         ],
         'agree_terms' => [
             'accepted' => '이용약관에 동의해주세요.',
@@ -626,9 +829,13 @@ return [
     // 설정값 검증 메시지
     'setting' => [
         'value' => [
-            'required' => '설정 값은 필수입니다.',
-            'string' => '설정 값은 문자열이어야 합니다.',
+            'present' => '설정 값 항목(value)이 요청에 포함되어야 합니다.',
+            'boolean' => '이 설정은 사용/사용 안 함 값만 저장할 수 있습니다.',
+            'integer' => '이 설정은 정수만 저장할 수 있습니다.',
+            'numeric' => '이 설정은 숫자만 저장할 수 있습니다.',
+            'type' => '저장할 수 없는 형식의 설정 값입니다.',
             'max' => '설정 값은 :max자를 초과할 수 없습니다.',
+            'array_max' => '설정 값의 크기가 :max자를 초과할 수 없습니다.',
         ],
     ],
 
@@ -693,6 +900,10 @@ return [
         'image_quality_integer' => '이미지 품질은 정수여야 합니다.',
         'image_quality_min' => '이미지 품질은 1 이상이어야 합니다.',
         'image_quality_max' => '이미지 품질은 100을 초과할 수 없습니다.',
+        'orphan_cleanup_enabled_boolean' => '고아 첨부 자동 정리는 사용/사용 안 함 중 하나여야 합니다.',
+        'orphan_retention_days_integer' => '고아 첨부 보존기간은 정수여야 합니다.',
+        'orphan_retention_days_min' => '고아 첨부 보존기간은 1일 이상이어야 합니다.',
+        'orphan_retention_days_max' => '고아 첨부 보존기간은 3650일을 초과할 수 없습니다.',
 
         // SEO 설정
         'meta_title_suffix_max' => '타이틀 접미사는 100자를 초과할 수 없습니다.',
@@ -729,12 +940,21 @@ return [
         'sitemap_cache_ttl_integer' => 'Sitemap 캐시 TTL은 정수여야 합니다.',
         'sitemap_cache_ttl_min' => 'Sitemap 캐시 TTL은 최소 3600초(1시간) 이상이어야 합니다.',
         'sitemap_cache_ttl_max' => 'Sitemap 캐시 TTL은 최대 604800초(7일)를 초과할 수 없습니다.',
+        'sitemap_urls_per_file_integer' => 'Sitemap 파일당 URL 수는 정수여야 합니다.',
+        'sitemap_urls_per_file_min' => 'Sitemap 파일당 URL 수는 최소 1000개 이상이어야 합니다.',
+        'sitemap_urls_per_file_max' => 'Sitemap 파일당 URL 수는 최대 50000개를 초과할 수 없습니다.',
+        'sitemap_gzip_boolean' => 'Sitemap 압축 설정은 true 또는 false 값이어야 합니다.',
+        'sitemap_serve_stale_on_miss_boolean' => '이전 Sitemap 제공 설정은 true 또는 false 값이어야 합니다.',
+        'sitemap_max_urls_per_contributor_integer' => '수집기당 최대 URL 수는 정수여야 합니다.',
+        'sitemap_max_urls_per_contributor_min' => '수집기당 최대 URL 수는 0 이상이어야 합니다.',
+        'sitemap_hreflang_enabled_boolean' => 'Sitemap 다국어 대체 링크(hreflang) 설정은 true 또는 false 값이어야 합니다.',
         'sitemap_schedule_invalid' => '유효한 Sitemap 생성 주기를 선택해주세요.',
         'sitemap_schedule_time_invalid' => 'Sitemap 생성 시각은 HH:mm 형식이어야 합니다.',
 
         // 보안 설정
         'force_https_required' => 'HTTPS 강제 적용 설정을 선택해주세요.',
         'force_https_boolean' => 'HTTPS 강제 적용은 true 또는 false 값이어야 합니다.',
+        'allow_internal_outbound_urls_boolean' => '내부 네트워크 주소 호출 허용은 true 또는 false 값이어야 합니다.',
         'login_attempt_enabled_required' => '로그인 시도 제한 설정을 선택해주세요.',
         'login_attempt_enabled_boolean' => '로그인 시도 제한은 true 또는 false 값이어야 합니다.',
         'auth_token_lifetime_integer' => '인증 토큰 유지시간은 정수여야 합니다.',
@@ -763,18 +983,39 @@ return [
         'stats_cache_ttl_integer' => '통계 캐시 만료 시간은 정수여야 합니다.',
         'stats_cache_ttl_min' => '통계 캐시 만료 시간은 최소 0초여야 합니다.',
         'stats_cache_ttl_max' => '통계 캐시 만료 시간은 최대 14400초(4시간)를 초과할 수 없습니다.',
-        'seo_cache_enabled_required' => 'SEO 캐시 설정을 선택해주세요.',
-        'seo_cache_enabled_boolean' => 'SEO 캐시는 true 또는 false 값이어야 합니다.',
-        'seo_cache_ttl_required' => 'SEO 캐시 만료 시간을 입력해주세요.',
-        'seo_cache_ttl_integer' => 'SEO 캐시 만료 시간은 정수여야 합니다.',
-        'seo_cache_ttl_min' => 'SEO 캐시 만료 시간은 최소 0초여야 합니다.',
-        'seo_cache_ttl_max' => 'SEO 캐시 만료 시간은 최대 14400초(4시간)를 초과할 수 없습니다.',
+        // 고급 탭 전용 — SEO 탭의 오버라이드 칸(seo_cache_*)과 허용 범위가 다르므로 키를 분리한다.
+        'advanced_seo_cache_enabled_required' => 'SEO 캐시 설정을 선택해주세요.',
+        'advanced_seo_cache_enabled_boolean' => 'SEO 캐시는 true 또는 false 값이어야 합니다.',
+        'advanced_seo_cache_ttl_required' => 'SEO 캐시 만료 시간을 입력해주세요.',
+        'advanced_seo_cache_ttl_integer' => 'SEO 캐시 만료 시간은 정수여야 합니다.',
+        'advanced_seo_cache_ttl_min' => 'SEO 캐시 만료 시간은 최소 0초여야 합니다.',
+        'advanced_seo_cache_ttl_max' => 'SEO 캐시 만료 시간은 최대 14400초(4시간)를 초과할 수 없습니다.',
+        'seo_sitemap_cache_ttl_integer' => 'Sitemap 캐시 만료 시간은 정수여야 합니다.',
+        'seo_sitemap_cache_ttl_min' => 'Sitemap 캐시 만료 시간은 최소 3600초(1시간) 이상이어야 합니다.',
+        'seo_sitemap_cache_ttl_max' => 'Sitemap 캐시 만료 시간은 최대 604800초(7일)를 초과할 수 없습니다.',
 
         // 디버그 설정
         'debug_mode_required' => '디버그 모드 설정을 선택해주세요.',
         'debug_mode_boolean' => '디버그 모드는 true 또는 false 값이어야 합니다.',
         'sql_query_log_required' => 'SQL 쿼리 로그 설정을 선택해주세요.',
         'sql_query_log_boolean' => 'SQL 쿼리 로그는 true 또는 false 값이어야 합니다.',
+
+        // 아웃바운드 HTTP 프록시
+        'outbound_proxy_required' => '아웃바운드 프록시 주소를 입력해주세요.',
+        'outbound_proxy_string' => '아웃바운드 프록시 주소는 문자열이어야 합니다.',
+        'outbound_proxy_max' => '아웃바운드 프록시 주소는 :max자를 초과할 수 없습니다.',
+        'outbound_proxy_invalid' => '아웃바운드 프록시 주소 형식이 올바르지 않습니다. 사용 가능한 형식: :schemes (예: socks5h://127.0.0.1:1080)',
+        'outbound_proxy_bypass_array' => '프록시 예외 목록은 배열이어야 합니다.',
+        'outbound_proxy_bypass_item_string' => '프록시 예외 항목은 문자열이어야 합니다.',
+        'outbound_proxy_bypass_item_max' => '프록시 예외 항목은 :max자를 초과할 수 없습니다.',
+
+        // 목록 한계값
+        'pagination_result_cap_integer' => '총 건수 집계 상한은 숫자여야 합니다.',
+        'pagination_result_cap_min' => '총 건수 집계 상한은 :min 이상이어야 합니다. (0 = 무제한)',
+        'pagination_result_cap_max' => '총 건수 집계 상한은 :max 를 초과할 수 없습니다.',
+        'pagination_max_page_integer' => '페이지 번호 상한은 숫자여야 합니다.',
+        'pagination_max_page_min' => '페이지 번호 상한은 :min 이상이어야 합니다. (0 = 무제한)',
+        'pagination_max_page_max' => '페이지 번호 상한은 :max 를 초과할 수 없습니다.',
 
         // 코어 업데이트 설정
         'core_update_github_url_invalid' => 'GitHub 저장소 URL 형식이 올바르지 않습니다.',
@@ -785,11 +1026,16 @@ return [
         'storage_driver_required' => '스토리지 드라이버를 선택해주세요.',
         'storage_driver_invalid' => '올바른 스토리지 드라이버를 선택해주세요.',
         's3_bucket_max' => 'S3 버킷 이름은 255자를 초과할 수 없습니다.',
-        's3_region_invalid' => '올바른 S3 리전을 선택해주세요.',
+        's3_region_invalid' => 'S3 리전은 소문자 영숫자와 하이픈만 사용할 수 있습니다. (예: ap-northeast-2, Cloudflare R2 는 auto)',
+        's3_region_max' => 'S3 리전은 64자를 초과할 수 없습니다.',
         's3_access_key_max' => 'S3 Access Key는 255자를 초과할 수 없습니다.',
         's3_secret_key_max' => 'S3 Secret Key는 255자를 초과할 수 없습니다.',
         's3_url_invalid' => '올바른 S3 URL 형식이 아닙니다.',
         's3_url_max' => 'S3 URL은 500자를 초과할 수 없습니다.',
+        's3_endpoint_invalid' => '올바른 S3 엔드포인트 URL 형식이 아닙니다.',
+        's3_endpoint_max' => 'S3 엔드포인트 URL은 500자를 초과할 수 없습니다.',
+        's3_use_path_style_boolean' => 'Path-style 주소 사용 설정은 true 또는 false 값이어야 합니다.',
+        'driver_unusable' => "':driver' 드라이버를 이 서버에서 사용할 수 없습니다. :reason",
         'cache_driver_required' => '캐시 드라이버를 선택해주세요.',
         'cache_driver_invalid' => '올바른 캐시 드라이버를 선택해주세요.',
         'redis_host_max' => 'Redis 호스트는 255자를 초과할 수 없습니다.',
@@ -831,6 +1077,33 @@ return [
         'websocket_server_scheme_invalid' => '올바른 웹소켓 서버 프로토콜을 선택해주세요.',
         'search_engine_driver_invalid' => '올바른 검색엔진 드라이버를 선택해주세요.',
 
+        // 로그 드라이버 설정
+        'log_driver_required' => '로그 드라이버를 선택해주세요.',
+        'log_driver_invalid' => '올바른 로그 드라이버를 선택해주세요.',
+        'log_level_required' => '로그 레벨을 선택해주세요.',
+        'log_level_invalid' => '올바른 로그 레벨을 선택해주세요.',
+        'log_days_integer' => '로그 보관 일수는 정수여야 합니다.',
+        'log_days_min' => '로그 보관 일수는 1 이상이어야 합니다.',
+        'log_days_max' => '로그 보관 일수는 365를 초과할 수 없습니다.',
+
+        // 공개 자산 디스크 설정
+        'public_asset_disk_invalid' => '올바른 공개 자산 디스크를 선택해주세요.',
+
+        // 드라이버 조건부 필수 메시지 (선택 드라이버에 따라 필수)
+        's3_bucket_required' => 'S3 버킷 이름은 필수입니다.',
+        's3_access_key_required' => 'S3 Access Key는 필수입니다.',
+        's3_secret_key_required' => 'S3 Secret Key는 필수입니다.',
+        's3_url_url' => 'S3 URL은 유효한 URL이어야 합니다.',
+        'redis_host_required' => 'Redis 호스트는 필수입니다.',
+        'redis_port_required' => 'Redis 포트는 필수입니다.',
+        'redis_database_required' => 'Redis 데이터베이스 번호는 필수입니다.',
+        'memcached_host_required' => 'Memcached 호스트는 필수입니다.',
+        'memcached_port_required' => 'Memcached 포트는 필수입니다.',
+        'session_lifetime_required' => '세션 유효시간은 필수입니다.',
+        'websocket_host_required' => '웹소켓 호스트는 필수입니다.',
+        'websocket_port_required' => '웹소켓 포트는 필수입니다.',
+        'websocket_scheme_required' => '웹소켓 프로토콜을 선택해주세요.',
+
         // 본인인증(IDV) 설정
         'identity_default_provider_string' => '기본 프로바이더는 문자열이어야 합니다.',
         'identity_default_provider_max' => '기본 프로바이더 식별자는 100자를 초과할 수 없습니다.',
@@ -867,6 +1140,7 @@ return [
         'priority_integer' => '우선순위는 정수여야 합니다.',
         'priority_min' => '우선순위는 0 이상이어야 합니다.',
         'priority_max' => '우선순위는 65535를 초과할 수 없습니다.',
+        'priority_duplicate' => '같은 적용 위치(:target)에 우선순위 :priority 인 활성 정책이 이미 있습니다. 어느 정책을 먼저 적용할지 정해지지 않으므로, 우선순위를 다르게 지정하거나 기존 정책을 비활성화해주세요.',
         'conditions_array' => '조건(conditions)은 배열이어야 합니다.',
         'applies_to_required' => '적용 대상을 선택해주세요.',
         'applies_to_invalid' => '적용 대상은 self, admin, both 중 하나여야 합니다.',
@@ -881,9 +1155,19 @@ return [
         'definition_already_exists' => '동일 (provider, scope_type, scope_value) 정의가 이미 존재합니다.',
     ],
 
+    // 레이아웃 버전 목록 조회
+    'layout_version' => [
+        'limit' => [
+            'integer' => '조회 건수는 숫자여야 합니다.',
+            'min' => '조회 건수는 1 이상이어야 합니다.',
+            'max' => '조회 건수는 최대 :max건입니다.',
+        ],
+    ],
+
     // 검증 속성명 (validation.attributes)
     'attributes' => [
-        'ids' => '사용자 ID 목록',
+        'ids' => 'ID 목록',
+        'user_ids' => '사용자 ID 목록',
         'user_id' => '사용자 ID',
         'status' => '상태',
         // 일반 설정 필드
@@ -892,7 +1176,8 @@ return [
         'site_description' => '사이트 설명',
         'admin_email' => '관리자 이메일',
         'timezone' => '시간대',
-        'language' => '기본 언어',
+        'language' => '언어',
+        'default_language' => '기본 언어',
         // 본인인증(IDV) 필드
         'identity_default_provider' => '기본 프로바이더',
         'identity_purpose_providers' => '목적별 프로바이더',
@@ -910,10 +1195,14 @@ return [
         'identity_policy_fail_mode' => '실패 모드',
         // 메일 설정 필드
         'mailer' => '메일러',
-        'host' => 'SMTP 호스트',
-        'port' => 'SMTP 포트',
-        'username' => 'SMTP 사용자명',
-        'password' => 'SMTP 비밀번호',
+        'host' => '호스트',
+        'port' => '포트',
+        'username' => '사용자명',
+        'password' => '비밀번호',
+        'smtp_host' => 'SMTP 호스트',
+        'smtp_port' => 'SMTP 포트',
+        'smtp_username' => 'SMTP 사용자명',
+        'smtp_password' => 'SMTP 비밀번호',
         'encryption' => '암호화',
         'from_address' => '발신자 이메일',
         'from_name' => '발신자 이름',
@@ -923,6 +1212,8 @@ return [
         'image_max_width' => '이미지 최대 너비',
         'image_max_height' => '이미지 최대 높이',
         'image_quality' => '이미지 품질',
+        'orphan_cleanup_enabled' => '고아 첨부 자동 정리',
+        'orphan_retention_days' => '고아 첨부 보존기간',
         // SEO 설정 필드
         'meta_title_suffix' => '메타 타이틀 접미사',
         'meta_description' => '메타 설명',
@@ -933,5 +1224,112 @@ return [
         // Changelog 필드
         'from_version' => '시작 버전',
         'to_version' => '종료 버전',
+        // 드라이버 설정 필드
+        'storage_driver' => '스토리지 드라이버',
+        's3_bucket' => 'S3 버킷',
+        's3_region' => 'S3 리전',
+        's3_access_key' => 'S3 Access Key',
+        's3_secret_key' => 'S3 Secret Key',
+        's3_url' => 'S3 URL',
+        's3_endpoint' => 'S3 엔드포인트 URL',
+        's3_use_path_style' => 'Path-style 주소 사용',
+        'cache_driver' => '캐시 드라이버',
+        'redis_host' => 'Redis 호스트',
+        'redis_port' => 'Redis 포트',
+        'redis_password' => 'Redis 비밀번호',
+        'redis_database' => 'Redis 데이터베이스',
+        'memcached_host' => 'Memcached 호스트',
+        'memcached_port' => 'Memcached 포트',
+        'session_driver' => '세션 드라이버',
+        'session_lifetime' => '세션 유효시간',
+        'queue_driver' => '큐 드라이버',
+        'websocket_enabled' => '웹소켓 사용',
+        'websocket_app_key' => '웹소켓 앱 키',
+        'websocket_host' => '웹소켓 호스트',
+        'websocket_port' => '웹소켓 포트',
+        'websocket_scheme' => '웹소켓 프로토콜',
+        'layout' => '레이아웃',
+        'module' => '모듈',
+        'token' => '토큰',
+        'mailgun_domain' => 'Mailgun 도메인',
+        'mailgun_secret' => 'Mailgun 시크릿',
+        'ses_key' => 'SES 액세스 키',
+        'ses_secret' => 'SES 시크릿 키',
+        'ses_region' => 'SES 리전',
+        'mailgun_endpoint' => 'Mailgun 엔드포인트',
+        // 일반 설정 (추가)
+        'channels' => '채널',
+        'notification_channels' => '알림 채널',
+        'currency' => '통화',
+        'default_currency' => '기본 통화',
+        'maintenance_mode' => '점검 모드',
+        'asset_url_mode' => '자산 주소 방식',
+        'site_logo' => '사이트 로고',
+        'og_image_default' => '기본 공유 이미지',
+        // SEO 설정 (추가)
+        'bot_user_agents' => '봇 User-Agent 목록',
+        'bot_detection_enabled' => '봇 감지 사용',
+        'bot_detection_library_enabled' => '봇 감지 라이브러리 사용',
+        'og_default_site_name' => 'OG 기본 사이트 이름',
+        'og_image_default_width' => 'OG 이미지 기본 너비',
+        'og_image_default_height' => 'OG 이미지 기본 높이',
+        'twitter_default_card' => '트위터 기본 카드 유형',
+        'twitter_default_site' => '트위터 기본 계정',
+        'seo_page_cache_enabled' => 'SEO 페이지 캐시 사용',
+        'cache_ttl' => '캐시 유지시간',
+        'seo_page_cache_ttl' => 'SEO 페이지 캐시 유지시간',
+        'sitemap_enabled' => '사이트맵 사용',
+        'sitemap_cache_ttl' => '사이트맵 캐시 유지시간',
+        'sitemap_urls_per_file' => '사이트맵 파일당 URL 수',
+        'sitemap_gzip' => '사이트맵 압축',
+        'sitemap_serve_stale_on_miss' => '사이트맵 미생성 시 이전 파일 제공',
+        'sitemap_max_urls_per_contributor' => '사이트맵 항목별 최대 URL 수',
+        'sitemap_hreflang_enabled' => '사이트맵 대체 언어 링크 사용',
+        'sitemap_schedule' => '사이트맵 자동 생성 주기',
+        'sitemap_schedule_time' => '사이트맵 자동 생성 시각',
+        'generator_enabled' => 'SEO 페이지 생성기 사용',
+        'generator_content' => 'SEO 페이지 생성기 콘텐츠',
+        // 보안 설정 (추가)
+        'force_https' => 'HTTPS 강제 적용',
+        'login_attempt_enabled' => '로그인 시도 제한',
+        'auth_token_lifetime' => '인증 토큰 유지시간',
+        'max_login_attempts' => '최대 로그인 시도 횟수',
+        'login_lockout_time' => '로그인 차단 시간',
+        'password_min_length' => '비밀번호 최소 길이',
+        'require_password_special_char' => '비밀번호 특수문자 필수',
+        'two_factor_auth' => '2단계 인증',
+        'allow_internal_outbound_urls' => '내부 네트워크 주소 호출 허용',
+        // 고급 설정 (추가)
+        'advanced_cache_enabled' => '캐시 사용',
+        'layout_cache_enabled' => '레이아웃 캐시 사용',
+        'layout_cache_ttl' => '레이아웃 캐시 유지시간',
+        'stats_cache_enabled' => '통계 캐시 사용',
+        'stats_cache_ttl' => '통계 캐시 유지시간',
+        'seo_cache_enabled' => 'SEO 캐시 사용',
+        'seo_cache_ttl' => 'SEO 캐시 유지시간',
+        'seo_sitemap_cache_ttl' => 'SEO 사이트맵 캐시 유지시간',
+        'debug_mode' => '디버그 모드',
+        'sql_query_log' => 'SQL 쿼리 로그',
+        'outbound_proxy' => '아웃바운드 프록시 주소',
+        'outbound_proxy_bypass' => '프록시 예외 목록',
+        'core_update_github_url' => '코어 업데이트 GitHub 주소',
+        'core_update_github_token' => '코어 업데이트 GitHub 토큰',
+        'geoip_enabled' => 'GeoIP 사용',
+        'geoip_license_key' => 'GeoIP 라이선스 키',
+        'geoip_auto_update_enabled' => 'GeoIP 자동 업데이트',
+        'pagination_result_cap' => '목록 총 건수 상한',
+        'pagination_max_page' => '목록 최대 페이지 번호',
+        // 드라이버 설정 (추가)
+        'websocket_app_id' => '웹소켓 앱 ID',
+        'websocket_app_secret' => '웹소켓 앱 시크릿',
+        'websocket_verify_ssl' => '웹소켓 SSL 인증서 검증',
+        'websocket_server_host' => '웹소켓 서버 호스트',
+        'websocket_server_port' => '웹소켓 서버 포트',
+        'websocket_server_scheme' => '웹소켓 서버 프로토콜',
+        'search_engine_driver' => '검색 엔진 드라이버',
+        'log_driver' => '로그 드라이버',
+        'log_level' => '로그 레벨',
+        'log_days' => '로그 보관 일수',
+        'public_asset_disk' => '공개 자산 디스크',
     ],
 ];

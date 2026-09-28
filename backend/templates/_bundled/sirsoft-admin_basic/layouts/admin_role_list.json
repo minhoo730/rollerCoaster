@@ -31,6 +31,7 @@
     "data_sources": [
         {
             "id": "roles",
+            "label_key": "$t:editor.data_source.roles",
             "type": "api",
             "endpoint": "/api/admin/roles",
             "method": "GET",
@@ -67,12 +68,12 @@
                 "type": "basic",
                 "name": "Div",
                 "props": {
-                    "className": "p-6 bg-gray-50 dark:bg-gray-900 min-h-screen"
+                    "className": "admin-page-content"
                 },
                 "responsive": {
                     "portable": {
                         "props": {
-                            "className": "p-4 bg-gray-50 dark:bg-gray-900 min-h-screen"
+                            "className": "admin-page-content-compact"
                         }
                     }
                 },
@@ -91,7 +92,8 @@
                                 "type": "basic",
                                 "name": "Button",
                                 "props": {
-                                    "className": "p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                                    "className": "btn-icon",
+                                    "aria-label": "$t:admin.roles.refresh"
                                 },
                                 "actions": [
                                     {
@@ -104,11 +106,12 @@
                                 ],
                                 "children": [
                                     {
+                                        "id": "refresh_icon",
                                         "type": "basic",
                                         "name": "Icon",
                                         "props": {
                                             "name": "refresh",
-                                            "size": "lg"
+                                            "size": "md"
                                         }
                                     }
                                 ]
@@ -119,14 +122,16 @@
                                 "name": "Button",
                                 "props": {
                                     "disabled": "{{roles?.data?.abilities?.can_create !== true}}",
-                                    "className": "flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-100 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    "className": "flex-center gap-2 px-4 h-10 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-100 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 },
                                 "actions": [
                                     {
                                         "type": "click",
                                         "handler": "navigate",
                                         "params": {
-                                            "path": "/admin/roles/create"
+                                            "path": "/admin/roles/create",
+                                            "mergeQuery": true,
+                                            "query": {}
                                         }
                                     }
                                 ],
@@ -136,7 +141,7 @@
                                         "name": "Icon",
                                         "props": {
                                             "name": "plus",
-                                            "size": "lg"
+                                            "size": "md"
                                         }
                                     },
                                     {
@@ -192,10 +197,12 @@
                                         "handler": "navigate",
                                         "params": {
                                             "path": "/admin/roles",
+                                            "mergeQuery": true,
                                             "query": {
                                                 "search": "{{_local.searchQuery || undefined}}",
                                                 "page": 1
                                             },
+                                            "replace": true,
                                             "transition_overlay_target": "roles_data_grid__body"
                                         }
                                     }
@@ -219,7 +226,7 @@
                                             "type": "basic",
                                             "name": "Div",
                                             "props": {
-                                                "className": "flex items-center gap-2"
+                                                "className": "flex-center gap-2"
                                             },
                                             "children": [
                                                 {
@@ -348,6 +355,35 @@
                                     ]
                                 },
                                 {
+                                    "field": "permissions_count",
+                                    "header": "$t:admin.roles.columns.permissions_count",
+                                    "sortable": false,
+                                    "cellChildren": [
+                                        {
+                                            "type": "basic",
+                                            "name": "Div",
+                                            "props": {
+                                                "className": "flex items-center gap-1 text-gray-600 dark:text-gray-400"
+                                            },
+                                            "children": [
+                                                {
+                                                    "type": "basic",
+                                                    "name": "Icon",
+                                                    "props": {
+                                                        "name": "key",
+                                                        "size": "sm"
+                                                    }
+                                                },
+                                                {
+                                                    "type": "basic",
+                                                    "name": "Span",
+                                                    "text": "{{row.permissions_count ?? 0}}"
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                },
+                                {
                                     "field": "is_active",
                                     "header": "$t:admin.roles.columns.status",
                                     "sortable": false,
@@ -394,7 +430,7 @@
                                                             "handler": "toast",
                                                             "params": {
                                                                 "type": "error",
-                                                                "message": "$t:admin.roles.toggle_status_failed"
+                                                                "message": "{{error.message ?? '$t:admin.roles.toggle_status_failed'}}"
                                                             }
                                                         }
                                                     ]
@@ -413,7 +449,8 @@
                             "pagination": true,
                             "serverSidePagination": true,
                             "serverCurrentPage": "{{roles?.data?.pagination?.current_page ?? 1}}",
-                            "serverTotalPages": "{{roles?.data?.pagination?.last_page ?? 1}}",
+                            "serverTotalPages": "{{roles?.data?.pagination?.last_page ?? null}}",
+                            "serverHasMorePages": "{{roles?.data?.pagination?.has_more_pages ?? false}}",
                             "pageSize": 20,
                             "alwaysShowPagination": true,
                             "idField": "id",
@@ -448,11 +485,11 @@
                                 "handler": "navigate",
                                 "params": {
                                     "path": "/admin/roles",
-                                    "replace": true,
                                     "mergeQuery": true,
                                     "query": {
                                         "page": "{{$args[0]}}"
                                     },
+                                    "replace": true,
                                     "transition_overlay_target": "roles_data_grid__body"
                                 }
                             },
@@ -464,13 +501,16 @@
                                     "edit": {
                                         "handler": "navigate",
                                         "params": {
-                                            "path": "/admin/roles/{{$args[1].id}}/edit"
+                                            "path": "/admin/roles/{{$args[1].id}}/edit",
+                                            "mergeQuery": true,
+                                            "query": {}
                                         }
                                     },
                                     "clone": {
                                         "handler": "navigate",
                                         "params": {
                                             "path": "/admin/roles/create",
+                                            "mergeQuery": true,
                                             "query": {
                                                 "clone_from": "{{$args[1].id}}"
                                             }

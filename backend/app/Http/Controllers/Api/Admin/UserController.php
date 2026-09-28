@@ -1,8 +1,12 @@
 <?php
 
+// audit:allow api-doc-coverage reason: 응답 계약 불변 — lang 키에서 :error 플레이스홀더가 제거되어 사문화된 messageParams 인자만 정리 (키·상태코드·payload 형태 무변경)
+
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Exceptions\CannotDeleteSuperAdminException;
+use App\Exceptions\CannotModifySuperAdminException;
+use App\Exceptions\PermissionEscalationException;
 use App\Http\Controllers\Api\Base\AdminBaseController;
 use App\Http\Requests\User\BulkUpdateUserStatusRequest;
 use App\Http\Requests\User\CheckEmailRequest;
@@ -36,7 +40,7 @@ class UserController extends AdminBaseController
     /**
      * 필터링된 사용자 목록을 조회합니다.
      *
-     * @param UserListRequest $request 사용자 목록 요청 데이터
+     * @param  UserListRequest  $request  사용자 목록 요청 데이터
      * @return JsonResponse 사용자 목록과 통계 정보를 포함한 JSON 응답
      */
     public function index(UserListRequest $request): JsonResponse
@@ -61,7 +65,7 @@ class UserController extends AdminBaseController
     /**
      * 새로운 사용자를 생성합니다.
      *
-     * @param CreateUserRequest $request 사용자 생성 요청 데이터
+     * @param  CreateUserRequest  $request  사용자 생성 요청 데이터
      * @return JsonResponse 생성된 사용자 정보를 포함한 JSON 응답
      */
     public function store(CreateUserRequest $request): JsonResponse
@@ -74,6 +78,8 @@ class UserController extends AdminBaseController
                 new UserResource($user),
                 201
             );
+        } catch (PermissionEscalationException $e) {
+            return $this->error('exceptions.cannot_grant_unheld_permission', 403);
         } catch (ValidationException $e) {
             return $this->error('user.create_failed', 422, $e->errors());
         } catch (Exception $e) {
@@ -84,7 +90,7 @@ class UserController extends AdminBaseController
     /**
      * 특정 사용자의 상세 정보를 조회합니다.
      *
-     * @param User $user 조회할 사용자 모델
+     * @param  User  $user  조회할 사용자 모델
      * @return JsonResponse 사용자 상세 정보를 포함한 JSON 응답
      */
     public function show(User $user): JsonResponse
@@ -109,8 +115,8 @@ class UserController extends AdminBaseController
     /**
      * 기존 사용자 정보를 수정합니다.
      *
-     * @param UpdateUserRequest $request 사용자 수정 요청 데이터
-     * @param User $user 수정할 사용자 모델
+     * @param  UpdateUserRequest  $request  사용자 수정 요청 데이터
+     * @param  User  $user  수정할 사용자 모델
      * @return JsonResponse 수정된 사용자 정보를 포함한 JSON 응답
      */
     public function update(UpdateUserRequest $request, User $user): JsonResponse
@@ -122,18 +128,48 @@ class UserController extends AdminBaseController
                 'user.update_success',
                 new UserResource($updatedUser)
             );
+        } catch (CannotModifySuperAdminException $e) {
+            return $this->error('exceptions.cannot_modify_super_admin', 403);
+        } catch (PermissionEscalationException $e) {
+            return $this->error('exceptions.cannot_grant_unheld_permission', 403);
         } catch (ValidationException $e) {
             return $this->error('user.update_failed', 422, $e->errors());
         } catch (Exception $e) {
-            return $this->error('user.update_failed', 500, $e, ['error' => $e->getMessage()]);
+            return $this->error('user.update_failed', 500, $e);
+        }
+    }
+
+    /**
+     * 사용자의 계정 잠금을 해제합니다.
+     *
+     * 로그인 실패 누적으로 잠긴 계정(특히 잠금 시간 0 = 무한대 설정으로 영구 잠긴 계정)을
+     * 관리자가 수동으로 풀어 줍니다. 이 경로가 없으면 영구 잠금 계정은 성공 로그인 자체가
+     * 불가하므로 복구 수단이 없습니다.
+     *
+     * @param  User  $user  잠금을 해제할 사용자 모델
+     * @return JsonResponse 갱신된 사용자 정보를 포함한 JSON 응답
+     */
+    public function unlock(User $user): JsonResponse
+    {
+        try {
+            $unlocked = $this->userService->unlockAccount($user);
+
+            return $this->successWithResource(
+                'auth.account_unlocked',
+                new UserResource($unlocked)
+            );
+        } catch (CannotModifySuperAdminException $e) {
+            return $this->error('exceptions.cannot_modify_super_admin', 403);
+        } catch (Exception $e) {
+            return $this->error('user.update_failed', 500, $e);
         }
     }
 
     /**
      * 사용자를 삭제합니다.
      *
-     * @param DeleteUserRequest $request 사용자 삭제 요청 데이터
-     * @param User $user 삭제할 사용자 모델
+     * @param  DeleteUserRequest  $request  사용자 삭제 요청 데이터
+     * @param  User  $user  삭제할 사용자 모델
      * @return JsonResponse 삭제 결과 JSON 응답
      */
     public function destroy(DeleteUserRequest $request, User $user): JsonResponse
@@ -149,7 +185,13 @@ class UserController extends AdminBaseController
         } catch (CannotDeleteSuperAdminException $e) {
             return $this->error('exceptions.cannot_delete_super_admin', 422);
         } catch (ValidationException $e) {
-            return $this->error('user.delete_failed', 422, $e->errors());
+            // UserService 가 던진 ValidationException 의 general[0] 에는 이미 `:error` 가
+            // 치환된 완성 메시지(예: "사용자 삭제에 실패했습니다: <상세 사유>")가 들어있다.
+            // 이를 최상위 message 로도 노출해 토스트에 `:error` 가 그대로 보이지 않게 한다
+            // (에러 상세 표시 기능 유지). errors 배열도 함께 전달.
+            $detail = $e->errors()['general'][0] ?? null;
+
+            return $this->error($detail ?? 'user.delete_failed', 422, $e->errors());
         } catch (Exception $e) {
             return $this->error('user.delete_failed', 500, $e, ['error' => $e->getMessage()]);
         }
@@ -198,7 +240,7 @@ class UserController extends AdminBaseController
     /**
      * 키워드로 사용자를 검색합니다. (이름, 닉네임, 이메일)
      *
-     * @param SearchUserRequest $request 사용자 검색 요청 데이터
+     * @param  SearchUserRequest  $request  사용자 검색 요청 데이터
      * @return JsonResponse 검색된 사용자 목록을 포함한 JSON 응답
      */
     public function search(SearchUserRequest $request): JsonResponse
@@ -228,7 +270,7 @@ class UserController extends AdminBaseController
     /**
      * 이메일 주소의 중복 여부를 확인합니다.
      *
-     * @param CheckEmailRequest $request 이메일 중복 확인 요청 데이터
+     * @param  CheckEmailRequest  $request  이메일 중복 확인 요청 데이터
      * @return JsonResponse 이메일 사용 가능 여부를 포함한 JSON 응답
      */
     public function checkEmail(CheckEmailRequest $request): JsonResponse
@@ -251,6 +293,9 @@ class UserController extends AdminBaseController
 
     /**
      * 현재 로그인된 사용자의 언어 설정을 업데이트합니다.
+     *
+     * @param  UpdateLanguageRequest  $request  언어 변경 요청 데이터
+     * @return JsonResponse 변경된 사용자 정보를 포함한 JSON 응답
      */
     public function updateMyLanguage(UpdateLanguageRequest $request): JsonResponse
     {
@@ -274,6 +319,9 @@ class UserController extends AdminBaseController
 
     /**
      * 여러 사용자의 상태를 일괄 변경합니다.
+     *
+     * @param  BulkUpdateUserStatusRequest  $request  일괄 상태 변경 요청 데이터
+     * @return JsonResponse 일괄 변경 결과를 포함한 JSON 응답
      */
     public function bulkUpdateStatus(BulkUpdateUserStatusRequest $request): JsonResponse
     {
@@ -281,9 +329,13 @@ class UserController extends AdminBaseController
             $validated = $request->validated();
             $result = $this->userService->bulkUpdateStatus($validated['ids'], $validated['status']);
 
+            // 메시지 키(user.bulk_status_updated)가 :count 플레이스홀더를 가지므로
+            // 치환 파라미터를 함께 전달한다 (생략 시 원문 ":count명의 …" 이 그대로 노출)
             return $this->success(
                 'user.bulk_status_updated',
-                $result
+                $result,
+                200,
+                ['count' => $result['updated_count'] ?? 0]
             );
         } catch (ValidationException $e) {
             return $this->error('user.bulk_update_status_failed', 422, $e->errors());

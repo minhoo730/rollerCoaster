@@ -2,12 +2,15 @@
 
 namespace App\Extension;
 
+use App\Contracts\Extension\CacheableExtensionInterface;
 use App\Contracts\Extension\CacheInterface;
 use App\Contracts\Extension\PluginInterface;
 use App\Contracts\Extension\StorageInterface;
 use App\Contracts\Extension\UpgradeStepInterface;
 use App\Extension\Cache\PluginCacheDriver;
 use App\Extension\Storage\PluginStorageDriver;
+use App\Extension\Traits\ReportsLifecycleFailure;
+use App\Support\PublicAssetDisk;
 use Illuminate\Database\Seeder;
 use ReflectionClass;
 
@@ -18,10 +21,13 @@ use ReflectionClass;
  * getIdentifier(), getVendor()는 디렉토리명에서 자동 추론됩니다.
  * getName(), getVersion(), getDescription()은 plugin.json에서 자동 파싱됩니다.
  *
- * 참고: 플러그인은 모듈과 달리 관리자 메뉴(getAdminMenus)를 추가할 수 없습니다.
+ * 참고: 플러그인도 관리자 메뉴(getAdminMenus)를 선언할 수 있습니다. 설치·업데이트·활성화가
+ * 공통으로 지나는 선언형 산출물 동기화에서 PluginManager 가 자동으로 반영합니다.
  */
-abstract class AbstractPlugin implements PluginInterface
+abstract class AbstractPlugin implements CacheableExtensionInterface, PluginInterface
 {
+    use ReportsLifecycleFailure;
+
     /**
      * 플러그인 디렉토리 경로 (캐시)
      */
@@ -508,6 +514,37 @@ abstract class AbstractPlugin implements PluginInterface
     }
 
     /**
+     * 이 플러그인이 등록할 HTTP 미들웨어 선언을 반환합니다.
+     *
+     * 플러그인이 web/api 그룹에 미들웨어를 직접 넣는 대신, 코어의 self-gate 게이트
+     * (`ExtensionMiddlewareGate`)가 요청 시점에 라우트 이름·URI 를 각 선언의 `targets`
+     * 패턴과 대조해 매칭될 때만 해당 미들웨어를 실행합니다. 코어 IDV 정책의 라우트명
+     * 인덱스 조회 모델과 동일합니다. 미들웨어 클래스 자체는 게이트 로직을 갖지 않아도
+     * 됩니다 (순수하게 유지).
+     *
+     * 기본적으로 빈 배열 반환. 미들웨어가 필요한 플러그인만 오버라이드합니다.
+     *
+     * @return array<int, array{class: class-string, groups: array<int, string>, timing?: string, targets: array<int, string>}>
+     *                                                                                                                          [
+     *                                                                                                                          [
+     *                                                                                                                          'class'   => VbankNotifyIpWhitelist::class,  // 미들웨어 FQCN (class_exists 검증)
+     *                                                                                                                          'groups'  => ['web'],       // 등록 그룹 배열: ['web'] | ['api'] | ['web','api']
+     *                                                                                                                          'timing'  => 'after_core',  // 'after_core'(기본, 코어 그룹 미들웨어 뒤) | 'before_core'(코어 전처리보다 먼저)
+     *                                                                                                                          'targets' => ['web.plugins.vendor-plugin.payment.vbank-notify'],  // 라우트명/URI 패턴 배열
+     *                                                                                                                          ],
+     *                                                                                                                          ]
+     *
+     * targets 카탈로그: 'self'(자기 라우트) | 'all_extensions'(모든 확장, 코어 제외) |
+     * 'core'(코어만) | 'everything'·'*'(전부) | 'module:{id}' | 'plugin:{id}' |
+     * 원시 라우트명 glob·brace(`web.plugins.x.*`, `{a,b}`) | '/' 로 시작하는 URI 패턴(무명 라우트용).
+     * targets 누락/빈배열 시 등록 거부. 상세: docs/backend/middleware.md "확장 미들웨어 선언".
+     */
+    public function getMiddleware(): array
+    {
+        return [];
+    }
+
+    /**
      * 이 플러그인이 등록할 IDV(본인인증) 정책 선언을 반환합니다.
      *
      * 반환된 정책은 `PluginManager` 가 activate/update 시
@@ -627,6 +664,37 @@ abstract class AbstractPlugin implements PluginInterface
     }
 
     /**
+     * 성능 계측 프로파일 정의를 반환합니다.
+     *
+     * 이 플러그인이 소유한 목록/화면/저장 경로/배치 중 성능을 재고 싶은 대상을 선언합니다.
+     * `g7:bench` 커맨드가 코어 `config/benchmark.php` 선언과 함께 수집합니다
+     * (`App\Benchmark\BenchmarkProfileRegistry`). 계측 대상을 코어 커맨드에 하드코딩하지
+     * 않는 이유는, 확장이 설치·제거되는 설치본마다 실제로 존재하는 대상이 다르기
+     * 때문입니다. 키는 플러그인 내부에서만 고유하면 되고, 다른 확장과 겹치면 커맨드가
+     * `{식별자}/{키}` 로 지목합니다.
+     *
+     * `write` 축의 `callback` 은 클로저를 쓸 수 없습니다 — 코어 선언과 스키마를 공유하고
+     * 코어 쪽은 `config:cache` 대상이므로, 형식을 `'Fqcn'`(invokable) 또는
+     * `['Fqcn', 'method']` 로 통일합니다.
+     *
+     * @return array<string, array<string, mixed>> 프로파일 키 → 정의
+     *                                             [
+     *                                             'consent_history' => [
+     *                                             'type' => 'list',                       // list | screen | write | batch
+     *                                             'label' => '동의 이력 목록',
+     *                                             'table' => 'gdpr_user_consent_histories',
+     *                                             'columns' => ['*'],
+     *                                             'order' => [['created_at', 'desc']],
+     *                                             'soft_delete' => false,
+     *                                             ],
+     *                                             ]
+     */
+    public function getBenchmarkProfiles(): array
+    {
+        return [];
+    }
+
+    /**
      * 플러그인 설치 시 실행할 시더 클래스 목록 반환
      *
      * 빈 배열 반환 시 database/seeders/ 디렉토리의 모든 시더를 자동 검색합니다. (역호환)
@@ -706,6 +774,31 @@ abstract class AbstractPlugin implements PluginInterface
     public function getMetadata(): array
     {
         return [];
+    }
+
+    /**
+     * 신뢰하는 외부 스크립트 호스트 목록을 반환합니다.
+     *
+     * plugin.json 의 `trusted_script_hosts` 배열에서 읽습니다. 이 플러그인이 레이아웃
+     * `scripts[].src` 로 로드하는 외부 CDN 호스트(예: `cdn.ckeditor.com`)를 선언합니다.
+     * 코어는 이 목록을 집계(AbstractPlugin/AbstractModule → TrustedScriptHosts)해 런타임
+     * 스크립트 로더·저장측 검증·정적 검사가 same-origin 이 아닌 스크립트 중 **선언된
+     * 호스트만** 허용하도록 합니다 (KVE-2026-1915 신뢰 출처 허용목록).
+     *
+     * @return array<int, string> 신뢰 호스트명 목록 (예: ['cdn.ckeditor.com'])
+     */
+    public function getTrustedScriptHosts(): array
+    {
+        $hosts = $this->loadManifest()['trusted_script_hosts'] ?? [];
+
+        if (! is_array($hosts)) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            array_map(fn ($host) => is_string($host) ? trim($host) : '', $hosts),
+            fn ($host) => $host !== ''
+        ));
     }
 
     /**
@@ -846,6 +939,46 @@ abstract class AbstractPlugin implements PluginInterface
     }
 
     /**
+     * OG 기본값 키별 데이터 출처(연결 칩) 메타 선언 — 편집기 전용
+     *
+     * `seoOgDefaults()` 의 평문값이 어느 데이터에서 왔는지(`{{...}}`)를 편집기 [검색엔진] 탭이
+     * 연결 칩으로 보여주고 교체할 수 있도록, 키별 데이터 경로(표현식)와 사용자용 라벨을 제공합니다.
+     * 운영 렌더링은 본 메서드를 호출하지 않습니다 — 편집기 미리보기만 소비. 미오버라이드면
+     * 종전대로 resolve 된 평문을 보여줍니다(하위호환·평문 폴백). 상세: AbstractModule 동명 메서드.
+     *
+     * @param  string  $pageType  페이지 타입
+     * @return array<string, array{expr: string, label: string|array<string, string>}> 키별 데이터 경로 메타 (label = 번역 키 권장)
+     */
+    public function seoOgDefaultMeta(string $pageType): array
+    {
+        return [];
+    }
+
+    /**
+     * Twitter 카드 기본값 키별 데이터 출처(연결 칩) 메타 선언 — 편집기 전용
+     *
+     * @param  string  $pageType  페이지 타입
+     * @return array<string, array{expr: string, label: string|array<string, string>}> 키별 데이터 경로 메타 (label = 번역 키 권장)
+     */
+    public function seoTwitterDefaultMeta(string $pageType): array
+    {
+        return [];
+    }
+
+    /**
+     * 구조화 데이터 속성별 데이터 출처(연결 칩) 메타 선언 — 편집기 전용
+     *
+     * `seoStructuredData()` 중첩 객체를 점 경로 키로 평탄화한 기준으로 선언합니다(예: `offers.price`).
+     *
+     * @param  string  $pageType  페이지 타입
+     * @return array<string, array{expr: string, label: array<string, string>|string}> 점 경로 키별 데이터 경로 메타
+     */
+    public function seoStructuredDataMeta(string $pageType): array
+    {
+        return [];
+    }
+
+    /**
      * 그누보드7 코어 요구 버전 제약 반환
      *
      * plugin.json의 g7_version 필드에서 읽습니다. 오버라이드 가능합니다.
@@ -971,6 +1104,53 @@ abstract class AbstractPlugin implements PluginInterface
     }
 
     /**
+     * 빌드된 에셋의 절대 파일 경로를 반환합니다.
+     *
+     * `getBuiltAssetPaths()` 는 plugin.json 의 상대 output 경로를 돌려주므로
+     * 파일을 실제로 읽으려면 플러그인 루트(`getPluginPath()`: 활성 dir 또는
+     * `_bundled` 실제 위치)를 앞에 붙여야 한다. 서버측 번들 병합
+     * (ExtensionBundleService)이 `getAssetFilePath()` 의
+     * `base_path("plugins/{id}/...")` 하드코딩을 복제하지 않고 `_bundled`
+     * 확장에서도 정확한 경로를 얻도록 이 게터를 SSoT 로 쓴다.
+     *
+     * @return array 빌드된 에셋 절대 경로 배열 ['js' => '...', 'css' => '...']
+     */
+    public function getBuiltAssetAbsolutePaths(): array
+    {
+        $relative = $this->getBuiltAssetPaths();
+        $result = [];
+
+        foreach ($relative as $kind => $output) {
+            $result[$kind] = $this->getPluginPath().'/'.$output;
+        }
+
+        return $result;
+    }
+
+    /**
+     * 매니페스트가 **선언한** 프론트엔드 자산의 절대 경로를 반환합니다 (파일 존재 여부 무관).
+     *
+     * `getBuiltAssetAbsolutePaths()` 는 `file_exists()` 게이트라 소실된 산출물이 목록에서
+     * 사라진다. 배포 중 `dist` 가 잠깐 비는 상태를 "선언은 있는데 파일이 없다" 로 세려면
+     * 선언 축을 그대로 돌려주는 통로가 필요하다 — 이 메서드가 그 축이다.
+     *
+     * @return array<string, string> kind('js'|'css') => 절대 경로 (선언된 kind 만)
+     */
+    public function getDeclaredAssetAbsolutePaths(): array
+    {
+        $assets = $this->getAssets();
+        $result = [];
+
+        foreach (['js', 'css'] as $kind) {
+            if (! empty($assets[$kind]['output'])) {
+                $result[$kind] = $this->getPluginPath().'/'.$assets[$kind]['output'];
+            }
+        }
+
+        return $result;
+    }
+
+    /**
      * 플러그인이 설정 페이지를 가지고 있는지 확인합니다.
      *
      * 설정 레이아웃 파일이 존재하면 설정 페이지가 있는 것으로 간주합니다.
@@ -1077,6 +1257,67 @@ abstract class AbstractPlugin implements PluginInterface
     }
 
     /**
+     * 카테고리별 스토리지 인스턴스 캐시 (디스크명 키 memoize)
+     *
+     * @var array<string, StorageInterface>
+     */
+    private array $storageByDisk = [];
+
+    /**
+     * 카테고리별 스토리지 디스크 이름 반환
+     *
+     * 기본값은 getStorageDisk() 와 동일 (현행 동작 100% 보존).
+     * 특정 카테고리(예: 'images')만 다른 디스크를 쓰려면 플러그인이 오버라이드합니다.
+     *
+     * 주의: 오버라이드 구현은 'settings' 카테고리에서 플러그인 설정을 조회하면 안 됩니다 —
+     * 설정 로드가 getStorage()->get('settings', ...) 를 경유하므로 재귀 고리가 생깁니다.
+     * 설정 조회는 'images' 등 설정 저장과 무관한 카테고리에서만 수행합니다.
+     *
+     * @param  string  $category  카테고리 (settings, data, images, temp)
+     * @return string 디스크 이름
+     */
+    public function getStorageDiskFor(string $category): string
+    {
+        return $this->getStorageDisk();
+    }
+
+    /**
+     * 카테고리별 스토리지 드라이버 인스턴스 반환
+     *
+     * getStorageDiskFor() 가 결정한 디스크의 드라이버를 디스크 단위로 memoize 하여 반환합니다.
+     * 기본 디스크와 동일하면 getStorage() 인스턴스를 그대로 재사용합니다.
+     *
+     * @param  string  $category  카테고리
+     * @return StorageInterface 스토리지 드라이버 인스턴스
+     */
+    public function getStorageFor(string $category): StorageInterface
+    {
+        $disk = $this->getStorageDiskFor($category);
+
+        if (! isset($this->storageByDisk[$disk])) {
+            $base = $this->getStorage();
+            $this->storageByDisk[$disk] = ($disk === $base->getDisk()) ? $base : $base->withDisk($disk);
+        }
+
+        return $this->storageByDisk[$disk];
+    }
+
+    /**
+     * 공개 자산 디스크 설정값을 해석합니다.
+     *
+     * 우선순위: 확장 개별 설정(override) > 코어 전역 설정(core.storage.public_asset_disk).
+     * 미설정('')/'none'/config 에 존재하지 않는 디스크(고아 플러그인 디스크)는 null 로
+     * 해석되어 호출측이 기존 디스크(스트리밍)로 폴백합니다.
+     *
+     * @param  string|null  $override  확장 개별 설정값 (''/null 이면 코어 전역 설정 사용)
+     * @return string|null 사용할 디스크 이름 (스트리밍 유지면 null)
+     */
+    protected function resolvePublicAssetDisk(?string $override = null): ?string
+    {
+        return PublicAssetDisk::resolve($override);
+    }
+
+    /**
      * 플러그인 캐시 드라이버 인스턴스 반환
      *
      * 플러그인별로 격리된 캐시를 제공합니다.
@@ -1111,26 +1352,30 @@ abstract class AbstractPlugin implements PluginInterface
     /**
      * 카테고리별 스토리지 기본 경로 반환
      *
+     * 카테고리가 다른 디스크로 배선돼 있으면(getStorageDiskFor 오버라이드) 그 디스크
+     * 기준 경로를 돌려줍니다. 기본 디스크를 보면 배선한 카테고리의 경로가 어긋납니다.
+     *
      * @param  string  $category  카테고리 (settings, data, temp)
      * @return string 전체 파일 시스템 경로
      */
     public function getStorageBasePath(string $category): string
     {
-        return $this->getStorage()->getBasePath($category);
+        return $this->getStorageFor($category)->getBasePath($category);
     }
 
     /**
      * 파일의 공개 URL 반환
      *
-     * public disk인 경우 직접 URL을 반환하고,
-     * private disk인 경우 null을 반환합니다 (별도 API 엔드포인트 사용).
+     * 카테고리에 배선된 디스크(getStorageDiskFor)가 직접 URL 을 지원하면 그 URL 을,
+     * 아니면 null 을 반환합니다 (별도 API 엔드포인트 사용). 기본 디스크를 보면
+     * 공개 자산 디스크로 옮긴 카테고리가 항상 null 을 받습니다.
      *
      * @param  string  $category  카테고리
      * @param  string  $path  파일 경로
-     * @return string|null 파일 URL (private disk인 경우 null)
+     * @return string|null 파일 URL (직접 URL 불가 디스크인 경우 null)
      */
     public function getStorageUrl(string $category, string $path): ?string
     {
-        return $this->getStorage()->url($category, $path);
+        return $this->getStorageFor($category)->url($category, $path);
     }
 }

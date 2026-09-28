@@ -2,7 +2,32 @@
 
 namespace Modules\Sirsoft\Ecommerce\Tests;
 
+use App\Enums\ExtensionStatus;
+use App\Enums\PermissionType;
+use App\Extension\HookManager;
+use App\Extension\ModuleManager;
+use App\Helpers\ResponseHelper;
+use App\Models\Module as ModuleRegistration;
+use App\Models\Permission;
+use App\Models\Role;
+use App\Models\User;
+use App\Services\ModuleSettingsService;
+use Illuminate\Contracts\Debug\ExceptionHandler;
+use Illuminate\Foundation\Exceptions\Handler;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\RefreshDatabaseState;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Schema;
+use Modules\Sirsoft\Ecommerce\Database\Seeders\TestingSeeder;
+use Modules\Sirsoft\Ecommerce\Exceptions\UnauthorizedPresetAccessException;
+use Modules\Sirsoft\Ecommerce\Models\Product;
+use Modules\Sirsoft\Ecommerce\Models\SearchPreset;
+use Modules\Sirsoft\Ecommerce\Models\ShippingType;
+use Modules\Sirsoft\Ecommerce\Module;
+use Modules\Sirsoft\Ecommerce\Providers\EcommerceServiceProvider;
+use Modules\Sirsoft\Ecommerce\Services\EcommerceSettingsService;
+use Modules\Sirsoft\Ecommerce\Support\CurrencySettingsCache;
 use Tests\TestCase;
 
 /**
@@ -33,8 +58,6 @@ abstract class ModuleTestCase extends TestCase
 
     /**
      * 시딩 활성화
-     *
-     * @return bool
      */
     protected function shouldSeed(): bool
     {
@@ -43,12 +66,10 @@ abstract class ModuleTestCase extends TestCase
 
     /**
      * 테스트용 시더 클래스
-     *
-     * @return string
      */
     protected function seeder(): string
     {
-        return \Modules\Sirsoft\Ecommerce\Database\Seeders\TestingSeeder::class;
+        return TestingSeeder::class;
     }
 
     /**
@@ -56,21 +77,26 @@ abstract class ModuleTestCase extends TestCase
      *
      * RefreshDatabase의 migrate:fresh 명령에 코어 + 모듈 마이그레이션 경로를 전달합니다.
      * 이를 통해 트랜잭션 시작 전에 모든 마이그레이션이 완료됩니다.
-     *
-     * @return array
      */
     protected function migrateFreshUsing(): array
     {
+        // 모든 번들 확장 migrations 포함 — 여러 확장 스위트를 한 프로세스에서 함께 돌릴 때
+        // 가장 먼저 실행된 TestCase 가 스키마를 확정하므로, 자기 확장만 넘기면 뒤따르는
+        // 확장의 테이블이 생성되지 않는다 (troubleshooting-backend.md 사례 21).
+        $paths = ['database/migrations'];
+        foreach (glob(base_path('modules/_bundled/*/database/migrations'), GLOB_ONLYDIR) as $p) {
+            $paths[] = str_replace(base_path().DIRECTORY_SEPARATOR, '', $p);
+        }
+        foreach (glob(base_path('plugins/_bundled/*/database/migrations'), GLOB_ONLYDIR) as $p) {
+            $paths[] = str_replace(base_path().DIRECTORY_SEPARATOR, '', $p);
+        }
+
         return [
             '--drop-views' => $this->shouldDropViews(),
             '--drop-types' => $this->shouldDropTypes(),
             '--seed' => $this->shouldSeed(),
             '--seeder' => $this->seeder(),
-            '--path' => [
-                base_path('database/migrations'),
-                $this->getModuleBasePath() . '/database/migrations',
-            ],
-            '--realpath' => true,
+            '--path' => $paths,
         ];
     }
 
@@ -105,12 +131,13 @@ abstract class ModuleTestCase extends TestCase
      */
     protected function setUpTraits()
     {
-        if (\Illuminate\Foundation\Testing\RefreshDatabaseState::$migrated) {
+        if (RefreshDatabaseState::$migrated) {
             try {
-                if (! \Illuminate\Support\Facades\Schema::hasTable('ecommerce_shipping_types')) {
-                    \Illuminate\Foundation\Testing\RefreshDatabaseState::$migrated = false;
+                if (! Schema::hasTable('ecommerce_shipping_types')) {
+                    RefreshDatabaseState::$migrated = false;
                 }
-            } catch (\Throwable $e) { /* DB 미초기화 / 연결 부재 — RefreshDatabase 가 처리 */ }
+            } catch (\Throwable $e) { /* DB 미초기화 / 연결 부재 — RefreshDatabase 가 처리 */
+            }
         }
 
         return parent::setUpTraits();
@@ -120,11 +147,23 @@ abstract class ModuleTestCase extends TestCase
     {
         parent::setUp();
 
+        // 모듈 등록 행(modules 테이블)을 매 테스트마다 보장.
+        //
+        // 이 행은 TestingSeeder 가 만들지만, 시딩은 migrate:fresh 와 함께 프로세스당 1회만 돈다.
+        // 같은 프로세스에서 코어 테스트가 먼저 실행되면 코어의 migrate:fresh 가 스키마를 만들면서
+        // 이 행을 남기지 않고, ecommerce 테이블은 이미 존재하므로 setUpTraits() 의 재마이그레이션
+        // 가드도 발동하지 않는다. 결과적으로 "모듈이 설치돼 있다" 는 전제가 조용히 깨진 채로
+        // 모듈 테스트가 돌아, 모듈 활성 여부를 보는 경로(언어팩 활성화 → entity 시더 재실행 등)가
+        // 통째로 skip 된다 — 단독 통과 / 전체 실행 실패의 원인.
+        //
+        // 트랜잭션 안에서 수행되므로 테스트 종료 시 롤백된다.
+        $this->ensureModuleRegistered();
+
         // 모듈 오토로드 등록 (테스트 환경)
         $this->registerModuleAutoload();
 
         // 모듈 ServiceProvider 등록 (Repository 바인딩)
-        $this->app->register(\Modules\Sirsoft\Ecommerce\Providers\EcommerceServiceProvider::class);
+        $this->app->register(EcommerceServiceProvider::class);
 
         // 모듈 인스턴스를 ModuleManager 에 등록 (Storage/Cache 바인딩에 필수)
         // BaseModuleServiceProvider::registerStorageBindings 가 런타임에
@@ -142,13 +181,42 @@ abstract class ModuleTestCase extends TestCase
         // HookManager 현재 상태 스냅샷 (tearDown 에서 복원)
         $this->snapshotHookManager();
 
+        // 테스트 격리: 모듈 다국어 네임스페이스 + 설정 상태를 매 테스트마다 결정적으로 복원.
+        // (개별 통과 / 풀 스위트 실패 = 컨테이너 싱글톤 누수 — 과거 ModuleLayoutOverrideTest 와 동일 부류)
+        $this->isolateModuleTranslations();
+        $this->isolateModuleSettings();
+
         // 모델 static cache 초기화 (RefreshDatabase 의 트랜잭션 롤백과 static 상태 불일치 방지)
         // - ShippingType::$codeCache: getCachedByCode() 가 첫 호출 시 self::all() 결과를 캐시하는데,
         //   첫 테스트가 ShippingType 시드 전에 호출하면 empty cache 로 고정되어 이후 테스트에서
         //   Resource::resolveShippingMethodLabel() 이 null 반환
-        if (method_exists(\Modules\Sirsoft\Ecommerce\Models\ShippingType::class, 'clearCodeCache')) {
-            \Modules\Sirsoft\Ecommerce\Models\ShippingType::clearCodeCache();
+        if (method_exists(ShippingType::class, 'clearCodeCache')) {
+            ShippingType::clearCodeCache();
         }
+
+        // - CurrencySettingsCache: 통화 설정을 요청 단위로 캐시한다. 비우지 않으면 앞선 테스트가
+        //   읽어 둔 통화 구성(기본 통화의 소수 자릿수 등)을 뒤 테스트가 물려받아, 금액 필드가
+        //   int 로 나와야 할 자리에서 float 이 나오는 등 단독 통과 / 함께 실행 실패가 발생한다.
+        CurrencySettingsCache::clear();
+    }
+
+    /**
+     * `modules` 테이블에 이 모듈의 등록 행이 있음을 보장합니다 (없으면 생성).
+     *
+     * 값은 TestingSeeder 의 모듈 등록과 동일하게 맞춥니다 — 시딩이 돈 프로세스와
+     * 돌지 않은 프로세스에서 테스트 전제가 달라지지 않도록 하기 위함입니다.
+     */
+    private function ensureModuleRegistered(): void
+    {
+        ModuleRegistration::updateOrCreate(
+            ['identifier' => 'sirsoft-ecommerce'],
+            [
+                'vendor' => 'sirsoft',
+                'name' => ['ko' => '이커머스', 'en' => 'Ecommerce'],
+                'status' => ExtensionStatus::Active->value,
+                'version' => '1.0.0',
+            ]
+        );
     }
 
     /**
@@ -158,7 +226,57 @@ abstract class ModuleTestCase extends TestCase
     {
         $this->restoreHookManager();
 
+        // 테스트가 saveSettings() 로 디스크에 남긴 settings JSON 정리 (다음 테스트 오염 방지)
+        $this->purgeTestSettingsDirectory();
+
         parent::tearDown();
+    }
+
+    /**
+     * 모듈 다국어 네임스페이스를 라이브 translator 에 재등록합니다.
+     *
+     * `sirsoft-ecommerce::enums.*` 등의 키가 풀 스위트 실행 시 원문 키로 반환되는 회귀를 차단합니다.
+     * 선행 테스트가 translator 싱글톤을 모듈 hint 없이 resolve 해두면, ServiceProvider 의 boot()
+     * 가 이미 부팅된 것으로 간주되어 loadTranslationsFrom() 이 재호출되지 않아 hint 가 누락됩니다.
+     * 매 테스트마다 명시적으로 hint 를 재등록해 순서 무관 결정성을 보장합니다.
+     */
+    private function isolateModuleTranslations(): void
+    {
+        $langPath = $this->getModuleBasePath().'/src/lang';
+
+        if (is_dir($langPath)) {
+            $this->app['translator']->addNamespace('sirsoft-ecommerce', $langPath);
+        }
+    }
+
+    /**
+     * 모듈 설정 관련 싱글톤과 디스크 settings 를 초기화합니다.
+     *
+     * EcommerceSettingsService / ModuleSettingsService 싱글톤이 이전 테스트의 mock 또는
+     * saveSettings() 영속 상태를 유지하면 후속 테스트가 오염됩니다. 싱글톤을 forget 하고
+     * 테스트 settings 디렉토리를 비워 매 테스트가 깨끗한 기본값에서 시작하도록 합니다.
+     */
+    private function isolateModuleSettings(): void
+    {
+        $this->app->forgetInstance(EcommerceSettingsService::class);
+        $this->app->forgetInstance(ModuleSettingsService::class);
+
+        $this->purgeTestSettingsDirectory();
+    }
+
+    /**
+     * 테스트 환경 settings 디렉토리(storage/framework/testing/...)를 삭제합니다.
+     *
+     * EcommerceSettingsService::getStoragePath() 가 runningUnitTests 시 사용하는 경로로,
+     * RefreshDatabase 의 트랜잭션 롤백 대상이 아니므로 명시적으로 정리해야 합니다.
+     */
+    private function purgeTestSettingsDirectory(): void
+    {
+        $path = storage_path('framework/testing/modules/sirsoft-ecommerce/settings');
+
+        if (File::isDirectory($path)) {
+            File::deleteDirectory($path);
+        }
     }
 
     /**
@@ -166,7 +284,7 @@ abstract class ModuleTestCase extends TestCase
      */
     private function snapshotHookManager(): void
     {
-        $ref = new \ReflectionClass(\App\Extension\HookManager::class);
+        $ref = new \ReflectionClass(HookManager::class);
         $hooks = $ref->getProperty('hooks');
         $hooks->setAccessible(true);
         $filters = $ref->getProperty('filters');
@@ -190,7 +308,7 @@ abstract class ModuleTestCase extends TestCase
             return;
         }
 
-        $ref = new \ReflectionClass(\App\Extension\HookManager::class);
+        $ref = new \ReflectionClass(HookManager::class);
         $hooks = $ref->getProperty('hooks');
         $hooks->setAccessible(true);
         $hooks->setValue(null, $this->hookSnapshot['hooks']);
@@ -211,20 +329,20 @@ abstract class ModuleTestCase extends TestCase
      */
     protected function registerModuleInstance(): void
     {
-        $moduleClass = \Modules\Sirsoft\Ecommerce\Module::class;
+        $moduleClass = Module::class;
 
         if (! class_exists($moduleClass)) {
-            require_once $this->getModuleBasePath() . '/module.php';
+            require_once $this->getModuleBasePath().'/module.php';
         }
 
-        /** @var \App\Extension\ModuleManager $manager */
-        $manager = $this->app->make(\App\Extension\ModuleManager::class);
+        /** @var ModuleManager $manager */
+        $manager = $this->app->make(ModuleManager::class);
 
         $reflection = new \ReflectionClass($manager);
         $modulesProp = $reflection->getProperty('modules');
         $modulesProp->setAccessible(true);
         $current = $modulesProp->getValue($manager);
-        $current['sirsoft-ecommerce'] = new $moduleClass();
+        $current['sirsoft-ecommerce'] = new $moduleClass;
         $modulesProp->setValue($manager, $current);
     }
 
@@ -235,11 +353,11 @@ abstract class ModuleTestCase extends TestCase
      */
     protected function registerModuleExceptionHandler(): void
     {
-        /** @var \Illuminate\Foundation\Exceptions\Handler $handler */
-        $handler = $this->app->make(\Illuminate\Contracts\Debug\ExceptionHandler::class);
+        /** @var Handler $handler */
+        $handler = $this->app->make(ExceptionHandler::class);
 
-        $handler->renderable(function (\Modules\Sirsoft\Ecommerce\Exceptions\UnauthorizedPresetAccessException $e) {
-            return \App\Helpers\ResponseHelper::forbidden($e->getMessage());
+        $handler->renderable(function (UnauthorizedPresetAccessException $e) {
+            return ResponseHelper::forbidden($e->getMessage());
         });
     }
 
@@ -248,7 +366,7 @@ abstract class ModuleTestCase extends TestCase
      */
     protected function registerModuleAutoload(): void
     {
-        $moduleBasePath = $this->getModuleBasePath() . '/src/';
+        $moduleBasePath = $this->getModuleBasePath().'/src/';
 
         // PSR-4 클래스 오토로드 등록
         spl_autoload_register(function ($class) use ($moduleBasePath) {
@@ -260,15 +378,19 @@ abstract class ModuleTestCase extends TestCase
             }
 
             $relativeClass = substr($class, $len);
-            $file = $moduleBasePath . str_replace('\\', '/', $relativeClass) . '.php';
+            $file = $moduleBasePath.str_replace('\\', '/', $relativeClass).'.php';
 
-            if (file_exists($file)) {
-                require $file;
+            if (file_exists($file)
+                && ! class_exists($class, false) && ! interface_exists($class, false)
+                && ! trait_exists($class, false) && ! enum_exists($class, false)) {
+                // 활성 디렉토리 사본이 이미 로드된 심볼을 다시 선언하면 fatal 이 된다 —
+                // 선언 여부를 자체 확인하고 require_once 로 이중 방어한다
+                require_once $file;
             }
         });
 
         // composer.json files 오토로드 (헬퍼 함수 등록)
-        $helpersFile = $moduleBasePath . 'Helpers/helpers.php';
+        $helpersFile = $moduleBasePath.'Helpers/helpers.php';
         if (file_exists($helpersFile)) {
             require_once $helpersFile;
         }
@@ -279,18 +401,18 @@ abstract class ModuleTestCase extends TestCase
      */
     protected function registerModuleRoutes(): void
     {
-        $apiRoutesFile = $this->getModuleBasePath() . '/src/routes/api.php';
+        $apiRoutesFile = $this->getModuleBasePath().'/src/routes/api.php';
 
         if (file_exists($apiRoutesFile)) {
             // Route Model Binding 등록 (테스트 환경)
-            \Illuminate\Support\Facades\Route::bind('product', function ($value) {
-                $model = new \Modules\Sirsoft\Ecommerce\Models\Product();
+            Route::bind('product', function ($value) {
+                $model = new Product;
 
                 return $model->resolveRouteBinding($value);
             });
-            \Illuminate\Support\Facades\Route::model('preset', \Modules\Sirsoft\Ecommerce\Models\SearchPreset::class);
+            Route::model('preset', SearchPreset::class);
 
-            \Illuminate\Support\Facades\Route::prefix('api/modules/sirsoft-ecommerce')
+            Route::prefix('api/modules/sirsoft-ecommerce')
                 ->name('api.modules.sirsoft-ecommerce.')
                 ->middleware('api')
                 ->group($apiRoutesFile);
@@ -302,22 +424,22 @@ abstract class ModuleTestCase extends TestCase
      */
     protected function createDefaultRoles(): void
     {
-        $adminRole = \App\Models\Role::firstOrCreate(
+        $adminRole = Role::firstOrCreate(
             ['identifier' => 'admin'],
             ['name' => ['ko' => '관리자', 'en' => 'Administrator']]
         );
 
         // admin 역할에 admin 타입 권한 부여 (isAdmin() 체크용)
-        $adminPermission = \App\Models\Permission::firstOrCreate(
+        $adminPermission = Permission::firstOrCreate(
             ['identifier' => 'admin.access'],
             [
                 'name' => ['ko' => '관리자 접근', 'en' => 'Admin Access'],
-                'type' => \App\Enums\PermissionType::Admin,
+                'type' => PermissionType::Admin,
             ]
         );
         $adminRole->permissions()->syncWithoutDetaching([$adminPermission->id]);
 
-        \App\Models\Role::firstOrCreate(
+        Role::firstOrCreate(
             ['identifier' => 'user'],
             ['name' => ['ko' => '일반 사용자', 'en' => 'User']]
         );
@@ -329,26 +451,25 @@ abstract class ModuleTestCase extends TestCase
      * 각 사용자에 대해 고유한 역할을 생성하여 권한을 독립적으로 관리합니다.
      *
      * @param  array  $permissions  추가 권한 목록
-     * @return \App\Models\User
      */
-    protected function createAdminUser(array $permissions = []): \App\Models\User
+    protected function createAdminUser(array $permissions = []): User
     {
-        $user = \App\Models\User::factory()->create();
+        $user = User::factory()->create();
 
         // 사용자별 고유 역할 생성 (권한 격리를 위함)
-        $uniqueRoleIdentifier = 'admin-test-' . $user->id . '-' . time();
-        $userRole = \App\Models\Role::create([
+        $uniqueRoleIdentifier = 'admin-test-'.$user->id.'-'.time();
+        $userRole = Role::create([
             'identifier' => $uniqueRoleIdentifier,
             'name' => ['ko' => '테스트 관리자', 'en' => 'Test Admin'],
         ]);
         $user->roles()->attach($userRole->id);
 
         // admin.access 권한 추가 (isAdmin() 체크용)
-        $adminAccessPermission = \App\Models\Permission::firstOrCreate(
+        $adminAccessPermission = Permission::firstOrCreate(
             ['identifier' => 'admin.access'],
             [
                 'name' => ['ko' => '관리자 접근', 'en' => 'Admin Access'],
-                'type' => \App\Enums\PermissionType::Admin,
+                'type' => PermissionType::Admin,
             ]
         );
         $userRole->permissions()->attach($adminAccessPermission->id);
@@ -356,7 +477,7 @@ abstract class ModuleTestCase extends TestCase
         // 추가 권한이 있으면 역할에 할당
         if (! empty($permissions)) {
             foreach ($permissions as $permissionIdentifier) {
-                $permission = \App\Models\Permission::firstOrCreate(
+                $permission = Permission::firstOrCreate(
                     ['identifier' => $permissionIdentifier],
                     [
                         'name' => ['ko' => $permissionIdentifier, 'en' => $permissionIdentifier],
@@ -372,13 +493,11 @@ abstract class ModuleTestCase extends TestCase
 
     /**
      * 일반 사용자를 생성합니다.
-     *
-     * @return \App\Models\User
      */
-    protected function createUser(): \App\Models\User
+    protected function createUser(): User
     {
-        $userRole = \App\Models\Role::where('identifier', 'user')->first();
-        $user = \App\Models\User::factory()->create();
+        $userRole = Role::where('identifier', 'user')->first();
+        $user = User::factory()->create();
         $user->roles()->attach($userRole->id);
 
         return $user;

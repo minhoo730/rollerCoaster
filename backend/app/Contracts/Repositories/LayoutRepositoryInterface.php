@@ -6,6 +6,7 @@ use App\Enums\LayoutSourceType;
 use App\Models\TemplateLayout;
 use App\Models\TemplateLayoutVersion;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Collection as SupportCollection;
 
 interface LayoutRepositoryInterface
 {
@@ -18,6 +19,17 @@ interface LayoutRepositoryInterface
     public function getByTemplateId(int $templateId): Collection;
 
     /**
+     * 목록 표시용 경량 레이아웃 행 조회
+     *
+     * 본문(`content`)을 반환에 포함하지 않는다 — 설명·크기 등 본문 파생값만 계산해 담는다.
+     * 편집 대상 본문은 상세 조회가 제공한다.
+     *
+     * @param  int  $templateId  템플릿 ID
+     * @return Collection<int, array> 목록 행 배열 컬렉션
+     */
+    public function getListByTemplateId(int $templateId): SupportCollection;
+
+    /**
      * 특정 레이아웃 조회 (템플릿 ID와 이름으로)
      *
      * @param  int  $templateId  템플릿 ID
@@ -25,6 +37,19 @@ interface LayoutRepositoryInterface
      * @return TemplateLayout|null 찾은 레이아웃 모델 또는 null
      */
     public function findByName(int $templateId, string $name): ?TemplateLayout;
+
+    /**
+     * 특정 레이아웃을 영구 삭제 (템플릿 ID와 이름으로)
+     *
+     * soft delete 가 아닌 `forceDelete` 다. 이름으로 재등록될 수 있는 레이아웃
+     * (파일 → DB 동기화 대상) 은 soft delete 잔여 행이 남으면 재등록이 충돌하므로
+     * 파일 기준 동기화 경로와 동일하게 영구 삭제한다.
+     *
+     * @param  int  $templateId  템플릿 ID
+     * @param  string  $name  레이아웃 이름
+     * @return bool 삭제 여부 (대상 부재 시 false)
+     */
+    public function deleteByName(int $templateId, string $name): bool;
 
     /**
      * ID로 레이아웃 조회
@@ -42,6 +67,44 @@ interface LayoutRepositoryInterface
      * @return bool 존재 여부
      */
     public function exists(int $templateId, string $name): bool;
+
+    /**
+     * 특정 템플릿의 레이아웃 중 지정한 확장점(extension_point)을 정의한 것이 있는지 확인
+     *
+     * 레이아웃 content JSON 트리를 재귀 순회하여 `type: extension_point` 노드의
+     * `name` 이 일치하는지 검사합니다.
+     *
+     * @param  int  $templateId  템플릿 ID
+     * @param  string  $extensionPointName  확장점 이름
+     * @return bool 정의 존재 여부
+     */
+    public function hasExtensionPoint(int $templateId, string $extensionPointName): bool;
+
+    /**
+     * 지정 extension_point 를 포함하는 레이아웃 이름 목록을 반환합니다.
+     *
+     * 확장 편집 모드에서 extension_point 확장의 대표 호스트 레이아웃 선택(picker)용. 여러
+     * 레이아웃에 같은 확장점이 있으면 모두 반환한다.
+     *
+     * @param  int  $templateId  템플릿 ID
+     * @param  string  $extensionPointName  확장점 이름
+     * @return array<int, string> 호스트 레이아웃 이름 목록
+     */
+    public function findLayoutNamesWithExtensionPoint(int $templateId, string $extensionPointName): array;
+
+    /**
+     * 레이아웃 content 트리에 지정 노드 id 가 존재하는지 확인합니다.
+     *
+     * overlay 확장의 호스트 유효성 판정용 — overlay 는 `injections[].target_id` 위치에 주입되므로,
+     * 호스트 레이아웃에 그 id 노드가 없으면 실제로 주입되지 않는다(`applyExtensions` no-op).
+     * 노드 식별자는 `id` 또는 `props.id` 두 형태를 모두 검사한다.
+     *
+     * @param  int  $templateId  템플릿 ID
+     * @param  string  $layoutName  레이아웃 이름
+     * @param  string  $nodeId  찾을 노드 id
+     * @return bool 노드 id 존재 여부
+     */
+    public function layoutContainsNodeId(int $templateId, string $layoutName, string $nodeId): bool;
 
     /**
      * extends를 가진 자식 레이아웃 조회
@@ -62,12 +125,29 @@ interface LayoutRepositoryInterface
     public function update(int $id, array $data): TemplateLayout;
 
     /**
-     * 특정 레이아웃의 모든 버전 조회
+     * 레이아웃 content + lock_version 동시 갱신 (낙관적 잠금)
+     *
+     * Service 가 호출 직전에 expected_lock_version 검증을 마친 상태로,
+     * 본 메서드는 content 교체와 lock_version 증가를 한 번의 UPDATE 로 수행한다.
+     *
+     * @param  int  $id  레이아웃 ID
+     * @param  array  $content  전체 레이아웃 JSON content
+     * @param  int  $newLockVersion  새 lock_version 값 (currentVersion + 1)
+     * @return TemplateLayout 업데이트된 레이아웃 모델
+     */
+    public function updateContent(int $id, array $content, int $newLockVersion): TemplateLayout;
+
+    /**
+     * 특정 레이아웃의 최근 버전 목록 조회 (최신순)
+     *
+     * 버전 행은 저장할 때마다 쌓이고 정리되지 않으므로 조회 건수에 상한이 있습니다.
+     * 목록이 쓰지 않는 `content`(버전마다 레이아웃 본문 사본)는 조회하지 않습니다.
      *
      * @param  int  $layoutId  레이아웃 ID
+     * @param  int  $limit  조회할 최대 버전 수
      * @return Collection 버전 컬렉션
      */
-    public function getVersionsByLayoutId(int $layoutId): Collection;
+    public function getVersionsByLayoutId(int $layoutId, int $limit = 100): Collection;
 
     /**
      * 특정 버전 조회

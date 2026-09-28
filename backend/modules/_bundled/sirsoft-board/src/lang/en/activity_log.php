@@ -8,10 +8,13 @@ return [
         'blind' => 'Blinded',
         'blind_content' => 'Content Blinded',
         'bulk_apply' => 'Bulk Applied',
+        'bulk_apply_aborted' => 'Bulk Apply Aborted',
         'bulk_update_status' => 'Bulk Status Changed',
         'create' => 'Created',
         'delete' => 'Deleted',
         'delete_content' => 'Content Deleted',
+        'download' => 'Downloaded',
+        'remove_from_menu' => 'Removed from Menu',
         'restore' => 'Restored',
         'restore_content' => 'Content Restored',
         'update' => 'Updated',
@@ -28,9 +31,11 @@ return [
         'board_delete' => 'Board deleted (:board_name)',
         'board_copy' => 'Board copied (:board_name)',
         'board_add_to_menu' => 'Board added to menu (:board_name)',
+        'board_remove_from_menu' => 'Board removed from menu (:board_name)',
 
         // Board type (Admin)
         'board_type_index' => 'Board type list viewed',
+        'board_type_show' => 'Board type viewed (:type_name)',
         'board_type_create' => 'Board type created (:type_name)',
         'board_type_update' => 'Board type updated (:type_name)',
         'board_type_delete' => 'Board type deleted (:type_name)',
@@ -52,6 +57,7 @@ return [
         // Attachments
         'board_attachment_upload' => 'Attachment uploaded (Post: :post_id)',
         'board_attachment_delete' => 'Attachment deleted (Post: :post_id)',
+        'board_attachment_download' => 'Attachment downloaded (Post: :post_id)',
         'board_attachment_reorder' => 'Attachment order changed (Post: :post_id)',
 
         // Report management (Admin)
@@ -66,11 +72,13 @@ return [
         // Board settings
         'board_settings_index' => 'Board settings viewed',
         'board_settings_bulk_apply' => 'Board settings bulk applied',
+        'board_settings_bulk_apply_aborted' => 'Board settings bulk apply aborted (full rollback, failed board: :failed_board_name, :failed_at/:total)',
     ],
 
     // ChangeDetector field labels
     'fields' => [
         // Board
+        'name' => 'Board Name',
         'is_active' => 'Active',
         'per_page' => 'Posts Per Page',
         'per_page_mobile' => 'Posts Per Page (Mobile)',
@@ -82,6 +90,7 @@ return [
         'use_comment' => 'Use Comments',
         'use_reply' => 'Use Replies',
         'max_reply_depth' => 'Max Reply Depth',
+        'reply_delete_policy' => 'Reply Delete Policy',
         'use_report' => 'Use Reports',
         'use_file_upload' => 'Use File Upload',
         'max_file_size' => 'Max File Size',

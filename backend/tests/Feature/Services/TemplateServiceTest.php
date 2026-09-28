@@ -5,6 +5,7 @@ namespace Tests\Feature\Services;
 use App\Contracts\Extension\ModuleManagerInterface;
 use App\Contracts\Extension\PluginManagerInterface;
 use App\Contracts\Extension\TemplateManagerInterface;
+use App\Contracts\Repositories\LayoutVersionRepositoryInterface;
 use App\Enums\ExtensionStatus;
 use App\Exceptions\TemplateFileCopyException;
 use App\Extension\HookManager;
@@ -21,9 +22,13 @@ class TemplateServiceTest extends TestCase
     use RefreshDatabase;
 
     private TemplateService $templateService;
+
     private TemplateRepository $templateRepository;
+
     private TemplateManagerInterface $templateManager;
+
     private ModuleManagerInterface $moduleManager;
+
     private PluginManagerInterface $pluginManager;
 
     protected function setUp(): void
@@ -35,6 +40,7 @@ class TemplateServiceTest extends TestCase
 
         // loadTemplates() 호출 허용 (생성자에서 호출됨)
         $this->templateManager->shouldReceive('loadTemplates')->andReturn(null);
+        $this->templateManager->shouldReceive('ensureLoaded')->andReturn(null);
 
         // ModuleManager Mock 생성
         $this->moduleManager = Mockery::mock(ModuleManagerInterface::class);
@@ -43,14 +49,15 @@ class TemplateServiceTest extends TestCase
         $this->pluginManager = Mockery::mock(PluginManagerInterface::class);
 
         // TemplateRepository 인스턴스 생성
-        $this->templateRepository = new TemplateRepository();
+        $this->templateRepository = new TemplateRepository;
 
         // TemplateService 인스턴스 생성 (Mock Manager 주입)
         $this->templateService = new TemplateService(
             $this->templateRepository,
             $this->templateManager,
             $this->moduleManager,
-            $this->pluginManager
+            $this->pluginManager,
+            app(LayoutVersionRepositoryInterface::class)
         );
     }
 
@@ -66,7 +73,7 @@ class TemplateServiceTest extends TestCase
     public function test_activates_template_with_hook_system(): void
     {
         // Arrange - 고유 identifier 사용하여 트랜잭션 락 충돌 방지
-        $identifier = 'test-template-' . uniqid();
+        $identifier = 'test-template-'.uniqid();
         $template = Template::create([
             'identifier' => $identifier,
             'vendor' => 'test-vendor',
@@ -104,6 +111,7 @@ class TemplateServiceTest extends TestCase
             ->andReturnUsing(function () use ($template, $templateInfo) {
                 // Manager가 DB 업데이트 시뮬레이션
                 $template->update(['status' => ExtensionStatus::Active->value]);
+
                 return $templateInfo; // 배열 반환 (인터페이스 요구사항)
             });
 
@@ -122,13 +130,13 @@ class TemplateServiceTest extends TestCase
         $this->assertGreaterThanOrEqual(2, count($hookCalls));
 
         // before_activate가 호출되었는지 확인
-        $beforeActivateCalls = array_filter($hookCalls, fn($call) => $call['hook'] === 'before_activate');
+        $beforeActivateCalls = array_filter($hookCalls, fn ($call) => $call['hook'] === 'before_activate');
         $this->assertNotEmpty($beforeActivateCalls);
         $firstBeforeActivate = array_values($beforeActivateCalls)[0];
         $this->assertEquals($template->identifier, $firstBeforeActivate['identifier']);
 
         // after_activate가 호출되었는지 확인
-        $afterActivateCalls = array_filter($hookCalls, fn($call) => $call['hook'] === 'after_activate');
+        $afterActivateCalls = array_filter($hookCalls, fn ($call) => $call['hook'] === 'after_activate');
         $this->assertNotEmpty($afterActivateCalls);
         $firstAfterActivate = array_values($afterActivateCalls)[0];
         $this->assertEquals($template->id, $firstAfterActivate['template_id']);
@@ -145,7 +153,7 @@ class TemplateServiceTest extends TestCase
     public function test_delegates_file_copy_to_manager(): void
     {
         // Arrange - 고유 identifier 사용하여 트랜잭션 락 충돌 방지
-        $identifier = 'test-template-' . uniqid();
+        $identifier = 'test-template-'.uniqid();
         $template = Template::create([
             'identifier' => $identifier,
             'vendor' => 'test-vendor',
@@ -170,6 +178,7 @@ class TemplateServiceTest extends TestCase
             ->with($identifier, false)
             ->andReturnUsing(function () use ($template, $templateInfo) {
                 $template->update(['status' => ExtensionStatus::Active->value]);
+
                 return $templateInfo; // 배열 반환 (인터페이스 요구사항)
             });
 
@@ -194,7 +203,7 @@ class TemplateServiceTest extends TestCase
     public function test_applies_filter_hook_before_manager_call(): void
     {
         // Arrange - 고유 identifier 사용하여 트랜잭션 락 충돌 방지
-        $identifier = 'test-template-' . uniqid();
+        $identifier = 'test-template-'.uniqid();
         $template = Template::create([
             'identifier' => $identifier,
             'vendor' => 'test-vendor',
@@ -217,6 +226,7 @@ class TemplateServiceTest extends TestCase
         HookManager::addFilter('core.templates.filter_activate_data', function ($data, $template) use (&$filterApplied) {
             $filterApplied = true;
             $data['custom_field'] = 'filtered_value';
+
             return $data;
         }, 10, 2);
 
@@ -227,6 +237,7 @@ class TemplateServiceTest extends TestCase
             ->with($identifier, false)
             ->andReturnUsing(function () use ($template, $templateInfo) {
                 $template->update(['status' => ExtensionStatus::Active->value]);
+
                 return $templateInfo; // 배열 반환 (인터페이스 요구사항)
             });
 
@@ -250,7 +261,7 @@ class TemplateServiceTest extends TestCase
     public function test_throws_exception_on_manager_failure(): void
     {
         // Arrange - 고유 identifier 사용하여 트랜잭션 락 충돌 방지
-        $identifier = 'test-template-' . uniqid();
+        $identifier = 'test-template-'.uniqid();
         $template = Template::create([
             'identifier' => $identifier,
             'vendor' => 'test-vendor',

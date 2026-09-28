@@ -16,6 +16,8 @@ class CheckoutRequest extends FormRequest
 {
     /**
      * 사용자가 이 요청을 수행할 권한이 있는지 확인
+     *
+     * @return bool
      */
     public function authorize(): bool
     {
@@ -29,9 +31,23 @@ class CheckoutRequest extends FormRequest
      */
     public function rules(): array
     {
+        // item_ids(장바구니 경유) 또는 direct_items(바로 구매, 장바구니 미경유) 택일
+        $isDirect = $this->has('direct_items');
+
         $rules = [
-            'item_ids' => 'required|array|min:1',
+            'item_ids' => [Rule::requiredIf(! $isDirect), 'array', 'min:1'],
             'item_ids.*' => ['integer', Rule::exists(Cart::class, 'id')],
+            'direct_items' => [Rule::requiredIf($isDirect), 'array', 'min:1'],
+            'direct_items.*.product_id' => ['required_with:direct_items', 'integer'],
+            // 메인 옵션 식별자 (옵션 ID 기반). 옵션 없는 상품은 미전송 → 서버가 기본 옵션 자동 해석
+            'direct_items.*.product_option_id' => ['nullable', 'integer'],
+            'direct_items.*.quantity' => ['required_with:direct_items', 'integer', 'min:1'],
+            // 바로구매 추가옵션 선택 (서버에서 value_id 기준 검증/가격 재조회)
+            'direct_items.*.additional_option_selections' => ['nullable', 'array'],
+            'direct_items.*.additional_option_selections.*.additional_option_id' => ['required_with:direct_items.*.additional_option_selections', 'integer'],
+            'direct_items.*.additional_option_selections.*.value_id' => ['required_with:direct_items.*.additional_option_selections', 'integer'],
+            // 직접입력 텍스트 (선택지의 allow_custom_text 여부·필수성은 서버에서 재검증)
+            'direct_items.*.additional_option_selections.*.custom_text' => ['nullable', 'string', 'max:255'],
             'coupon_issue_ids' => 'nullable|array',
             'coupon_issue_ids.*' => 'integer',
             'use_points' => 'nullable|integer|min:0',

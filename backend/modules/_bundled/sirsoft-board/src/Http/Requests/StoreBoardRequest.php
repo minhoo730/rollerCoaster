@@ -9,15 +9,24 @@ use App\Rules\LocaleRequiredTranslatable;
 use App\Rules\TranslatableField;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
+use Modules\Sirsoft\Board\Enums\ReplyDeletePolicy;
+use Modules\Sirsoft\Board\Http\Requests\Concerns\ReadsBoardLimits;
+use Modules\Sirsoft\Board\Http\Requests\Concerns\ValidatesLengthRange;
 use Modules\Sirsoft\Board\Rules\BoardTypeValidationRule;
 use Modules\Sirsoft\Board\Rules\SlugUniqueRule;
 
 class StoreBoardRequest extends FormRequest
 {
+    use ReadsBoardLimits;
+    use ValidatesLengthRange;
+
     /**
      * 사용자가 이 요청을 수행할 권한이 있는지 확인
      *
      * 권한 체크는 라우트의 permission 미들웨어에서 수행됩니다.
+     *
+     * @return bool 항상 true (권한은 미들웨어에서 검증)
      */
     public function authorize(): bool
     {
@@ -46,6 +55,7 @@ class StoreBoardRequest extends FormRequest
             'use_comment' => $settings['use_comment'] ?? true,
             'use_reply' => $settings['use_reply'] ?? true,
             'max_reply_depth' => $settings['max_reply_depth'] ?? 5,
+            'reply_delete_policy' => $settings['reply_delete_policy'] ?? ReplyDeletePolicy::Cascade->value,
             'max_comment_depth' => $settings['max_comment_depth'] ?? 10,
             'use_file_upload' => $settings['use_file_upload'] ?? false,
             'comment_order' => $settings['comment_order'] ?? 'ASC',
@@ -93,39 +103,46 @@ class StoreBoardRequest extends FormRequest
 
     /**
      * 요청에 적용할 검증 규칙
+     *
+     * @return array<string, mixed> 검증 규칙 배열
      */
     public function rules(): array
     {
-        // config에서 제한값 가져오기
-        $limits = config('sirsoft-board.limits', []);
-        $perPageMin = $limits['per_page_min'] ?? 5;
-        $perPageMax = $limits['per_page_max'] ?? 100;
-        $maxFileSizeMax = $limits['max_file_size_max'] ?? 200; // MB
-        $maxFileCountMax = $limits['max_file_count_max'] ?? 20;
+        // config 기준 제한값 (폴백 기본치는 ReadsBoardLimits 트레이트가 단일 관리)
+        $limits = $this->boardLimits();
+        $perPageMin = $limits['per_page_min'];
+        $perPageMax = $limits['per_page_max'];
+        $maxFileSizeMax = $limits['max_file_size_max']; // MB
+        $maxFileCountMax = $limits['max_file_count_max'];
+        $categoryMax = $limits['category_max'];
 
         // 제목 길이 제한
-        $minTitleLengthMin = $limits['min_title_length_min'] ?? 0;
-        $minTitleLengthMax = $limits['min_title_length_max'] ?? 200;
-        $maxTitleLengthMin = $limits['max_title_length_min'] ?? 1;
-        $maxTitleLengthMax = $limits['max_title_length_max'] ?? 200;
+        $minTitleLengthMin = $limits['min_title_length_min'];
+        $minTitleLengthMax = $limits['min_title_length_max'];
+        $maxTitleLengthMin = $limits['max_title_length_min'];
+        $maxTitleLengthMax = $limits['max_title_length_max'];
 
         // 내용 길이 제한
-        $minContentLengthMin = $limits['min_content_length_min'] ?? 0;
-        $minContentLengthMax = $limits['min_content_length_max'] ?? 10000;
-        $maxContentLengthMin = $limits['max_content_length_min'] ?? 1;
-        $maxContentLengthMax = $limits['max_content_length_max'] ?? 50000;
+        $minContentLengthMin = $limits['min_content_length_min'];
+        $minContentLengthMax = $limits['min_content_length_max'];
+        $maxContentLengthMin = $limits['max_content_length_min'];
+        $maxContentLengthMax = $limits['max_content_length_max'];
 
         // 댓글 길이 제한
-        $minCommentLengthMin = $limits['min_comment_length_min'] ?? 0;
-        $minCommentLengthMax = $limits['min_comment_length_max'] ?? 1000;
-        $maxCommentLengthMin = $limits['max_comment_length_min'] ?? 1;
-        $maxCommentLengthMax = $limits['max_comment_length_max'] ?? 1000;
+        $minCommentLengthMin = $limits['min_comment_length_min'];
+        $minCommentLengthMax = $limits['min_comment_length_max'];
+        $maxCommentLengthMin = $limits['max_comment_length_min'];
+        $maxCommentLengthMax = $limits['max_comment_length_max'];
 
         // 답글/대댓글 깊이 제한
-        $maxReplyDepthMin = $limits['max_reply_depth_min'] ?? 1;
-        $maxReplyDepthMax = $limits['max_reply_depth_max'] ?? 10;
-        $maxCommentDepthMin = $limits['max_comment_depth_min'] ?? 0;
-        $maxCommentDepthMax = $limits['max_comment_depth_max'] ?? 10;
+        $maxReplyDepthMin = $limits['max_reply_depth_min'];
+        $maxReplyDepthMax = $limits['max_reply_depth_max'];
+        $maxCommentDepthMin = $limits['max_comment_depth_min'];
+        $maxCommentDepthMax = $limits['max_comment_depth_max'];
+
+        // NEW 배지 표시 기간 (0 = 표시 안 함)
+        $newDisplayHoursMin = $limits['new_display_hours_min'];
+        $newDisplayHoursMax = $limits['new_display_hours_max'];
 
         $rules = [
             // 기본 정보 (name, description은 다국어 필드 - 기본 언어만 필수)
@@ -135,15 +152,18 @@ class StoreBoardRequest extends FormRequest
             'is_active' => ['sometimes', 'boolean'],
             'type' => ['required', 'string', 'max:50', new BoardTypeValidationRule],
 
+            // 관리자 메뉴 추가 토글 (DB 컬럼 아님 - Service에서 메뉴 등록에 사용)
+            'add_to_menu' => ['sometimes', 'boolean'],
+
             // 목록 설정
             'per_page' => ['required', 'integer', "min:{$perPageMin}", "max:{$perPageMax}"],
             'per_page_mobile' => ['required', 'integer', "min:{$perPageMin}", "max:{$perPageMax}"],
             'order_by' => ['required', 'in:created_at,view_count,title,author'],
             'order_direction' => ['required', 'in:ASC,DESC'],
 
-            // 분류 설정
-            'categories' => ['nullable', 'array'],
-            'categories.*' => ['string', 'max:50'],
+            // 분류 설정 (개수 상한은 config 기준, 빈/공백 이름 차단)
+            'categories' => ['nullable', 'array', "max:{$categoryMax}"],
+            'categories.*' => ['string', 'filled', 'regex:/\S/', 'max:50'],
 
             // 기능 설정
             'show_view_count' => ['required', 'boolean'],
@@ -152,7 +172,7 @@ class StoreBoardRequest extends FormRequest
             'use_reply' => ['required', 'boolean'],
             'use_report' => ['required', 'boolean'],
             'comment_order' => ['required', 'in:ASC,DESC'],
-            'new_display_hours' => ['nullable', 'integer', 'min:1', 'max:720'],
+            'new_display_hours' => ['nullable', 'integer', "min:{$newDisplayHoursMin}", "max:{$newDisplayHoursMax}"],
 
             // 제목 길이 제한
             'min_title_length' => ['nullable', 'integer', "min:{$minTitleLengthMin}", "max:{$minTitleLengthMax}"],
@@ -170,7 +190,10 @@ class StoreBoardRequest extends FormRequest
             'use_file_upload' => ['required', 'boolean'],
             'max_file_size' => ['nullable', 'integer', 'min:1', "max:{$maxFileSizeMax}"],
             'max_file_count' => ['nullable', 'integer', 'min:1', "max:{$maxFileCountMax}"],
-            'allowed_extensions' => ['nullable', 'array'],
+            // 허용 확장자: 첨부 사용 게시판은 최소 1개 필수 (빈 배열 저장 시 전 파일 거부되던 버그 방지).
+            // 첨부 미사용 게시판은 검증 제외(exclude_if) — min:1 이 빈 배열에 무조건 걸리므로
+            // required_if 만으로는 빈 값 허용이 불가하다. exclude_if 로 필드 자체를 검증에서 제거한다.
+            'allowed_extensions' => ['exclude_if:use_file_upload,false', 'required', 'array', 'min:1'],
             'allowed_extensions.*' => ['string', 'max:10'],
 
             // 게시판 관리 인원 설정 (관리자는 최소 1명 필수, 스텝은 선택적)
@@ -186,6 +209,7 @@ class StoreBoardRequest extends FormRequest
 
             // 답글/대댓글 깊이 제한
             'max_reply_depth' => ['nullable', 'integer', "min:{$maxReplyDepthMin}", "max:{$maxReplyDepthMax}"],
+            'reply_delete_policy' => ['required', 'string', Rule::in(ReplyDeletePolicy::values())],
             'max_comment_depth' => ['nullable', 'integer', "min:{$maxCommentDepthMin}", "max:{$maxCommentDepthMax}"],
 
             // 알림 설정
@@ -202,12 +226,27 @@ class StoreBoardRequest extends FormRequest
     }
 
     /**
+     * 검증기에 교차 검증 규칙을 추가합니다.
+     *
+     * 길이 제한 필드의 min ≤ max 관계를 검증합니다.
+     *
+     * @param  Validator  $validator  검증기
+     */
+    public function withValidator(Validator $validator): void
+    {
+        $this->applyLengthRangeValidation($validator);
+    }
+
+    /**
      * 검증할 필드의 이름을 커스터마이징
+     *
+     * @return array<string, string> 필드명 → 표시명 매핑
      */
     public function attributes(): array
     {
         $attributes = [
-            'blocked_keywords' => __('sirsoft-board::admin.form.fields.blocked_keywords.label'),
+            'blocked_keywords' => __('sirsoft-board::validation.attributes.board.blocked_keywords'),
+            'add_to_menu' => __('sirsoft-board::validation.attributes.board.add_to_menu'),
         ];
 
         // 권한 필드에 대한 동적 속성 매핑
@@ -228,7 +267,7 @@ class StoreBoardRequest extends FormRequest
 
             // permissions.{key}.roles 필드에 대한 속성 이름 지정
             $fieldKey = str_replace('.', '_', $permKey); // admin.posts.read -> admin_posts_read
-            $attributes["permissions.{$fieldKey}.roles"] = "{$permissionName} " . __('sirsoft-board::validation.role_field_suffix');
+            $attributes["permissions.{$fieldKey}.roles"] = "{$permissionName} ".__('sirsoft-board::validation.role_field_suffix');
         }
 
         return $attributes;
@@ -236,6 +275,8 @@ class StoreBoardRequest extends FormRequest
 
     /**
      * 검증 오류 메시지 커스터마이징
+     *
+     * @return array<string, string> 규칙 키 → 메시지 매핑
      */
     public function messages(): array
     {
@@ -269,7 +310,10 @@ class StoreBoardRequest extends FormRequest
 
             // 분류 검증 메시지
             'categories.array' => __('sirsoft-board::validation.categories.array'),
+            'categories.max' => __('sirsoft-board::validation.categories.max'),
             'categories.*.max' => __('sirsoft-board::validation.categories.item_max'),
+            'categories.*.filled' => __('sirsoft-board::validation.categories.item_required'),
+            'categories.*.regex' => __('sirsoft-board::validation.categories.item_required'),
 
             // 기능 설정 검증 메시지
             'show_view_count.required' => __('sirsoft-board::validation.show_view_count.required'),
@@ -309,6 +353,8 @@ class StoreBoardRequest extends FormRequest
             'max_file_size.max' => __('sirsoft-board::validation.max_file_size.max'),
             'max_file_count.min' => __('sirsoft-board::validation.max_file_count.min'),
             'max_file_count.max' => __('sirsoft-board::validation.max_file_count.max'),
+            'allowed_extensions.required' => __('sirsoft-board::validation.allowed_extensions.min'),
+            'allowed_extensions.min' => __('sirsoft-board::validation.allowed_extensions.min'),
 
             // 관리자 설정 검증 메시지
             'board_manager_ids.required' => __('sirsoft-board::validation.board_manager_ids.required'),

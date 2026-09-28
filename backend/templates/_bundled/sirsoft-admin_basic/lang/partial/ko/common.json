@@ -1,5 +1,6 @@
 {
   "all": "전체",
+  "view_all": "전체보기",
   "loading": "로딩 중...",
   "saving": "저장하는 중...",
   "error": "오류가 발생했습니다.",
@@ -18,6 +19,7 @@
   "required": "필수",
   "cancel": "취소",
   "delete": "삭제",
+  "list": "목록",
   "deleting": "삭제 중...",
   "processing": "처리 중...",
   "confirm": "확인",
@@ -47,6 +49,8 @@
   "logout": "로그아웃",
   "expand_sidebar": "사이드바 펼치기",
   "collapse_sidebar": "사이드바 접기",
+  "expand": "펼치기",
+  "collapse": "접기",
   "module": "모듈",
   "plugin": "플러그인",
   "status_active": "활성화",
@@ -74,5 +78,8 @@
   "scope_type_role_desc": "같은 역할의 사용자 리소스만",
   "multilingual": {
     "add_language": "언어 추가"
-  }
+  },
+  "refresh": "새로고침",
+  "activate": "활성화",
+  "skip": "건너뛰기"
 }

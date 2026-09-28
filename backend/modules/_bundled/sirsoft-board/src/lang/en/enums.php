@@ -14,6 +14,12 @@ return [
         'always' => 'Always Required',
     ],
 
+    // 답글 삭제 정책
+    'reply_delete_policy' => [
+        'block' => 'Block deletion (cannot delete posts with replies)',
+        'cascade' => 'Delete together (replies are deleted with the post)',
+    ],
+
     // Order Direction
     'order_direction' => [
         'asc' => 'Ascending',
@@ -63,6 +69,7 @@ return [
         'system' => 'System',
         'auto_hide' => 'Auto Hide',
         'user' => 'User Deleted',
+        'cascade' => 'Post Deleted',
     ],
 
     // Post Status

@@ -14,12 +14,14 @@
 5. 테스트 실행 중 발견한 무관 에러도 같은 세션에서 함께 처리 (stale test 수정 or 로직 수정)
 6. 릴리스 전 composer test-smoke 통과 필수 (Installation 스위트)
 7. 백엔드: php artisan test --filter=TestName / _bundled 확장은 _bundled에서 직접 실행
+8. settings 디스크는 TestCase 가 전역 페이크 — 실제 설정 파일 오염 차단. 저장 직후 값 검증은 g7_core_settings() 말고 ConfigRepository::getCategory()
 ```
 
 ---
 
 ## 목차
 
+- [실제 환경 파일 보호 (settings 디스크 격리)](#실제-환경-파일-보호-settings-디스크-격리)
 - [기능 단위 시나리오 매트릭스](#기능-단위-시나리오-매트릭스)
 - [도메인별 테스트 전략 매트릭스](#도메인별-테스트-전략-매트릭스)
 - [Pre-release Smoke Suite](#pre-release-smoke-suite)
@@ -71,6 +73,31 @@ powershell -Command "npm run test:run"
 2. `_bundled` src/ → PSR-4 prepend 등록 (활성 디렉토리보다 우선 검색)
 3. `autoload-extensions.php` → 이미 로드된 _bundled 항목은 스킵
 4. Manager/RouteServiceProvider → `class_exists` 가드로 중복 선언 방지
+5. 확장 `vendor/` → 제3자 composer 패키지만 골라 별도 로더로 등록
+
+### 확장의 제3자 composer 패키지
+
+확장이 자기 `composer.json` 으로 들여온 제3자 패키지(예: HTML 정화 라이브러리)는 `tests/bootstrap.php`
+가 등록합니다. 확장별 테스트 베이스 클래스에서 같은 일을 다시 하지 않습니다 — 규칙이 두 곳으로
+갈라지면 한쪽만 고쳐져 조용히 어긋납니다.
+
+```
+금지: 확장 vendor 의 autoload.php 를 그대로 require
+필수: 생성된 맵에서 제3자 항목만 골라 vendorDir 없는 로더로 등록
+```
+
+그 오토로더를 그대로 쓰면 두 가지가 오류 없이 깨집니다.
+
+1. 확장 **자신의** PSR-4 와 files 를 활성 디렉토리로 매핑하고 자신을 prepend 로 걸어, 위 2번의
+   `_bundled` 등록을 이깁니다. 테스트가 `_bundled` 가 아니라 활성 디렉토리 사본을 검증하게 되어
+   "`_bundled` 에서만 작업한다" 는 규율이 조용히 깨집니다.
+2. Composer 로더는 `vendorDir` 를 가지면 등록 로더 목록의 맨 앞에 자신을 넣는데, 테스트용 앱
+   생성이 그 첫 항목에서 base path 를 유추합니다. 이후 테스트의 앱 부팅이 확장 디렉토리에서
+   `bootstrap/app.php` 를 찾다 실패합니다. (운영 진입점은 base path 를 명시 전달하므로 영향이 없습니다.)
+
+이 결손은 그 패키지를 쓰는 코드 경로를 아무도 테스트하지 않는 동안 드러나지 않습니다. 확장에
+제3자 패키지를 추가하면 그 패키지를 실제로 로드하는 테스트를 함께 두고, 로드 실패를 skip 이 아니라
+단언 실패로 드러냅니다.
 
 ### 주의사항
 
@@ -141,10 +168,14 @@ class OrderActivityLogListenerTest extends TestCase
 
 ---
 
-## 확장 마이그레이션 자동 로드 (requiredExtensions)
+## 확장 격리 (requiredExtensions)
 
-코어 테스트에서 확장(모듈/플러그인)의 DB 테이블이 필요한 경우, `$requiredExtensions` 프로퍼티를 선언합니다.
-`RefreshDatabase`의 `migrate:fresh` 실행 시 해당 확장의 마이그레이션도 함께 실행됩니다.
+코어 테스트는 기본적으로 확장(모듈/플러그인)이 격리된 상태로 실행됩니다.
+테스트가 특정 확장을 필요로 하면 `$requiredExtensions` 프로퍼티로 명시합니다.
+이 선언은 두 가지를 동시에 수행합니다:
+
+1. **마이그레이션 로드** — `RefreshDatabase`의 `migrate:fresh` 실행 시 해당 확장의 마이그레이션도 함께 실행
+2. **확장 로딩 allowlist** — testing 환경에서 명시한 확장의 ServiceProvider / route 만 등록 허용
 
 ```php
 class ResourceAbilitiesTest extends TestCase
@@ -152,13 +183,28 @@ class ResourceAbilitiesTest extends TestCase
     use RefreshDatabase;
 
     /**
-     * sirsoft-marketing 플러그인이 User 리소스 훅에 개입하므로 마이그레이션 필요
+     * sirsoft-marketing 플러그인이 User 리소스 훅에 개입하므로 명시
      */
     protected array $requiredExtensions = [
         'plugins/sirsoft-marketing',
     ];
 }
 ```
+
+### 격리 동작 (allowlist)
+
+`$requiredExtensions` 미선언 코어 테스트는 어떤 모듈/플러그인의 ServiceProvider 도
+등록되지 않습니다. 이로써 한 확장의 전역 미들웨어(예: GDPR `CookieConsentMiddleware`)가
+무관한 코어 테스트에 개입하는 것을 차단합니다.
+
+- 확장의 ServiceProvider 바인딩 / route / 전역 미들웨어가 필요한 테스트는
+  그 확장을 `$requiredExtensions` 에 명시해야 합니다.
+- 확장 자체 테스트(`ModuleTestCase` / `PluginTestCase` 상속)는 테스트 파일 경로로
+  자기 확장을 자동 탐지(`selfExtension()`)하므로 별도 선언이 불필요합니다.
+  다른 확장에 의존하는 경우(예: 이커머스 테스트가 결제 플러그인 필요)만 명시합니다.
+- 격리는 testing 환경에서만 동작합니다 — 운영/개발 환경의 확장 로딩은 영향받지 않습니다.
+- `ModuleManager::loadModules` / `PluginManager::loadPlugins`(hook listener / config /
+  채널 등록 경로)에는 격리가 적용되지 않습니다.
 
 ### 경로 형식
 
@@ -172,10 +218,15 @@ class ResourceAbilitiesTest extends TestCase
 
 ### 동작 원리
 
-`TestCase::setUpTraits()`에서 `RefreshDatabase::refreshDatabase()` 호출 전에 확장 마이그레이션 경로를 `migrator`에 등록합니다:
+마이그레이션 등록과 allowlist 주입은 서로 다른 훅 시점에 일어납니다:
 
-1. `setUpTraits()` → `loadExtensionMigrations()` (확장 경로 등록)
-2. `parent::setUpTraits()` → `RefreshDatabase::refreshDatabase()` → `migrate:fresh` (코어 + 확장 함께 실행)
+- **allowlist 주입** — `TestCase::setUp()` 최상단에서 `ExtensionTestAllowlist::set()` 호출.
+  `parent::setUp()`의 `createApplication()`(= 모든 ServiceProvider register/boot)보다
+  먼저 실행되어야 provider 가드가 올바른 시점에 적용됩니다.
+- **마이그레이션 등록** — `TestCase::setUpTraits()`에서 `RefreshDatabase::refreshDatabase()`
+  호출 전에 확장 마이그레이션 경로를 `migrator`에 등록:
+  1. `setUpTraits()` → `loadExtensionMigrations()` (확장 경로 등록)
+  2. `parent::setUpTraits()` → `RefreshDatabase::refreshDatabase()` → `migrate:fresh` (코어 + 확장 함께 실행)
 
 ### 주의사항
 
@@ -184,6 +235,41 @@ afterApplicationCreated()는 setUpTraits() 이후 실행되므로 마이그레�
 beforeRefreshingDatabase()는 RefreshDatabase 트레이트가 부모 클래스 메서드를 가리므로 사용 불가
 ✅ setUpTraits() 오버라이드가 유일하게 작동하는 훅 포인트
 ```
+
+---
+
+## 실제 환경 파일 보호 (settings 디스크 격리)
+
+`settings` 디스크의 root 는 `storage/app/settings` — 개발/운영이 실제로 사용하는 설정 파일 그 자체다. 설정 저장 경로를 타는 테스트(설정 API 호출, `ConfigRepository::saveCategory()`)는 이 파일을 그대로 덮어쓰며, `RefreshDatabase` 는 DB 만 되돌리므로 오염이 잔류한다.
+
+`Tests\TestCase` 가 앱 부팅 직후 `Storage::fake('settings')` 로 전역 격리한다. 테스트에서 별도 조치는 필요 없다.
+
+```text
+✅ 설정 저장 테스트 = 추가 조치 불필요 (TestCase 가 이미 격리)
+❌ Storage::fake('settings') 를 테스트마다 중복 호출 — 불필요
+❌ 격리를 우회해 storage/app/settings 를 직접 읽고/쓰기 — 실제 환경 오염
+```
+
+### 저장 직후 값 검증
+
+`g7_core_settings()` / `config('g7_settings.*')` 는 **부팅 시점에 적재된 값**이라 같은 프로세스에서 저장 직후에는 갱신되지 않는다. 저장 결과를 검증하려면 저장소를 직접 읽는다.
+
+```php
+// ❌ 저장했는데 부팅 시점 값이 나온다
+$this->assertSame(20000, g7_core_settings('seo.sitemap_urls_per_file'));
+
+// ✅ 저장소 실제 값 조회
+$seo = app(ConfigRepositoryInterface::class)->getCategory('seo');
+$this->assertSame(20000, $seo['sitemap_urls_per_file']);
+```
+
+### 배경 (회귀 사례)
+
+격리 도입 전에는 `Storage::fake('settings')` 를 쓰는 테스트가 1개뿐이라, 설정 저장 테스트를 돌릴 때마다 개발 환경의 실제 설정이 테스트 값으로 대체됐다. 실측 피해: `general.json` 의 사이트명이 `"Test"`, 언어가 `ja` 로 바뀌어 **개발 사이트 언어가 일본어로 전환**되어 있었고, SEO/캐시 TTL 도 테스트 값으로 덮여 운영자가 지정한 값이 사라졌다. 테스트는 계속 green 이라 조용히 누적됐다.
+
+회귀 가드: `tests/Feature/Settings/SettingsDiskIsolationTest.php` (격리 해제 시 FAIL).
+
+`Storage::fake()` 는 **해석된 디스크 인스턴스만 교체**하고 `config('filesystems.disks.settings.root')` 는 실경로로 남는다. 격리 여부를 판정할 때는 `Storage::disk('settings')->path('')` 를 봐야 한다.
 
 ---
 
@@ -278,7 +364,29 @@ public function test_pg_payment_member_with_mileage_to_jeju(): void { ... }
 
 TypeScript 테스트는 `// @scenario` / `// @effects` 주석 동일 사용.
 
-audit rule `test-scenario-coverage` 가 매니페스트 cross product 와 effects 항목을 테스트 docblock 마킹과 대조하여 누락을 검출 (자동 차단).
+정적 검사가 매니페스트 cross product 와 effects 항목을 테스트 docblock 마킹과 대조하여 누락을 검출한다 (자동 차단).
+
+#### 항목 구분자는 쉼표뿐이다
+
+마커 파서는 축과 effects 를 **쉼표로만** 분리한다. 요약을 적을 때 흔히 쓰는 `×`(곱)나 `+`(더하기)를 구분자로 두면 여러 항목이 **한 문자열로 뭉쳐** 등록된다.
+
+| ❌ 금지 | 실제 등록 결과 |
+| --- | --- |
+| `@scenario feat a=1 × b=2` | 축 1개 `{a: "1 × b=2"}` — 실재하지 않는 조합 |
+| `@effects x + y + z` | 효과 1개 `"x + y + z"` — x·y·z 는 미등록 |
+| `@scenario a + b + c` (`=` 없음) | 빈 조합 `{}` — 아무것도 커버하지 않음 |
+
+그렇게 만들어진 마커는 **어떤 조합도 커버하지 못하는 죽은 마커**다. 게다가 cross product 대조는 "매니페스트가 요구하는 항목이 마커에 있는가" 만 보고 마커 쪽에 생긴 쓰레기 항목은 무시하므로, 구분자를 틀려도 전 게이트가 조용히 통과한다 — 실제로 36건이 그렇게 쌓였다.
+
+항목이 여럿이면 `, ` 로 적고, 파일/클래스 레벨의 **요약**이라면 마커 토큰을 걷어내 평문으로 내린다. 파일 레벨에 effects 목록을 몰아 적으면 그 메서드가 하나도 없어도 "언급됨" 으로 집계되어 커버리지가 부풀고, 메서드 삭제가 무증상 green 이 된다 — 마커는 test 에만 둔다.
+
+```php
+/**
+ * 축 요약(마커 아님 — 평문): actor, operation, outcome.
+ */
+```
+
+구분자 형식은 정적 검사가 강제한다 (자동 차단).
 
 ### cross product 폭발 관리
 
@@ -287,6 +395,42 @@ audit rule `test-scenario-coverage` 가 매니페스트 cross product 와 effect
 1. `exclusions` 로 의미 없는 조합 제외 (이유 명시 필수)
 2. **Pairwise (all-pairs)** 전략 허용: 매니페스트에 `coverage_strategy: pairwise` 명시 시 모든 axis 쌍의 모든 조합만 커버 (n축 → O(n²) 케이스). 단순 분기형 axis(true/false) 가 많을 때 유효
 3. 그래도 폭발하면 **상위 axis 분리**: 매니페스트를 도메인별로 분할 (예: `order_payment_pg_toss_member.yaml`, `order_payment_pg_toss_guest.yaml`)
+
+### 대규모 시나리오 축(scale)
+
+큐/스케줄러/배치 생성처럼 데이터가 누적되면 붕괴할 수 있는 기능은 대용량(scale) 축을 매니페스트에 선언하고, 규모 의존 결함(유계 메모리·분할 정확성·전량 적재 회피 등)을 회귀 가드로 고정한다. 배경: 사이트맵 생성 잡이 1.4M 게시글을 전량 in-memory 적재해 반복 OOM 붕괴한 사례(#79).
+
+**스키마** (`scale` = block-array of flow objects — 내장 YAML fallback 파서가 flow 객체만 중첩 파싱하므로 `- { ... }` 형태):
+
+```yaml
+scale:
+  - { n: 1500000, dataset: posts+products, assert: [bounded_peak_memory, child_count_correct, no_full_table_load] }
+```
+
+- `n`: 데이터셋 규모(건수). 10만 이상이어야 scale 축의 의미가 있다.
+- `dataset`: 대용량 데이터셋 설명(선택).
+- `assert`: 이 규모에서 검증할 단언(snake_case). 실 대용량 DB 대신 합성 iterator·계측(예: `memory_get_peak_usage`, `DB::listen`, 방송 스로틀 카운트)으로 성질을 고정해도 된다.
+
+**테스트 마킹** — `effects` 처럼 테스트 docblock `@scale` 마킹으로 각 assert 를 커버:
+
+```php
+/**
+ * @scale n=1500000 asserts=bounded_peak_memory, child_count_correct
+ */
+public function test_large_volume_splits_and_keeps_memory_bounded(): void { ... }
+```
+
+TypeScript 테스트는 `// @scale ...` 라인 주석 동일 사용.
+
+**강제 룰 2종** (자동 차단):
+
+| 룰 | 대상 | 검출 |
+|----|------|------|
+| `scenario-scale-axis-required` | `tests/scenarios/**/*.yaml` | batch/generation 매니페스트(test_files 에 `/Jobs/`·`Generator` 또는 tags `[batch]`/`[generation]`)인데 scale 축 없음 / n<100000 / assert 미커버 |
+| `job-generator-needs-scale-test` | `app/Jobs/**`·`**/*Generator.php` | 소스 변경 시 그 클래스를 언급하고 scale 축을 가진 매니페스트가 없음 |
+
+- `*Command.php` 는 흔하고 볼륨 비의존이라 `job-generator-needs-scale-test` 대상에서 제외한다. 배치 커맨드는 매니페스트 `tags: [batch]` + `scenario-scale-axis-required` 로 커버한다.
+- 면제: 매니페스트 헤더 `# audit:allow scenario-scale-axis-required reason: ...` / 소스 헤더 `// audit:allow job-generator-needs-scale-test <사유>`.
 
 ### 작성 절차
 

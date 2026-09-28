@@ -11,10 +11,14 @@ import type { Route } from './routing/Router';
 import { LayoutLoader, LayoutLoaderError } from './template-engine/LayoutLoader';
 import type { InitActionDefinition, LayoutScript, ComputedSwitchDefinition } from './template-engine/LayoutLoader';
 import { DataBindingEngine } from './template-engine/DataBindingEngine';
+import { evaluateSafeExpression } from './template-engine/SafeExpressionEvaluator';
+import { extractSingleBinding } from './template-engine/BindingShape';
+import { hasPipes } from './template-engine/PipeRegistry';
 import { evaluateRenderCondition } from './template-engine/helpers/RenderHelpers';
 import { ComponentRegistry } from './template-engine/ComponentRegistry';
 import { DataSourceManager } from './template-engine/DataSourceManager';
 import { initTemplateEngine, renderTemplate, destroyTemplate, getState, updateTemplateData } from './template-engine';
+import { checkLayoutEditorMode } from './template-engine/layout-editor/hooks/useEditorMode';
 import { ErrorDisplay } from './template-engine/ErrorDisplay';
 import { toTemplateEngineError } from './template-engine/TemplateEngineError';
 import { ErrorPageHandler } from './template-engine/ErrorPageHandler';
@@ -25,8 +29,23 @@ import { getErrorHandlingResolver } from './error';
 import type { ErrorHandlingMap } from './types/ErrorHandling';
 import { createLogger, Logger } from './utils/Logger';
 import { webSocketManager } from './websocket/WebSocketManager';
-import { getModuleAssetLoader, parseModuleAssetsFromConfig, parsePluginAssetsFromConfig } from './modules';
+import { getModuleAssetLoader, parseModuleAssetsFromConfig, parsePluginAssetsFromConfig, parseBundleUrlsFromConfig } from './modules';
 import { SystemBannerManager } from './template-engine/SystemBannerManager';
+import {
+    installUnloadGuard,
+    isDocumentUnloading,
+    loadScriptWithRetry,
+} from './template-engine/networkResilience';
+import { notifyAssetFailure, clearAssetFailure } from './assets/AssetFailureNotice';
+import { suffixed, extStaticUrl, convertToCurrentMode } from './support/assetUrl';
+import { fetchStaticFirst } from './support/fetchStaticFirst';
+import {
+    normalizeScriptSrcForOriginCheck as normalizeScriptSrcForOriginCheckImpl,
+    extractScriptHost as extractScriptHostImpl,
+    getTrustedScriptHosts as getTrustedScriptHostsImpl,
+    isAllowedScriptSrc as isAllowedScriptSrcImpl,
+} from './support/scriptSrcPolicy';
+import { resetLocalInitTracking } from './template-engine/localInitSlot';
 /**
  * DevTools 추적 - G7DevToolsCore.getInstance() 직접 호출 대신 G7Core.devTools를 사용합니다.
  */
@@ -237,8 +256,25 @@ export class TemplateApp {
     private globalStateListeners: Set<(state: GlobalState) => void> = new Set();
     /** 현재 진행 중인 라우트 변경 요청 ID (새 요청 시 이전 요청 무시용) */
     private currentRouteChangeId: number = 0;
-    /** 현재 레이아웃의 데이터 소스 정의 (refetch용) */
+    /**
+     * 재시도까지 실패한 레이아웃 스크립트 id 집합.
+     *
+     * 실패를 어딘가에 남기지 않으면 그 스크립트가 등록하는 핸들러가 전부 미등록이어도
+     * 화면에는 "버튼이 안 눌린다" 로만 나타난다. `ModuleAssetLoader` 의 `failedJsAssets`
+     * 와 같은 역할이다.
+     */
+    private failedLayoutScripts: Set<string> = new Set();
+    /** 현재 레이아웃의 데이터 소스 정의 (if 조건으로 필터링된 결과 — refetch용) */
     private currentDataSources: any[] = [];
+    /**
+     * 현재 레이아웃의 원본 데이터 소스 정의 (if 필터링 전 전체).
+     *
+     * replace:true navigate(탭 전환/필터 변경)로 진입하는 updateQueryParams 경로는
+     * 변경된 query 컨텍스트로 데이터소스 if 를 재평가해야 한다. currentDataSources(필터링된
+     * 스냅샷)만으로는 직전 진입 시점 조건에 고정되어, 탭 전환 시 다른 탭의 데이터소스가
+     * 잘못 선택되는 회귀가 발생한다. 원본을 보존해 재평가 가능하게 한다.
+     */
+    private currentRawDataSources: any[] = [];
     /** 현재 라우트 파라미터 (refetch용) */
     private currentRouteParams: Record<string, string> = {};
     /** 현재 쿼리 파라미터 (refetch용) */
@@ -432,12 +468,21 @@ export class TemplateApp {
             Logger.getInstance().setDebug(this.config.debug);
             logger.log('Initializing with config:', this.config);
 
+            // 문서 이탈 감지 가드 설치 — 새로고침으로 버려지는 문서의 요청 실패에
+            // 에러 화면을 그리지 않기 위함 (@since engine-v1.53.0)
+            installUnloadGuard();
+
             // 1. 템플릿 엔진 초기화, ComponentRegistry, routes.json, 사용자 정보를 병렬 로딩
             const componentRegistry = ComponentRegistry.getInstance();
             const authManager = AuthManager.getInstance();
 
-            // 저장된 캐시 버전 로드 (초기 API 호출에 사용)
-            const storedCacheVersion = this.loadCacheVersionFromStorage() || 0;
+            // 캐시 버전 시드 — blade 주입값(현재 렌더와 동일 버전) 우선, 부재 시 localStorage 폴백.
+            // localStorage 만 보면 stale 버전으로 첫 burst 가 나가고 config 핸드셰이크가
+            // routes + lang 을 통째로 재로드하는 이중 로드가 발생한다 (#122, @since engine-v1.61.0)
+            const injectedCacheVersion =
+                typeof window !== 'undefined' ? Number((window as any).G7Config?.cache_version) || 0 : 0;
+            const storedCacheVersion =
+                injectedCacheVersion > 0 ? injectedCacheVersion : this.loadCacheVersionFromStorage() || 0;
 
             const [_, __, routesData, ___, templateConfig] = await Promise.all([
                 // 템플릿 엔진 초기화 (다국어 파일 병렬 로드)
@@ -451,10 +496,19 @@ export class TemplateApp {
                 // ComponentRegistry 로딩 (components.json)
                 componentRegistry.loadComponents(
                     this.config.templateId,
-                    this.config.templateType
+                    this.config.templateType,
+                    storedCacheVersion
                 ),
                 // routes.json 로딩 (저장된 캐시 버전 사용)
-                fetch(`/api/templates/${this.config.templateId}/routes.json${storedCacheVersion > 0 ? `?v=${storedCacheVersion}` : ''}`)
+                // 정적 게시본(bake) 우선 — miss 면 즉시 종전 API 로 폴백 (#122).
+                // legacy 측은 네트워크 일시 실패(응답 없음)에만 재시도. HTTP 에러는 아래 체인이 종전대로 throw.
+                fetchStaticFirst(
+                    storedCacheVersion > 0
+                        ? extStaticUrl(`templates/${this.config.templateId}/routes.json`, storedCacheVersion)
+                        : null,
+                    suffixed(`/api/templates/${this.config.templateId}/routes`, 'json', storedCacheVersion > 0 ? storedCacheVersion : null),
+                    { label: 'routes.json' }
+                )
                     .then(response => {
                         if (!response.ok) {
                             throw new Error(`Failed to load routes: ${response.statusText}`);
@@ -474,7 +528,7 @@ export class TemplateApp {
                 // 사용자 정보 프리로드 (에러 발생 시 무시)
                 authManager.preloadAuth(this.config.templateType === 'admin' ? 'admin' : 'user'),
                 // 템플릿 config.json 로딩 (errorHandling 파싱)
-                fetch(`/api/templates/${this.config.templateId}/config.json`)
+                fetch(suffixed(`/api/templates/${this.config.templateId}/config`, 'json'))
                     .then(response => {
                         if (!response.ok) {
                             // config.json 로드 실패는 무시 (선택적)
@@ -502,7 +556,9 @@ export class TemplateApp {
 
             // 확장 기능 캐시 버전 저장 (모듈/플러그인 활성화 시 갱신됨)
             if (templateConfig?.cache_version !== undefined) {
-                const previousVersion = this.loadCacheVersionFromStorage();
+                // 재로드 판정 기준은 "이번 burst 가 실제 사용한 버전" — stale localStorage 와
+                // 비교하면 blade 시드로 이미 최신 URL 을 쓴 경우에도 재로드가 발화한다 (#122)
+                const previousVersion = storedCacheVersion > 0 ? storedCacheVersion : null;
                 this.extensionCacheVersion = templateConfig.cache_version;
                 this.saveCacheVersionToStorage(this.extensionCacheVersion);
                 logger.log('Extension cache version:', this.extensionCacheVersion);
@@ -511,7 +567,13 @@ export class TemplateApp {
                 if (previousVersion !== null && previousVersion !== this.extensionCacheVersion) {
                     logger.log('Cache version changed, reloading routes...');
                     // routes.json을 새 캐시 버전으로 다시 로드
-                    const newRoutesData = await fetch(`/api/templates/${this.config.templateId}/routes.json?v=${this.extensionCacheVersion}`)
+                    // 재로드는 **새 버전** 정적 경로를 조합한다 — 아직 미게시면 404 →
+                    // fetchStaticFirst 가 legacy 로 즉시 폴백 (#122)
+                    const newRoutesData = await fetchStaticFirst(
+                        extStaticUrl(`templates/${this.config.templateId}/routes.json`, this.extensionCacheVersion),
+                        suffixed(`/api/templates/${this.config.templateId}/routes`, 'json', this.extensionCacheVersion),
+                        { label: 'routes.json (reload)' }
+                    )
                         .then(response => {
                             if (!response.ok) {
                                 throw new Error(`Failed to reload routes: ${response.statusText}`);
@@ -675,6 +737,32 @@ export class TemplateApp {
             // 8.5 routeNotFound 이벤트 핸들러 등록 (404 에러 페이지 처리)
             this.router.on('routeNotFound', (path: string) => this.handleRouteNotFound(path));
 
+            // 8.6 레이아웃 편집기 모드 가드
+            //
+            // URL 이 `/admin/layout-editor/:identifier` 패턴이면 라우터 매칭을 건너뛰고
+            // 직접 renderTemplate 호출 — template-engine.ts 의 checkLayoutEditorMode 분기가
+            // LayoutEditorChrome 을 같은 reactRoot + 코어 컨텍스트 안에서 렌더한다.
+            //
+            // 이 가드가 없으면 `/admin/layout-editor/...` 가 일반 라우트에 매칭되지 않아
+            // routeNotFound → 404 페이지 렌더 흐름을 타게 되고, 그 안의 renderTemplate
+            // 호출에서야 비로소 편집기 분기가 작동한다. 결과적으로 화면은 정상이지만
+            // 콘솔에 `[Router] No route matched` 워닝 + 불필요한 `/api/layouts/.../404.json`
+            // fetch 가 발생하며, 후속 Phase 에서 라우트 의존 기능 도입 시 회귀 위험이 있다.
+            if (typeof window !== 'undefined' && checkLayoutEditorMode(window.location.pathname)) {
+                logger.log('Layout editor mode detected — skipping router match');
+                await renderTemplate({
+                    containerId: 'app',
+                    layoutJson: { components: [] } as any,
+                    dataContext: {},
+                    translationContext: {
+                        templateId: this.config.templateId,
+                        locale: this.config.locale,
+                    },
+                });
+                logger.log('Template App initialized in layout editor mode');
+                return;
+            }
+
             // 9. 초기 라우트 처리
             this.router.navigateToCurrentPath();
 
@@ -686,38 +774,67 @@ export class TemplateApp {
     }
 
     /**
-     * 모듈/플러그인 에셋 로드
+     * 모듈/플러그인 에셋 로드 (서버측 병합 번들)
      *
-     * window.G7Config.moduleAssets 및 pluginAssets에서 에셋 정보를 읽어
-     * 동적으로 JS/CSS를 로드합니다.
+     * window.G7Config.bundleUrls 에서 병합 번들 URL 을 읽어 모듈 번들 →
+     * 플러그인 번들 순으로 로드한다. 각 번들은 활성 확장 IIFE 를 priority 순으로
+     * 이어붙인 단일 파일이며, 로드 즉시 각 IIFE 가 자가등록(핸들러/리스너)을
+     * 실행한다. 개별 로딩(loadActiveExtensionAssets)과 실행 계약은 동일하다.
      *
-     * 모듈 JS는 IIFE 형태로 빌드되어 로드 즉시 initModule()이 실행되고,
-     * ActionDispatcher에 핸들러가 등록됩니다.
+     * 모듈 → 플러그인 순서를 유지하는 이유: gdpr preblocker 등 인터셉터가
+     * 플러그인 번들 내 priority 최상단으로 오되 모듈보다는 뒤에 실행된다
+     * (2번들 구조). bundleUrls 가 없으면(구버전 blade) 개별 로딩으로 폴백한다.
+     *
+     * @since engine-v1.52.0 (서버측 번들 로딩으로 전환)
      */
     private async loadExtensionAssets(): Promise<void> {
         try {
             const moduleAssetLoader = getModuleAssetLoader();
+            const bundleUrls = parseBundleUrlsFromConfig();
 
-            // 모듈 에셋 로드
-            const moduleAssets = parseModuleAssetsFromConfig();
-            if (moduleAssets.length > 0) {
-                logger.log('Loading module assets:', moduleAssets.map(m => m.identifier));
-                await moduleAssetLoader.loadActiveExtensionAssets(moduleAssets);
+            // bundleUrls 부재 시 개별 로딩 폴백 (회귀 안전)
+            if (!bundleUrls) {
+                await this.loadExtensionAssetsIndividually();
+                await moduleAssetLoader.loadCustomAssets();
+
+                return;
             }
 
-            // 플러그인 에셋 로드
-            const pluginAssets = parsePluginAssetsFromConfig();
-            if (pluginAssets.length > 0) {
-                logger.log('Loading plugin assets:', pluginAssets.map(p => p.identifier));
-                await moduleAssetLoader.loadActiveExtensionAssets(pluginAssets);
-            }
+            // 모듈 번들 → 플러그인 번들 순서 (gdpr 는 플러그인 번들 내 최상단)
+            await moduleAssetLoader.loadBundle('module', bundleUrls.moduleJs, bundleUrls.moduleCss);
+            await moduleAssetLoader.loadBundle('plugin', bundleUrls.pluginJs, bundleUrls.pluginCss);
 
-            if (moduleAssets.length > 0 || pluginAssets.length > 0) {
-                logger.log('Extension assets loaded successfully');
-            }
+            // 운영자가 덧붙인 자산은 **마지막**에 붙인다 — CSS 는 나중에 온 규칙이 이기므로,
+            // 확장 번들보다 뒤에 와야 재정의가 성립한다.
+            await moduleAssetLoader.loadCustomAssets();
+
+            logger.log('Extension bundle assets loaded successfully');
         } catch (error) {
             // 에셋 로드 실패는 경고만 출력하고 앱 계속 진행
             logger.warn('Failed to load extension assets:', error);
+        }
+    }
+
+    /**
+     * 개별 확장 에셋 로드 (bundleUrls 부재 시 폴백)
+     *
+     * window.G7Config.moduleAssets/pluginAssets 에서 확장별 개별 URL 을 읽어
+     * priority 순으로 각각 로드한다. 서버측 번들이 준비되지 않은 구버전 blade
+     * 환경 회귀 안전용.
+     */
+    private async loadExtensionAssetsIndividually(): Promise<void> {
+        const moduleAssetLoader = getModuleAssetLoader();
+
+        const moduleAssets = parseModuleAssetsFromConfig();
+        if (moduleAssets.length > 0) {
+            logger.log('Loading module assets (individual fallback):', moduleAssets.map(m => m.identifier));
+            await moduleAssetLoader.loadActiveExtensionAssets(moduleAssets);
+        }
+
+        const pluginAssets = parsePluginAssetsFromConfig();
+        if (pluginAssets.length > 0) {
+            logger.log('Loading plugin assets (individual fallback):', pluginAssets.map(p => p.identifier));
+            await moduleAssetLoader.loadActiveExtensionAssets(pluginAssets);
         }
     }
 
@@ -941,6 +1058,8 @@ export class TemplateApp {
 
             // 현재 데이터 소스 정보 저장 (refetch용)
             this.currentDataSources = dataSources;
+            // 원본(if 필터링 전) 보존 — updateQueryParams(replace:true) 의 if 재평가용
+            this.currentRawDataSources = rawDataSources;
             this.currentRouteParams = route.params || {};
             this.currentQueryParams = queryParams;
 
@@ -1053,7 +1172,10 @@ export class TemplateApp {
                 route: { ...(route.params || {}), path: route.path },
                 query: queryObject,
                 _global: { ...this.globalState },  // 나중에 갱신됨
-                _globalSetState: (updates: Partial<GlobalState>) => this.setGlobalState(updates),  // Form dataKey="_global.xxx" 지원
+                // Form dataKey="_global.xxx" 지원.
+                // @since engine-v1.54.5: 함수형 업데이트도 그대로 위임한다 — 소비부(DynamicRenderer 의
+                // _localInit 동기화)가 렌더 시점 스냅샷 대신 쓰기 시점 prev 를 base 로 쓰기 위함.
+                _globalSetState: (updates: Partial<GlobalState> | ((prev: GlobalState) => GlobalState)) => this.setGlobalState(updates),
                 _dataSourceErrors: Object.keys(dataSourceErrors).length > 0 ? dataSourceErrors : undefined,
                 // initLocal 옵션으로 초기화할 로컬 상태 (DynamicRenderer에서 처리)
                 _localInit: Object.keys(localInit).length > 0 ? localInit : undefined,
@@ -1085,6 +1207,11 @@ export class TemplateApp {
                 // 다른 레이아웃으로 전환 → _local 완전 초기화 (이전 레이아웃 잔존값 제거)
                 logger.log('_local reset due to layout change:', { from: this.currentLayoutName, to: newLayoutName });
                 this.globalState._local = {};
+
+                // @since engine-v1.52.2: _localInit 추적 레지스트리도 함께 초기화.
+                // _local 을 비웠는데 추적 해시가 남아 있으면, 새 레이아웃의 _localInit payload 가
+                // 이전 레이아웃과 우연히 동일할 때 "이미 적용됨"으로 오판되어 건너뛴다.
+                resetLocalInitTracking();
             }
 
             this.currentLayoutName = newLayoutName;
@@ -1880,12 +2007,13 @@ export class TemplateApp {
      * extractValueByPathOrExpression(data, "{{data.items.map(i => i.id)}}", "cart")
      */
     private extractValueByPathOrExpression(obj: any, pathOrExpression: string, sourceId: string): any {
-        // 표현식 패턴 확인: {{...}}
-        const expressionMatch = pathOrExpression.match(/^\{\{(.+)\}\}$/);
+        // 단일 바인딩 판정은 BindingShape 정본을 쓴다. 종전 greedy 정규식
+        // `^\{\{(.+)\}\}$` 은 `"{{a}}-{{b}}"` 같은 보간 문자열까지 단일 바인딩으로 오판해
+        // `a}}-{{b` 를 식으로 평가하려 했고, 그 결과는 조용한 undefined 였다.
+        // @since engine-v1.55.0
+        const expression = extractSingleBinding(pathOrExpression);
 
-        if (expressionMatch) {
-            // 표현식으로 평가
-            const expression = expressionMatch[1].trim();
+        if (expression !== null) {
             const bindingEngine = new DataBindingEngine();
 
             // 컨텍스트 구성: data 변수로 API 응답 접근 가능
@@ -1897,7 +2025,11 @@ export class TemplateApp {
             };
 
             try {
-                const result = bindingEngine.evaluateExpression(expression, context);
+                // 파이프 표현식은 evaluatePipeExpression 으로 평가한다 — evaluateExpression 은
+                // `|` 를 JS 비트 OR 로 본다. @since engine-v1.55.0
+                const result = hasPipes(expression)
+                    ? bindingEngine.evaluatePipeExpression(expression, context, { skipCache: true })
+                    : bindingEngine.evaluateExpression(expression, context);
                 logger.log(`initLocal/initGlobal expression evaluated: ${pathOrExpression} -> `, result);
                 return result;
             } catch (error) {
@@ -1949,28 +2081,18 @@ export class TemplateApp {
                 continue;
             }
 
-            // 스크립트 동적 로드 (Promise로 래핑)
-            const loadPromise = new Promise<void>((resolve, reject) => {
-                const scriptEl = document.createElement('script');
-                scriptEl.src = script.src;
-                scriptEl.id = script.id;
-                scriptEl.async = script.async ?? true;
+            // 원격 스크립트 차단 (KVE-2026-1915 B-2 + 신뢰 출처 허용목록): src 는 same-origin
+            // path-only 이거나, 확장이 manifest 로 선언한 신뢰 호스트(G7Config.trustedScriptHosts)에
+            // 속한 외부 스크립트만 허용한다. 미선언 외부 origin(`//`·scheme 포함)은 원격 코드
+            // 로드 경로이므로 skip + 경고. (AuthManager.updateConfig loginPath same-origin 정책과 동형)
+            if (!this.isAllowedScriptSrc(script.src)) {
+                logger.warn(
+                    `Blocked untrusted external script src (same-origin path or declared trusted host required): ${script.id} (${script.src})`
+                );
+                continue;
+            }
 
-                scriptEl.onload = () => {
-                    logger.log(`Script loaded successfully: ${script.id}`);
-                    resolve();
-                };
-
-                scriptEl.onerror = () => {
-                    logger.warn(`Failed to load script: ${script.id} (${script.src})`);
-                    // 스크립트 로드 실패는 경고만 출력하고 계속 진행
-                    resolve();
-                };
-
-                document.head.appendChild(scriptEl);
-            });
-
-            loadPromises.push(loadPromise);
+            loadPromises.push(this.loadLayoutScript(script));
         }
 
         // 모든 스크립트 로드 완료 대기
@@ -1978,6 +2100,134 @@ export class TemplateApp {
             await Promise.all(loadPromises);
             logger.log(`All scripts loaded: ${scripts.filter(s => !document.getElementById(s.id) || loadPromises.length > 0).map(s => s.id).join(', ')}`);
         }
+    }
+
+    /**
+     * 레이아웃 스크립트 1건을 로드합니다 (재시도 + 실패 표면화).
+     *
+     * 종전에는 `onerror` 에서 `resolve()` 로 삼켜, 실패가 로그 한 줄 말고는 어디에도
+     * 남지 않았다. 그 스크립트가 등록하는 핸들러가 전부 미등록이 되어도 사용자에게는
+     * "버튼이 안 눌린다" 로만 나타났다. 같은 저장소의 `ModuleAssetLoader.loadJS` 는
+     * 이미 재시도 + 실패 목록 계층을 갖고 있다 — 이 경로만 그 계층이 없었다.
+     *
+     * `convertToCurrentMode` 를 거치는 이유: 레이아웃 JSON 의 `src` 는 확장자 형태로
+     * 굳어 있는데, 확장자를 정적 location 이 가로채는 서버(자산 URL 이중 모드)에서는
+     * 그 형태가 404 다. 서버가 굳혀 내려준 다른 자산 URL 들과 같은 보정을 받아야 한다.
+     *
+     * 실패해도 reject 하지 않는다 — 한 스크립트의 실패가 나머지 스크립트 로드를 막지
+     * 않는다는 기존 계약을 유지한다. 대신 `failedLayoutScripts` 와 안내 배너로 표면화한다.
+     *
+     * @param script 스크립트 정의
+     * @returns Promise<void> 성공·실패 모두 resolve
+     */
+    private async loadLayoutScript(script: LayoutScript): Promise<void> {
+        const url = script.src.startsWith('/') ? convertToCurrentMode(script.src) : script.src;
+
+        try {
+            await loadScriptWithRetry(
+                url,
+                { id: script.id },
+                { label: `layout-script:${script.id}` }
+            );
+
+            this.failedLayoutScripts.delete(script.id);
+            clearAssetFailure(`layout-script:${script.id}`);
+            logger.log(`Script loaded successfully: ${script.id}`);
+        } catch (error) {
+            this.failedLayoutScripts.add(script.id);
+            logger.warn(`Failed to load script after retries: ${script.id} (${url})`, error);
+
+            notifyAssetFailure({
+                id: `layout-script:${script.id}`,
+                label: script.id,
+                retry: async () => {
+                    document.getElementById(script.id)?.remove();
+                    await loadScriptWithRetry(
+                        url,
+                        { id: script.id },
+                        { label: `layout-script:${script.id}` }
+                    );
+                    this.failedLayoutScripts.delete(script.id);
+                },
+            });
+        }
+    }
+
+    /**
+     * 끝내 로드하지 못한 레이아웃 스크립트 id 목록을 돌려줍니다.
+     *
+     * @returns 실패한 스크립트 id 배열
+     */
+    public getFailedLayoutScripts(): string[] {
+        return Array.from(this.failedLayoutScripts);
+    }
+
+    /**
+     * 레이아웃 스크립트 src 가 로드 허용 대상인지 판정합니다
+     * (KVE-2026-1915 B-2 + 신뢰 출처 허용목록).
+     *
+     * 허용:
+     *  1. `/` 로 시작하는 same-origin 절대 경로.
+     *  2. 확장이 manifest(`trusted_script_hosts`)로 선언한 신뢰 호스트에 속한 외부 스크립트
+     *     — 코어가 집계해 `window.G7Config.trustedScriptHosts` 로 노출한다. 예: CKEditor5
+     *     (cdn.ckeditor.com), Daum 우편번호(t1.daumcdn.net).
+     * 차단: 그 외 `//`(protocol-relative)·scheme 포함 외부 origin(미선언 원격 코드 로드).
+     *
+     * 판정식 자체는 `support/scriptSrcPolicy` 가 SSoT 다 — 같은 판정을 쓰는 주입 경로가
+     * 레이아웃 `scripts[]` 말고도 여럿(loadScript 액션·확장 핸들러 재로드·편집기 프리뷰·
+     * `G7Core.asset.loadScript`)이라, 사본이 생기면 그 차집합이 우회로가 된다.
+     *
+     * @param src 스크립트 src 문자열
+     * @returns 로드 허용이면 true
+     */
+    private isAllowedScriptSrc(src: string): boolean {
+        return isAllowedScriptSrcImpl(src);
+    }
+
+    /**
+     * origin 판정 전에 스크립트 src 를 브라우저 URL 파서와 동일하게 정규화합니다.
+     *
+     * 문자열 접두 검사만으로는 authority 우회를 막지 못합니다. 브라우저(WHATWG URL)는
+     * 파싱 전에 ASCII tab·개행을 제거하고, special scheme(http/https)에서 백슬래시를
+     * 슬래시와 동등하게 처리하기 때문입니다. 그래서 `/\/evil.com/x.js` ·
+     * `/{tab}/evil.com/x.js` 는 `//` 로 시작하지 않고 scheme 도 없는데 실제로는
+     * `https://evil.com/x.js` 로 해석되어 원격 스크립트가 로드됩니다.
+     *
+     * 정규화 후 판정하면 경로 중간의 백슬래시·탭(`/js/a\b.js`)은 authority 를 만들지
+     * 않으므로 그대로 same-origin 으로 통과합니다(과차단 없음).
+     *
+     * 저장측 `SafeLayoutExpressions::normalizeForOriginCheck` · 정적 검사
+     * `layout-scripts-src-same-origin` 과 3층 동형이어야 합니다. 구현은
+     * `support/scriptSrcPolicy` 가 SSoT 이며 이 메서드는 위임입니다.
+     *
+     * @since engine-v1.60.2
+     * @param src 원본 src 문자열
+     * @returns 정규화된 src
+     */
+    private static normalizeScriptSrcForOriginCheck(src: string): string {
+        return normalizeScriptSrcForOriginCheckImpl(src);
+    }
+
+    /**
+     * 스크립트 src 에서 http(s) 호스트명을 추출합니다.
+     *
+     * `//host/...`(protocol-relative)·`https://host/...` 를 처리하며, http/https 가 아닌
+     * scheme(`javascript:`·`data:` 등)은 null 을 반환해 신뢰 호스트 판정 대상에서 제외합니다.
+     *
+     * @param src 스크립트 src 문자열
+     * @returns 소문자 호스트명 (판정 불가 시 null)
+     */
+    private extractScriptHost(src: string): string | null {
+        return extractScriptHostImpl(src);
+    }
+
+    /**
+     * 코어가 집계해 노출한 신뢰 외부 스크립트 호스트 목록을 반환합니다.
+     *
+     * @returns 소문자 호스트명 배열 (window.G7Config.trustedScriptHosts)
+     */
+    private getTrustedScriptHosts(): string[] {
+        return getTrustedScriptHostsImpl();
     }
 
     /**
@@ -1995,20 +2245,9 @@ export class TemplateApp {
             if (condition.startsWith('{{') && condition.endsWith('}}')) {
                 const expression = condition.slice(2, -2).trim();
 
-                // 간단한 표현식 평가 (점 표기법, 옵셔널 체이닝, 메서드 호출)
-                // Function 생성자를 사용하여 안전하게 평가
-                // eslint-disable-next-line @typescript-eslint/no-implied-eval
-                const fn = new Function('ctx', `
-                    with(ctx) {
-                        try {
-                            return Boolean(${expression});
-                        } catch (e) {
-                            return false;
-                        }
-                    }
-                `);
-
-                return fn(context);
+                // 화이트리스트 AST 평가기로 안전하게 평가(KVE-2026-1915).
+                // 종전의 `new Function('ctx','with(ctx){return Boolean(...)}')` 폐기.
+                return Boolean(evaluateSafeExpression(expression, context));
             }
 
             // {{}} 형태가 아니면 truthy 체크
@@ -2021,8 +2260,21 @@ export class TemplateApp {
 
     /**
      * 초기화 에러 화면 표시
+     *
+     * 문서 이탈 중(새로고침으로 버려지는 문서)에는 렌더하지 않는다. 사용자가 이미
+     * 떠난 화면에 에러를 그려봐야 다음 문서가 그 위를 덮을 뿐이고, 새로고침 연타 시
+     * "초기화 실패" 가 번쩍이는 원인이 된다.
+     *
+     * @param error 초기화 중 발생한 에러
+     * @return void
+     * @since engine-v1.53.0 (이탈 가드 추가)
      */
     private showInitError(error: Error): void {
+        if (isDocumentUnloading()) {
+            logger.warn('Init failed while document is unloading — skipping error screen', error);
+            return;
+        }
+
         // Error를 TemplateEngineError로 변환
         const templateError = toTemplateEngineError(error);
 
@@ -2114,7 +2366,22 @@ export class TemplateApp {
             const overlay = document.createElement('div');
             overlay.id = 'g7-transition-overlay';
             overlay.setAttribute('aria-hidden', 'true');
-            overlay.style.cssText = `position:fixed;inset:0;z-index:9999;pointer-events:none;background:${bgCss};${extraCss}`;
+            // cssText 일괄 설정 대신 개별 속성으로 — backdrop-filter 같은 미지원 프로퍼티가
+            // 한 선언 블록에 섞이면 일부 CSS 파서(jsdom 테스트 환경)가 그 블록 전체를 거부해
+            // 앞선 background 까지 무효화한다. 개별 setProperty 는 미지원 속성만 무시되고
+            // background 등 나머지는 보존된다(실제 브라우저 동작은 cssText 일괄과 동일).
+            overlay.style.position = 'fixed';
+            overlay.style.inset = '0';
+            overlay.style.zIndex = '9999';
+            overlay.style.pointerEvents = 'none';
+            overlay.style.background = bgCss;
+            // blur 스타일의 backdrop-filter — `prop:value;` 쌍을 분해해 개별 적용(브라우저에선
+            // 적용, 미지원 파서에선 무시되어도 background 보존).
+            for (const decl of extraCss.split(';')) {
+                const idx = decl.indexOf(':');
+                if (idx === -1) continue;
+                overlay.style.setProperty(decl.slice(0, idx).trim(), decl.slice(idx + 1).trim());
+            }
             document.body.appendChild(overlay);
             this.transitionOverlayEl = overlay;
         }
@@ -2517,7 +2784,7 @@ export class TemplateApp {
     private showRouteError(error: Error): void {
         // 레이아웃 fetch 401 가드: 토큰 만료 등으로 권한이 사라진 상태에서
         // 레이아웃을 받지 못하면 코어가 로그인 페이지로 자동 리다이렉트한다.
-        // (Issue #301 — 사용자 인식 문제 해결: 시스템 장애 화면 대신 안내 토스트)
+        // ( — 사용자 인식 문제 해결: 시스템 장애 화면 대신 안내 토스트)
         //
         // hadToken 판정 (reason='session_expired' 부여 여부):
         //   - 현재 apiClient 가 토큰을 보유했거나
@@ -2700,7 +2967,7 @@ export class TemplateApp {
         let newVersion: number | undefined;
         try {
             const configResponse = await fetch(
-                `/api/templates/${this.config.templateId}/config.json?_=${Date.now()}`
+                suffixed(`/api/templates/${this.config.templateId}/config`, 'json', null, `_=${Date.now()}`)
             );
             if (configResponse.ok) {
                 const configResult = await configResponse.json();
@@ -3699,10 +3966,28 @@ export class TemplateApp {
         this.currentQueryParams = newQueryParams;
         logger.log('currentQueryParams updated:', Object.fromEntries(newQueryParams.entries()));
 
-        // 3. auto_fetch: true인 데이터 소스들 refetch
+        // 3. 데이터소스 if 재평가
+        // replace:true navigate(탭 전환/필터 변경)는 query 컨텍스트가 바뀌므로, 직전 진입 시점에
+        // 필터링된 currentDataSources 스냅샷을 재사용하면 다른 탭의 데이터소스가 잘못 선택된다.
+        // 원본(currentRawDataSources)을 변경된 query + 최신 _global 로 다시 filterByCondition 한다.
+        // 원본 미보존(구버전 캐시 등) 시 기존 currentDataSources 로 안전 폴백.
+        const reevalManager = new DataSourceManager();
+        const latestGlobal = getState().currentDataContext?._global || this.globalState || {};
+        const reevalContext = {
+            route: this.currentRouteParams || {},
+            query: parseQueryParams(this.currentQueryParams),
+            _global: latestGlobal,
+        };
+        const reevaluatedSources = Array.isArray(this.currentRawDataSources) && this.currentRawDataSources.length > 0
+            ? reevalManager.filterByCondition(this.currentRawDataSources, reevalContext as any)
+            : this.currentDataSources;
+        // 재평가 결과를 현재 데이터소스로 갱신 (이후 wait_for 판정/refetchDataSource 가 참조)
+        this.currentDataSources = reevaluatedSources;
+
+        // 4. auto_fetch: true인 데이터 소스들 refetch
         // WebSocket 소스는 이벤트 리스너(실시간 알림)이지 fetch 대상이 아님 (engine-v1.32.2 정책)
         // handleRouteChange progressive 경로와 동일하게 호출 전에 필터링하여 계약 일관성 확보
-        const autoFetchDataSources = this.currentDataSources.filter(
+        const autoFetchDataSources = reevaluatedSources.filter(
             (ds: any) => ds.auto_fetch !== false && ds.type !== 'websocket'
         );
 
@@ -3924,19 +4209,10 @@ export class TemplateApp {
      */
     private evaluateComputedExpression(expression: string, context: Record<string, any>): any {
         try {
-            // 안전한 표현식 평가를 위해 with 문과 Function 생성자 사용
-            // eslint-disable-next-line @typescript-eslint/no-implied-eval
-            const fn = new Function('ctx', `
-                with(ctx) {
-                    try {
-                        return ${expression};
-                    } catch (e) {
-                        return undefined;
-                    }
-                }
-            `);
-
-            return fn(context);
+            // 화이트리스트 AST 평가기로 안전하게 평가한다(KVE-2026-1915).
+            // 종전의 `new Function('ctx', 'with(ctx){return ...}')` 는 필터조차 거치지 않아
+            // `''.constructor.constructor(...)` 샌드박스 탈출이 가능했으므로 폐기한다.
+            return evaluateSafeExpression(expression, context);
         } catch (error) {
             logger.warn(`Expression evaluation failed: ${expression}`, error);
             return undefined;
@@ -4033,9 +4309,15 @@ export class TemplateApp {
      *
      * 모듈/플러그인 핸들러는 에셋 로드 후에 등록되므로, init_actions 실행 전에 대기합니다.
      *
+     * 확장 번들 로드가 이미 **실패로 확정**된 경우에는 기다리지 않고 즉시 반환한다.
+     * 그 확장의 핸들러는 영원히 등록되지 않으므로, `maxWait` 만큼 폴링하는 것은 순수한
+     * 낭비이며 그 시간 동안 렌더가 시작되지 않아 사용자에게는 백지로 보인다.
+     * (@since engine-v1.53.0)
+     *
      * @param actionDispatcher ActionDispatcher 인스턴스
      * @param handlerNames 대기할 핸들러 이름 목록
      * @param maxWait 최대 대기 시간 (ms)
+     * @return Promise<void>
      */
     private async waitForHandlers(
         actionDispatcher: any,
@@ -4055,6 +4337,40 @@ export class TemplateApp {
         if (allHandlersRegistered()) {
             logger.log('All module handlers already registered');
             return;
+        }
+
+        // 대기 중인 핸들러를 실어올 JS 가 **실패로 확정**됐다면 그 핸들러는 영원히 오지 않는다.
+        // 오지 않을 것을 기다리지 않는다 (5초 백지 제거).
+        //
+        // 실패 키는 두 형태다:
+        //   - 병합 번들 경로: 'module' / 'plugin'  (확장 전체가 한 파일)
+        //   - 개별 로딩 경로: 확장 식별자 (예: 'sirsoft-ecommerce')
+        // 핸들러 이름은 `{확장식별자}.{핸들러}` 이므로, 개별 로딩 실패는 접두사로 대조한다.
+        // 병합 번들이 죽으면 그 번들에 속한 확장을 여기서 알 수 없으므로 전체 포기가 맞다
+        // (그 파일 하나가 통째로 없다).
+        //
+        // 반대로 실패를 특정 핸들러에 귀속시킬 수 없으면 **기다린다** — 무관한 확장의 실패로
+        // 정상 로드 중인 확장의 핸들러 대기까지 포기하면 멀쩡한 기능이 조용히 사라진다.
+        // (@since engine-v1.53.0)
+        const failedAssets = getModuleAssetLoader().getFailedJsAssets();
+        if (failedAssets.length > 0) {
+            const bundleFailed = failedAssets.some(key => key === 'module' || key === 'plugin');
+            const pending = handlerNames.filter(
+                name => !actionDispatcher.customHandlers?.has(name)
+            );
+            const allPendingAreDead =
+                pending.length > 0 &&
+                pending.every(name =>
+                    failedAssets.some(key => name.startsWith(`${key}.`))
+                );
+
+            if (bundleFailed || allPendingAreDead) {
+                logger.warn(
+                    'Extension asset load failed — not waiting for handlers that will never register:',
+                    { pending, failedAssets }
+                );
+                return;
+            }
         }
 
         logger.log('Waiting for module handlers:', handlerNames);

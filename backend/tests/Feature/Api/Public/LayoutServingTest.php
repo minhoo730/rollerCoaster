@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Api\Public;
 
+use App\Contracts\Extension\CacheInterface;
 use App\Enums\ExtensionStatus;
 use App\Models\Template;
 use App\Models\TemplateLayout;
@@ -12,6 +13,17 @@ use Tests\TestCase;
 class LayoutServingTest extends TestCase
 {
     use RefreshDatabase;
+
+    /**
+     * 같은 스위트의 DB 테스트(LayoutSourceMetaServingTest, PublicLayoutControllerTest)
+     * 와 마이그레이션 정합성을 맞추기 위해 — 레이아웃 서빙 경로가 GDPR 미들웨어를
+     * 거치므로 해당 플러그인 마이그레이션을 테스트 DB 에 포함시킨다.
+     *
+     * @var array<string>
+     */
+    protected array $requiredExtensions = [
+        'plugins/sirsoft-gdpr',
+    ];
 
     /**
      * 정상적인 레이아웃 서빙 전체 플로우 테스트
@@ -199,9 +211,13 @@ class LayoutServingTest extends TestCase
             ],
         ]);
 
-        // PublicLayoutController 는 CacheInterface + 버전 키 ("layout.{id}.{name}.v{v}") 사용
-        $cache = app(\App\Contracts\Extension\CacheInterface::class);
-        $cacheKey = "layout.{$template->identifier}.{$layout->name}.v0";
+        // PublicLayoutController 는 CacheInterface + 버전 키 ("layout.{id}.{name}.v{v}") 사용.
+        // `?v` 생략 시 현재 확장 캐시 버전으로 폴백하므로 (#588 — `.v0` 사각 키 방지)
+        // 버전을 시드해 결정적 키로 검증한다
+        Cache::put('g7:core:ext.cache_version', 1234);
+
+        $cache = app(CacheInterface::class);
+        $cacheKey = "layout.{$template->identifier}.{$layout->name}.v1234";
         $cache->forget($cacheKey);
 
         // Act: 첫 번째 요청 (캐시 미스, DB 조회)
@@ -775,5 +791,191 @@ class LayoutServingTest extends TestCase
 
         // Assert: 압축 후 크기가 50% 이상 감소
         $this->assertLessThan($originalSize * 0.5, $compressedSize);
+    }
+
+    /**
+     * 공개 서빙 응답에서 개발자용 comment / _comment 필드가 제거되어야 합니다.
+     *
+     * 레이아웃 JSON 의 comment/_comment 는 편집기·개발자용 주석으로 런타임 렌더러가
+     * 사용하지 않으며, 공개 응답 크기를 키우므로 서빙 시 재귀적으로 제거된다.
+     */
+    public function test_strips_developer_comments_from_public_serving(): void
+    {
+        $template = Template::create([
+            'identifier' => 'sirsoft-admin_basic',
+            'vendor' => 'sirsoft',
+            'name' => ['ko' => '기본 관리자 템플릿', 'en' => 'Basic Admin Template'],
+            'version' => '1.0.0',
+            'type' => 'admin',
+            'status' => ExtensionStatus::Active->value,
+            'description' => ['ko' => '기본 관리자 템플릿', 'en' => 'Basic Admin Template'],
+        ]);
+
+        $layout = TemplateLayout::create([
+            'template_id' => $template->id,
+            'name' => 'commented',
+            'content' => [
+                'comment' => '레이아웃 최상단 개발자 주석',
+                'meta' => ['title' => 'Commented Layout'],
+                'data_sources' => [
+                    [
+                        '_comment' => '데이터소스 설명 주석',
+                        'id' => 'stats',
+                        'type' => 'api',
+                        'endpoint' => '/api/stats',
+                    ],
+                ],
+                'components' => [
+                    [
+                        'comment' => '컴포넌트 설명 주석',
+                        'type' => 'div',
+                        'props' => ['class' => 'container'],
+                        'children' => [
+                            [
+                                '_comment' => '중첩 자식 주석',
+                                'type' => 'span',
+                                'props' => [],
+                                'children' => ['Hello'],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+        $response = $this->getJson("/api/layouts/{$template->identifier}/{$layout->name}.json");
+
+        $response->assertStatus(200);
+
+        // 응답 본문 어디에도 comment / _comment 키가 없어야 함
+        $body = $response->getContent();
+        $this->assertStringNotContainsString('"comment"', $body);
+        $this->assertStringNotContainsString('"_comment"', $body);
+
+        // 실제 콘텐츠(컴포넌트 구조)는 보존
+        $data = $response->json('data');
+        $this->assertArrayNotHasKey('comment', $data);
+        $this->assertSame('div', $data['components'][0]['type']);
+        $this->assertArrayNotHasKey('comment', $data['components'][0]);
+        $this->assertArrayNotHasKey('_comment', $data['components'][0]['children'][0]);
+        $this->assertArrayNotHasKey('_comment', $data['data_sources'][0]);
+    }
+
+    /**
+     * 한글이 포함된 응답이 \uXXXX 이스케이프 없이 raw UTF-8 로 직렬화되어야 합니다.
+     *
+     * JSON_UNESCAPED_UNICODE 적용으로 멀티바이트 문자의 전송 크기를 줄인다.
+     */
+    public function test_serves_korean_as_unescaped_utf8(): void
+    {
+        $template = Template::create([
+            'identifier' => 'sirsoft-admin_basic',
+            'vendor' => 'sirsoft',
+            'name' => ['ko' => '기본 관리자 템플릿', 'en' => 'Basic Admin Template'],
+            'version' => '1.0.0',
+            'type' => 'admin',
+            'status' => ExtensionStatus::Active->value,
+            'description' => ['ko' => '기본 관리자 템플릿', 'en' => 'Basic Admin Template'],
+        ]);
+
+        $layout = TemplateLayout::create([
+            'template_id' => $template->id,
+            'name' => 'korean',
+            'content' => [
+                'meta' => ['title' => '한글 제목'],
+                'data_sources' => [],
+                'components' => [
+                    [
+                        'type' => 'span',
+                        'props' => [],
+                        'children' => ['안녕하세요'],
+                    ],
+                ],
+            ],
+        ]);
+
+        // 압축 없이 raw 본문 검사 (Accept-Encoding 미지정)
+        $response = $this->getJson("/api/layouts/{$template->identifier}/{$layout->name}.json");
+
+        $response->assertStatus(200);
+
+        $body = $response->getContent();
+
+        // raw UTF-8 한글이 그대로 실려야 함
+        $this->assertStringContainsString('한글 제목', $body);
+        $this->assertStringContainsString('안녕하세요', $body);
+
+        // \uXXXX 이스케이프 형태가 아니어야 함 (예: '한' = 한)
+        $this->assertStringNotContainsString('\\ud55c', $body);
+
+        // 메시지도 raw UTF-8 (레이아웃 제공 성공 메시지)
+        $this->assertMatchesRegularExpression('/[가-힣]/u', $body);
+    }
+
+    /**
+     * 프로덕션에서 레이아웃 응답은 공개 캐시 헤더를 유지한다 (#122 작업 D — successWithCache 환경 분기 동반 효과)
+     *
+     * @effects fallback_api_serves_etag_304
+     */
+    public function test_layout_has_public_cache_headers_in_production(): void
+    {
+        app()['env'] = 'production';
+
+        $template = Template::create([
+            'identifier' => 'sirsoft-admin_basic',
+            'vendor' => 'sirsoft',
+            'name' => ['ko' => '기본 관리자 템플릿', 'en' => 'Basic Admin Template'],
+            'version' => '1.0.0',
+            'type' => 'admin',
+            'status' => ExtensionStatus::Active->value,
+            'description' => ['ko' => '기본 관리자 템플릿', 'en' => 'Basic Admin Template'],
+        ]);
+
+        $layout = TemplateLayout::create([
+            'template_id' => $template->id,
+            'name' => 'dashboard',
+            'content' => ['meta' => [], 'data_sources' => [], 'components' => []],
+        ]);
+
+        $response = $this->getJson("/api/layouts/{$template->identifier}/{$layout->name}.json");
+
+        $response->assertStatus(200);
+        $this->assertNotNull($response->headers->get('ETag'));
+        $cacheControl = (string) $response->headers->get('Cache-Control');
+        $this->assertStringContainsString('public', $cacheControl);
+        $this->assertStringContainsString('max-age=3600', $cacheControl);
+    }
+
+    /**
+     * 개발 환경에서 레이아웃 응답은 no-cache (dev 레이아웃 반영성 — #122 작업 D 환경 분기)
+     *
+     * @effects fallback_api_no_cache_in_dev
+     */
+    public function test_layout_no_cache_in_development(): void
+    {
+        app()['env'] = 'local';
+
+        $template = Template::create([
+            'identifier' => 'sirsoft-admin_basic',
+            'vendor' => 'sirsoft',
+            'name' => ['ko' => '기본 관리자 템플릿', 'en' => 'Basic Admin Template'],
+            'version' => '1.0.0',
+            'type' => 'admin',
+            'status' => ExtensionStatus::Active->value,
+            'description' => ['ko' => '기본 관리자 템플릿', 'en' => 'Basic Admin Template'],
+        ]);
+
+        $layout = TemplateLayout::create([
+            'template_id' => $template->id,
+            'name' => 'dashboard',
+            'content' => ['meta' => [], 'data_sources' => [], 'components' => []],
+        ]);
+
+        $response = $this->getJson("/api/layouts/{$template->identifier}/{$layout->name}.json");
+
+        $response->assertStatus(200);
+        $cacheControl = (string) $response->headers->get('Cache-Control');
+        $this->assertStringContainsString('no-cache', $cacheControl);
+        $this->assertStringNotContainsString('max-age=3600', $cacheControl);
     }
 }

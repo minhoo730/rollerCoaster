@@ -141,7 +141,31 @@
 | `getHookListeners()` | `[]` | 훅 리스너 |
 | `getDependencies()` | `[]` | 의존성 |
 | `getMetadata()` | `[]` | 메타데이터 |
+| `getMiddleware()` | `[]` | 확장 미들웨어 선언 (self-gate targets) — `{class, groups, timing?, targets}` ([middleware.md](../backend/middleware.md)) |
+| `getBenchmarkProfiles()` | `[]` | 성능 계측 대상 선언 (`g7:bench` 가 수집) — 목록/화면/쓰기/배치 4축 ([benchmark.md](../backend/benchmark.md)) |
 | `upgrades()` | `[]` | 업그레이드 스텝 (`upgrades/` 디렉토리 자동 발견). **`g7_version >= 7.0.0-beta.5` 인 모듈은 신규 step 이 `AbstractUpgradeStep` 상속 의무** ([upgrade-step-guide §13](upgrade-step-guide.md)) — 미상속 시 `ModuleManager::runUpgradeSteps` 가 `RuntimeException` throw |
+
+#### 수명주기 훅이 실패를 알리는 방법
+
+`install()` / `activate()` / `deactivate()` / `uninstall()` 은 bool 만 돌려주므로, 그냥 `false` 를
+반환하면 **왜 거부했는지가 코어에 전달되지 않는다.** 그 결과 운영자는 원인이 빠진 실패 문구만 본다.
+
+사유를 남기려면 `failWith()` 로 반환한다. 코어가 그 사유를 응답 문구의 원인 자리에 싣는다.
+
+```php
+public function activate(): bool
+{
+    if (! extension_loaded('gd')) {
+        return $this->failWith(__('my-module::messages.gd_required'));
+    }
+
+    return true;
+}
+```
+
+- 사유는 **이미 번역된 문장**이어야 한다 — 확장의 언어 파일 키는 코어가 해석할 수 없다.
+- 사유를 남기지 않고 `false` 만 돌려주면 코어가 일반 문구로 대체한다(동작은 그대로).
+- 같은 규칙이 플러그인(`AbstractPlugin`)에도 동일하게 적용된다.
 
 #### 동적 권한/역할/메뉴 보존 규칙
 
@@ -481,12 +505,15 @@ modules/_bundled/sirsoft-ecommerce/
 ├── module.json                  # 메타데이터 (이름, 버전, 설명 등 SSoT)
 ├── module.php                    # ModuleInterface 구현
 ├── LICENSE                      # 라이선스 전문 (MIT)
-├── composer.json                 # 오토로딩 + 외부 패키지 의존성 설정
+├── composer.json                 # 오토로딩 + 외부 패키지 의존성 설정 (Git 추적)
+├── composer.lock                 # Composer 락 파일 (Git 추적 — vendor-bundle.json 의 composer_lock_sha256 가 이 파일을 검증)
+├── vendor-bundle.json            # 번들 메타파일: SHA256, 패키지 목록 (Git 추적)
+├── vendor-bundle.zip             # 압축된 vendor 디렉토리 (Git 추적)
 ├── package.json                 # npm 패키지 정의 (에셋 모듈만)
 ├── vite.config.ts               # Vite 빌드 설정 (에셋 모듈만)
 ├── tsconfig.json                # TypeScript 설정 (에셋 모듈만)
 ├── vendor/                      # Composer 의존성 (자동 생성, gitignore 대상)
-├── dist/                        # 프론트엔드 빌드 출력 (에셋 모듈만, gitignore 대상)
+├── dist/                        # 프론트엔드 빌드 출력 (에셋 모듈만 — _bundled 은 Git 추적, `*.map` 만 ignore)
 │   ├── js/module.iife.js
 │   └── css/module.css
 ├── upgrades/                    # 버전 업그레이드 스텝 (AbstractUpgradeStep 상속 — g7_version >= 7.0.0-beta.5 모듈 의무)
@@ -557,7 +584,7 @@ modules/_bundled/sirsoft-ecommerce/
 | `package.json` | npm 패키지 정의 (에셋 모듈만 해당) |
 | `vite.config.ts` | Vite IIFE 빌드 설정 (에셋 모듈만 해당) |
 | `vendor/` | Composer 의존성 디렉토리 (자동 생성, gitignore 대상) |
-| `dist/` | 프론트엔드 빌드 출력 (에셋 모듈만 해당, gitignore 대상) |
+| `dist/` | 프론트엔드 빌드 출력 (에셋 모듈만 해당 — `_bundled` 소스는 Git 추적되는 배포 산출물, `*.map` 만 ignore. 소스 변경 시 `--production` 재빌드 산출물을 함께 커밋한다) |
 | `config/` | 모듈별 설정 파일 |
 | `database/factories/` | 테스트용 Factory (autoload 등록 필수) |
 | `database/migrations/` | 데이터베이스 마이그레이션 |
@@ -743,7 +770,7 @@ protected function registerBundledModuleInstance(): void
 | 환경설정 구조 변경 | ✅ (SettingsMigrator) | 설정 키 이름/구조 변경 |
 | 기존 데이터 변환 | ✅ | 데이터 형식 변환, 기본값 |
 | 권한/역할/메뉴 추가·수정 | ❌ (자동 동기화) | Module.php에서 정의 |
-| 정적 권한/메뉴 제거 | ✅ (cleanup 명시 호출) | #135: 동적 메뉴/권한 보존 |
+| 정적 권한/메뉴 제거 | ✅ (cleanup 명시 호출) | 동적 메뉴/권한 보존 |
 | 레이아웃 JSON 변경 | ❌ (자동 갱신) | refresh-layout에서 처리 |
 | PHP 코드만 변경 | ❌ | 버전만 올리면 됨 |
 

@@ -89,8 +89,8 @@ php artisan core:build
 용도: DynamicRenderer가 해당 props의 바인딩을 지연 처리
 
 예시:
-- DataGrid: cellChildren, expandChildren, expandContext, render
-- CardGrid: cardChildren
+- DataGrid: cellChildren, expandChildren, expandContext, render, subRowChildren, subRowCondition, footerCells, footerCardChildren
+- CardGrid: cardColumns
 - Select: optionRenderer
 \`\`\`
 
@@ -173,8 +173,8 @@ global.window = {
 - docs/frontend/template-development.md
 - docs/extension/template-basics.md
 - docs/extension/template-commands.md
-- docs/frontend/templates/sirsoft-admin_basic/components.md
-- docs/frontend/templates/sirsoft-basic/components.md
+- templates/_bundled/sirsoft-admin_basic/docs/components.md
+- templates/_bundled/sirsoft-basic/docs/components.md
 
 ## 테스트 실행
 \`\`\`powershell

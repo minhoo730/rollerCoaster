@@ -7,14 +7,13 @@ use App\Contracts\Repositories\NotificationDefinitionRepositoryInterface;
 use App\Contracts\Repositories\NotificationTemplateRepositoryInterface;
 use App\Extension\HookManager;
 use App\Models\NotificationTemplate;
+use App\Services\LanguagePack\LanguagePackSeedInjector;
 use Illuminate\Database\Eloquent\Collection;
 
 class NotificationTemplateService
 {
     /**
      * 캐시 키 접두사 (드라이버 접두사 `g7:core:` 다음에 붙음).
-     *
-     * @var string
      */
     protected string $cachePrefix = 'notification.template.';
 
@@ -27,21 +26,22 @@ class NotificationTemplateService
     }
 
     /**
-     * @param NotificationTemplateRepositoryInterface $templateRepository
-     * @param NotificationDefinitionRepositoryInterface $definitionRepository
-     * @param CacheInterface $cache
+     * @param  NotificationTemplateRepositoryInterface  $templateRepository
+     * @param  NotificationDefinitionRepositoryInterface  $definitionRepository
+     * @param  CacheInterface  $cache
      */
     public function __construct(
         private readonly NotificationTemplateRepositoryInterface $templateRepository,
         private readonly NotificationDefinitionRepositoryInterface $definitionRepository,
         private readonly CacheInterface $cache,
+        private readonly LanguagePackSeedInjector $seedInjector,
     ) {}
 
     /**
      * 알림 타입 + 채널로 활성 템플릿 조회 (캐싱).
      *
-     * @param string $type
-     * @param string $channel
+     * @param  string  $type
+     * @param  string  $channel
      * @return NotificationTemplate|null
      */
     public function resolve(string $type, string $channel): ?NotificationTemplate
@@ -57,7 +57,7 @@ class NotificationTemplateService
     /**
      * 특정 알림 정의의 모든 템플릿 조회.
      *
-     * @param int $definitionId
+     * @param  int  $definitionId
      * @return Collection
      */
     public function getByDefinitionId(int $definitionId): Collection
@@ -68,9 +68,9 @@ class NotificationTemplateService
     /**
      * 템플릿 수정.
      *
-     * @param NotificationTemplate $template
-     * @param array $data
-     * @param int|null $userId
+     * @param  NotificationTemplate  $template
+     * @param  array  $data
+     * @param  int|null  $userId
      * @return NotificationTemplate
      */
     public function updateTemplate(NotificationTemplate $template, array $data, ?int $userId = null): NotificationTemplate
@@ -112,7 +112,7 @@ class NotificationTemplateService
     /**
      * 활성/비활성 토글.
      *
-     * @param NotificationTemplate $template
+     * @param  NotificationTemplate  $template
      * @return NotificationTemplate
      */
     public function toggleActive(NotificationTemplate $template): NotificationTemplate
@@ -136,16 +136,25 @@ class NotificationTemplateService
     /**
      * 기본값으로 복원.
      *
-     * @param NotificationTemplate $template
-     * @param array $defaultData
+     * @param  NotificationTemplate  $template
+     * @param  array  $defaultData
      * @return NotificationTemplate
      */
     public function resetToDefault(NotificationTemplate $template, array $defaultData): NotificationTemplate
     {
-        $updated = $this->templateRepository->update($template, array_merge($defaultData, [
-            'is_default' => true,
-            'user_overrides' => null,
-        ]));
+        // 복원은 사용자 수정이 아니므로 seeding 컨텍스트로 감싸 HasUserOverrides 의
+        // updating 자동 기록을 비활성화한다. 이 가드가 없으면 복원되는 trackable 필드
+        // (subject/body/click_url/recipients)가 dirty 로 감지되어 user_overrides 가
+        // 즉시 재기록되고, 복원이 무효화된다.
+        app()->instance('user_overrides.seeding', true);
+        try {
+            $updated = $this->templateRepository->update($template, array_merge($defaultData, [
+                'is_default' => true,
+                'user_overrides' => null,
+            ]));
+        } finally {
+            app()->forgetInstance('user_overrides.seeding');
+        }
 
         $definition = $updated->definition;
         if ($definition) {
@@ -158,8 +167,8 @@ class NotificationTemplateService
     /**
      * 시더에서 기본 템플릿 데이터를 조회합니다.
      *
-     * @param string $type 알림 정의 타입
-     * @param string $channel 채널명
+     * @param  string  $type  알림 정의 타입
+     * @param  string  $channel  채널명
      * @return array 기본 템플릿 데이터 (subject, body)
      */
     public function getDefaultTemplateData(string $type, string $channel): array
@@ -182,6 +191,11 @@ class NotificationTemplateService
             ['type' => $type, 'channel' => $channel]
         );
 
+        // 활성 언어팩 seed 로케일 병합 — 시딩(seed.notifications.translations)과 같은 SSoT.
+        // 이 병합이 없으면 [기본값 복원]이 팩이 주입해 둔 로케일(ja 등)을 config 의
+        // ko/en 만으로 대체해 영구 소실시킨다 (2026-08-23 실사례 — #597 보완 실측).
+        $definitions = $this->mergeLanguagePackLocalesIntoDefaults($definitions);
+
         foreach ($definitions as $def) {
             if ($def['type'] === $type) {
                 foreach ($def['templates'] as $tpl) {
@@ -189,6 +203,8 @@ class NotificationTemplateService
                         return [
                             'subject' => $tpl['subject'] ?? null,
                             'body' => $tpl['body'],
+                            'click_url' => $tpl['click_url'] ?? null,
+                            'recipients' => $tpl['recipients'] ?? null,
                         ];
                     }
                 }
@@ -199,12 +215,42 @@ class NotificationTemplateService
     }
 
     /**
+     * 기본 정의 배열에 활성 언어팩 seed 로케일을 병합합니다.
+     *
+     * 코어 소유 정의는 활성 코어 팩(injectNotifications), 확장 소유 정의는
+     * 해당 확장의 활성 모듈/플러그인 팩(injectExtensionNotifications)이 공급한다.
+     * definition type 은 전역 고유(UNIQUE)이므로 확장별 호출이 다른 확장의
+     * 정의에 오병합될 여지는 없다.
+     *
+     * @param  array<int, array<string, mixed>>  $definitions  type 필드를 포함한 기본 정의 배열
+     * @return array<int, array<string, mixed>> 활성 팩 로케일이 병합된 정의 배열
+     */
+    private function mergeLanguagePackLocalesIntoDefaults(array $definitions): array
+    {
+        $definitions = $this->seedInjector->injectNotifications($definitions);
+
+        $extensionIdentifiers = [];
+        foreach ($definitions as $def) {
+            $identifier = is_array($def) ? ($def['extension_identifier'] ?? null) : null;
+            if (is_string($identifier) && $identifier !== '' && $identifier !== 'core') {
+                $extensionIdentifiers[$identifier] = true;
+            }
+        }
+
+        foreach (array_keys($extensionIdentifiers) as $identifier) {
+            $definitions = $this->seedInjector->injectExtensionNotifications($definitions, $identifier);
+        }
+
+        return $definitions;
+    }
+
+    /**
      * 미리보기용 렌더링.
      *
      * definition_id가 제공되면 해당 정의의 변수 메타데이터를 조회하여
      * 샘플 값으로 치환합니다.
      *
-     * @param array $data
+     * @param  array  $data
      * @return array
      */
     public function getPreview(array $data): array
@@ -223,7 +269,7 @@ class NotificationTemplateService
                     $key = $var['key'] ?? '';
                     if ($key !== '') {
                         $description = $var['description'] ?? $key;
-                        $replacements['{' . $key . '}'] = '[' . $description . ']';
+                        $replacements['{'.$key.'}'] = '['.$description.']';
                     }
                 }
             }
@@ -231,7 +277,7 @@ class NotificationTemplateService
 
         // 명시적으로 전달된 variables가 있으면 덮어쓰기
         foreach ($data['variables'] ?? [] as $key => $value) {
-            $replacements['{' . $key . '}'] = (string) $value;
+            $replacements['{'.$key.'}'] = (string) $value;
         }
 
         return [
@@ -243,8 +289,8 @@ class NotificationTemplateService
     /**
      * 특정 타입+채널의 캐시 무효화.
      *
-     * @param string $type
-     * @param string $channel
+     * @param  string  $type
+     * @param  string  $channel
      * @return void
      */
     public function invalidateCache(string $type, string $channel): void
@@ -255,12 +301,12 @@ class NotificationTemplateService
     /**
      * 캐시 키 생성.
      *
-     * @param string $type
-     * @param string $channel
+     * @param  string  $type
+     * @param  string  $channel
      * @return string
      */
     private function getCacheKey(string $type, string $channel): string
     {
-        return $this->cachePrefix . $type . '.' . $channel;
+        return $this->cachePrefix.$type.'.'.$channel;
     }
 }

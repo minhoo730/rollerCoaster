@@ -7,6 +7,8 @@ use App\Contracts\Repositories\IdentityMessageTemplateRepositoryInterface;
 use App\Extension\HookManager;
 use App\Models\IdentityMessageDefinition;
 use App\Models\IdentityMessageTemplate;
+use App\Services\LanguagePack\LanguagePackSeedInjector;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Auth;
 
 /**
@@ -36,6 +38,7 @@ class IdentityMessageTemplateService
         private readonly IdentityMessageTemplateRepositoryInterface $repository,
         private readonly IdentityMessageDefinitionService $definitionService,
         private readonly CacheInterface $cache,
+        private readonly LanguagePackSeedInjector $seedInjector,
     ) {}
 
     /**
@@ -65,6 +68,29 @@ class IdentityMessageTemplateService
             $this->getCacheTtl(),
             [$this->cacheTag]
         );
+    }
+
+    /**
+     * ID 로 템플릿을 조회하며, 없으면 예외를 발생시킵니다.
+     *
+     * 컨트롤러가 모델을 직접 조회하지 않도록 하는 Service 경유 접근자입니다
+     * (Controller → Service → Repository 계층 규정).
+     *
+     * @param  int  $id  템플릿 ID
+     * @return IdentityMessageTemplate 템플릿 모델
+     *
+     * @throws ModelNotFoundException 템플릿이 없는 경우
+     */
+    public function findOrFailById(int $id): IdentityMessageTemplate
+    {
+        $template = $this->repository->findById($id);
+
+        if (! $template) {
+            throw (new ModelNotFoundException)
+                ->setModel(IdentityMessageTemplate::class, [$id]);
+        }
+
+        return $template;
     }
 
     /**
@@ -163,6 +189,12 @@ class IdentityMessageTemplateService
             }
         }
 
+        // 템플릿 편집 시 updateTemplate 이 definition.is_default 를 false 로 내렸으므로,
+        // 시드 정의 복원 시 definition 플래그도 함께 true 로 되돌린다 ('기본' 배지/reset 버튼 노출 조건 정상화).
+        if ($updated->definition instanceof IdentityMessageDefinition) {
+            $this->definitionService->markAsDefault($updated->definition);
+        }
+
         $this->definitionService->invalidateAllCache();
 
         HookManager::doAction('core.identity.message_template.after_reset', $updated);
@@ -191,23 +223,38 @@ class IdentityMessageTemplateService
      */
     protected function getDefaultTemplateData(IdentityMessageTemplate $template): ?array
     {
-        $definition = $template->definition;
+        $defaultDefinition = $this->getDefaultDefinitionData($template->definition);
 
+        if ($defaultDefinition === null) {
+            return null;
+        }
+
+        foreach ($defaultDefinition['templates'] ?? [] as $defaultTemplate) {
+            if (($defaultTemplate['channel'] ?? null) === $template->channel) {
+                return $defaultTemplate;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * 정의가 시더 기본 정의(시드 정의)에 매칭되면 해당 기본 정의 데이터를 반환합니다.
+     *
+     * 운영자가 추가한 정의(admin definition)는 어떤 기본 정의에도 매칭되지 않아 null 을 반환합니다.
+     *
+     * @param  IdentityMessageDefinition|null  $definition
+     * @return array|null
+     */
+    protected function getDefaultDefinitionData(?IdentityMessageDefinition $definition): ?array
+    {
         if (! $definition instanceof IdentityMessageDefinition) {
             return null;
         }
 
-        $allDefaults = $this->collectDefaultDefinitions();
-
-        foreach ($allDefaults as $defaultDefinition) {
-            if (! $this->matchesDefinition($defaultDefinition, $definition)) {
-                continue;
-            }
-
-            foreach ($defaultDefinition['templates'] ?? [] as $defaultTemplate) {
-                if (($defaultTemplate['channel'] ?? null) === $template->channel) {
-                    return $defaultTemplate;
-                }
+        foreach ($this->collectDefaultDefinitions() as $defaultDefinition) {
+            if ($this->matchesDefinition($defaultDefinition, $definition)) {
+                return $defaultDefinition;
             }
         }
 
@@ -226,11 +273,19 @@ class IdentityMessageTemplateService
     {
         $coreDefinitions = $this->loadCoreMessageDefinitions();
 
-        return HookManager::applyFilters(
+        $definitions = HookManager::applyFilters(
             'core.identity.filter_default_message_definitions',
             $coreDefinitions,
             []
         );
+
+        // 활성 언어팩 seed 로케일 병합 — 시딩(seed.identity_messages.translations)과 같은 SSoT.
+        // 이 병합이 없으면 [기본값 복원]이 팩이 주입해 둔 로케일(ja 등)을 config 의
+        // ko/en 만으로 대체해 영구 소실시킨다 (notification 쪽 실사례의 동형 — #597 보완 실측).
+        // injectIdentityMessages 는 string 키('mail.purpose.signup' 등)로 seed 를 매칭하므로
+        // loadCoreMessageDefinitions 가 config 키를 보존해 넘긴다. 확장 리스너가 정수 키로
+        // append 한 항목은 seed 에 매칭되지 않아 그대로 통과한다.
+        return $this->seedInjector->injectIdentityMessages($definitions);
     }
 
     /**
@@ -247,13 +302,14 @@ class IdentityMessageTemplateService
         $common = $this->commonVariables();
         $result = [];
 
-        foreach ($messages as $data) {
+        foreach ($messages as $key => $data) {
             if (($data['variables'] ?? null) === '__common__') {
                 $data['variables'] = $common;
             }
             $data['extension_type'] = 'core';
             $data['extension_identifier'] = 'core';
-            $result[] = $data;
+            // config 키('mail.provider_default' 등)를 보존 — 언어팩 seed 매칭 키와 동일 (collectDefaultDefinitions 참조)
+            $result[$key] = $data;
         }
 
         return $result;

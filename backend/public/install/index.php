@@ -1,22 +1,25 @@
 <?php
+
+use App\Support\PrivilegedDatabaseAccounts;
+
 /**
  * 그누보드7 웹 인스톨러 메인 라우터
  *
  * @author sirsoft
  */
 
-require_once __DIR__ . '/includes/config.php';
-require_once __DIR__ . '/includes/functions.php';
-require_once __DIR__ . '/includes/session.php';
-require_once __DIR__ . '/includes/installer-state.php';
-require_once __DIR__ . '/includes/request-handler.php';
-require_once __DIR__ . '/api/_guard.php';
+require_once __DIR__.'/includes/config.php';
+require_once __DIR__.'/includes/functions.php';
+require_once __DIR__.'/includes/session.php';
+require_once __DIR__.'/includes/installer-state.php';
+require_once __DIR__.'/includes/request-handler.php';
+require_once __DIR__.'/api/_guard.php';
 installer_guard_or_410();
 
 $currentLang = getCurrentLanguage();
 
 // 세션 기반 단계 관리 (URL 파라미터 무시)
-if (!isset($_SESSION['installer_current_step'])) {
+if (! isset($_SESSION['installer_current_step'])) {
     // 세션이 없으면 state.json에서 현재 step 가져오기
     $state = getInstallationState();
 
@@ -33,10 +36,10 @@ $currentStep = $_SESSION['installer_current_step'];
 
 // URL 파라미터로 step 접근 시 알림 후 리다이렉트
 if (isset($_GET['step'])) {
-    $urlStep = (int)$_GET['step'];
+    $urlStep = (int) $_GET['step'];
 
     // 번역 로드
-    if (!isset($translations)) {
+    if (! isset($translations)) {
         $translations = loadTranslations($currentLang);
     }
 
@@ -46,14 +49,14 @@ if (isset($_GET['step'])) {
             lang('url_parameter_not_supported'),
             lang('url_parameter_redirect_message', [
                 'requested' => $urlStep,
-                'current' => $currentStep
+                'current' => $currentStep,
             ]),
-            INSTALLER_BASE_URL . '/'
+            INSTALLER_BASE_URL.'/'
         );
     }
 
     // 같은 경우에도 깔끔한 URL로 리다이렉트
-    header('Location: ' . INSTALLER_BASE_URL . '/');
+    header('Location: '.INSTALLER_BASE_URL.'/');
     exit;
 }
 
@@ -65,11 +68,18 @@ $error = null;
 // Step 3 기본값 설정
 if ($currentStep === 3) {
     $defaults = DEFAULT_INSTALL_CONFIG;
-    $defaults['app_url'] = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'];
+    $defaults['app_url'] = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http').'://'.$_SERVER['HTTP_HOST'];
     $defaults['admin_language'] = getCurrentLanguage();
-    // state.json에서 비밀번호 제외된 config 복원 (세션에서 비밀번호를 사전 입력하지 않음)
+    // state.json에서 비밀번호 제외된 config 복원 (폼에 비밀번호를 사전 입력하지 않음).
+    // state 에는 이미 비밀이 기록되지 않지만(이슈 #465), 레거시 state.json 이 남아 있는
+    // 환경에서도 평문이 HTML 로 렌더되지 않도록 프리필 단계에서 다시 제거한다.
     $savedConfig = $state['config'] ?? $defaults;
-    unset($savedConfig['db_write_password'], $savedConfig['db_read_password']);
+    unset(
+        $savedConfig['db_write_password'],
+        $savedConfig['db_read_password'],
+        $savedConfig['admin_password'],
+        $savedConfig['admin_password_confirm']
+    );
     $formData = array_merge($defaults, $savedConfig);
 }
 
@@ -82,7 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // 번역 로드
-if (!isset($translations)) {
+if (! isset($translations)) {
     $translations = loadTranslations($currentLang);
 }
 
@@ -91,7 +101,7 @@ if ($currentStep < 0 || $currentStep > 6) {
     $currentStep = 0;
 }
 
-$stepFile = __DIR__ . '/views/' . $currentStep . '-' . (STEP_FILE_MAP[$currentStep] ?? 'welcome') . '.php';
+$stepFile = __DIR__.'/views/'.$currentStep.'-'.(STEP_FILE_MAP[$currentStep] ?? 'welcome').'.php';
 ?>
 <!DOCTYPE html>
 <html lang="<?= $currentLang ?>">
@@ -115,11 +125,12 @@ $stepFile = __DIR__ . '/views/' . $currentStep . '-' . (STEP_FILE_MAP[$currentSt
     <title><?= lang('welcome_title') ?> - <?= lang('brand_name') ?></title>
 
     <!-- CSS -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <!-- 아이콘: 설치 마법사는 SPA 부팅 전이라 자산 URL 헬퍼를 쓸 수 없으므로 상대 경로로 자체 제공한다 -->
+    <link rel="stylesheet" href="<?= INSTALLER_BASE_URL ?>/assets/vendor/font-awesome/6.5.1/css/all.inlined.css">
     <link rel="stylesheet" href="<?= INSTALLER_BASE_URL ?>/assets/css/installer.css?v=<?= time() ?>">
 </head>
 <body>
-    <?php if ($currentStep > 0): ?>
+    <?php if ($currentStep > 0) { ?>
     <!-- Installer Header Bar -->
     <div class="installer-header-bar">
         <div class="installer-header-content">
@@ -142,7 +153,7 @@ $stepFile = __DIR__ . '/views/' . $currentStep . '-' . (STEP_FILE_MAP[$currentSt
             </div>
         </div>
     </div>
-    <?php endif; ?>
+    <?php } ?>
 
     <!-- Main Content -->
     <?php
@@ -151,7 +162,7 @@ $stepFile = __DIR__ . '/views/' . $currentStep . '-' . (STEP_FILE_MAP[$currentSt
     } else {
         showStepFileNotFoundError($currentStep);
     }
-    ?>
+?>
 
     <!-- Installer Footer -->
     <footer class="installer-footer">
@@ -162,8 +173,11 @@ $stepFile = __DIR__ . '/views/' . $currentStep . '-' . (STEP_FILE_MAP[$currentSt
     <script>
         window.INSTALLER_BASE_URL = '<?= INSTALLER_BASE_URL ?>';
         window.CURRENT_STEP = <?= $currentStep ?>;
-        window.INSTALLER_LANG = <?= json_encode($translations ?? [], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
-        window.INSTALLER_STATE_LOCALE = <?= json_encode($state['g7_locale'] ?? null) ?>;
+        window.INSTALLER_LANG = <?= installer_json_encode($translations ?? [], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
+        window.INSTALLER_STATE_LOCALE = <?= installer_json_encode($state['g7_locale'] ?? null) ?>;
+        // DB 최고권한 계정 목록 — 서버 상수를 그대로 내려보내 JS 에 목록을 중복 정의하지 않는다.
+        // 클라이언트 검증은 즉시 피드백용이며, 실제 차단은 서버 3개 경로가 담당한다.
+        window.INSTALLER_BLOCKED_DB_ACCOUNTS = <?= installer_json_encode(PrivilegedDatabaseAccounts::BLOCKED) ?>;
     </script>
     <script src="<?= INSTALLER_BASE_URL ?>/assets/js/installation-monitor.js?v=<?= time() ?>"></script>
     <script src="<?= INSTALLER_BASE_URL ?>/assets/js/installer.js?v=<?= time() ?>"></script>

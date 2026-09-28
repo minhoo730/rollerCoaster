@@ -7,8 +7,8 @@
 ## TL;DR (5초 요약)
 
 ```text
-1. 백엔드: /lang/{locale}/*.php → __('vendor-module::key')
-2. 프론트엔드: /resources/lang/{locale}.json → $t:key
+1. 백엔드: /src/lang/{locale}/*.php → __('vendor-module::key') — 이 경로만 로드된다
+2. 프론트엔드: /resources/lang/{locale}.json → $t:key (resources/lang 아래 *.php 는 미로드)
 3. JSON에 moduleIdentifier 포함 금지! (자동 병합됨)
 4. 지원 언어: ko, en 필수
 5. 키 충돌 방지: 모듈별 고유 prefix 사용 권장
@@ -36,8 +36,22 @@
 
 | 구분 | 파일 경로 | 형식 | 사용처 |
 |------|----------|------|--------|
-| 백엔드 | `/lang/{locale}/*.php` | PHP 배열 | Laravel `__()` 함수 |
+| 백엔드 | `/src/lang/{locale}/*.php` | PHP 배열 | Laravel `__()` 함수 |
 | 프론트엔드 | `/resources/lang/{locale}.json` | JSON | 레이아웃 JSON `$t:` 문법 |
+
+> 모듈의 백엔드 다국어는 `src/lang` **한 곳**이다. `TranslationServiceProvider` 가 그 경로만
+> 등록하고, 확장 설치 검증(`ValidatesTranslationPath`)도 같은 경로를 강제한다. 언어팩 시스템
+> (`LanguagePackService` · `LanguagePackServiceProvider`) 도 같은 경로를 스캔한다.
+>
+> `resources/lang/{locale}/*.php` 에 백엔드 문구를 두면 **아무도 읽지 않는다** — 화면에는
+> `src/lang` 값이 나오고, 그 파일을 고쳐도 반영되지 않으며, 그 사실이 화면에 드러나지 않는다.
+> `resources/lang` 아래에서 유효한 것은 프런트엔드용 `{locale}.json` 과 `partial/{locale}/*.json`
+> 뿐이다. (플러그인은 `lang/{locale}/*.php`, 템플릿은 `lang/{locale}.json` 이 각각 그 자리다.)
+
+> **코어 자체 다국어 자원도 동일 구조** — 코어는 `lang/{ko,en}/*.php` (백엔드) +
+> `lang/{ko,en}.json` (+ `lang/partial/{ko,en}/*.json`) (프론트엔드) 를 사용한다.
+> 모듈/플러그인/템플릿/코어 모두 같은 디렉토리 구조와 $partial 디렉티브 메커니즘을
+> 공유한다. 상세: [docs/extension/language-packs.md "코어 다국어 자원의 위치"](language-packs.md#코어-다국어-자원의-위치).
 
 ### moduleIdentifier 규칙
 
@@ -197,6 +211,12 @@ modules/sirsoft-sample/
   }
 }
 ```
+
+### 코어/템플릿 도메인과의 충돌
+
+모듈 lang 데이터는 모듈 identifier wrap (`sirsoft-sample.*`) 으로 코어/템플릿 도메인과 자연 격리된다. 다만 코어/템플릿 lang 과 동일 top-level 키 (`layout_editor`, `core`, `auth` 등) 를 모듈이 직접 정의하는 것은 권장하지 않는다 — `TemplateService::getLanguageDataWithModules` 는 deep merge (재귀 병합) 정책이라 양쪽 leaf 가 보존되긴 하지만, 동일 키 경로 leaf 충돌 시 모듈이 우선순위가 높아 코어/템플릿 leaf 를 덮어쓴다. 의도된 오버라이드가 아닌 한 모듈 identifier wrap 안에만 정의.
+
+상세 병합 정책: [docs/extension/language-packs.md](language-packs.md#병합-정책--deep-merge-재귀-병합) / [docs/frontend/data-binding-i18n.md](../frontend/data-binding-i18n.md#병합-정책--deep-merge-재귀-병합)
 
 ---
 

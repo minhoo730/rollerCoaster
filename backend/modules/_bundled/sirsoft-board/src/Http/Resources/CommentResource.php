@@ -2,9 +2,14 @@
 
 namespace Modules\Sirsoft\Board\Http\Resources;
 
+use App\Enums\PermissionType;
+use App\Enums\UserStatus;
 use App\Http\Resources\BaseApiResource;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Modules\Sirsoft\Board\Enums\PostStatus;
+use Modules\Sirsoft\Board\Enums\TriggerType;
+use Modules\Sirsoft\Board\Models\Post;
 use Modules\Sirsoft\Board\Repositories\Contracts\ReportRepositoryInterface;
 use Modules\Sirsoft\Board\Traits\ChecksBoardPermission;
 use Modules\Sirsoft\Board\Traits\FormatsBoardDate;
@@ -27,13 +32,17 @@ class CommentResource extends BaseApiResource
      */
     public function toArray(Request $request): array
     {
-        $slug = $this->post?->board?->slug ?? $request->route('slug');
+        // 컨트롤러가 넘긴 부모 post(요청 속성)를 재사용해 slug 를 도출한다 — 목록에서 댓글당
+        // `$this->post` lazy-load(N+1)를 피한다(KVE-2026-1914 A-4b). 미주입 경로(상세/생성/
+        // admin)는 종전대로 이미 로드된 관계 또는 라우트 slug 로 폴백한다.
+        $parentPost = $this->resolveParentPost($request);
+        $slug = $parentPost?->board?->slug ?? $request->route('slug');
 
         return [
             'id' => $this->id,
             'post_id' => $this->post_id,
             'parent_id' => $this->parent_id,
-            'content' => $this->getFilteredContent($slug),
+            'content' => $this->getFilteredContent($request, $slug),
 
             // 작성자 정보
             'author' => $this->getAuthorInfo(),
@@ -41,12 +50,12 @@ class CommentResource extends BaseApiResource
             // 댓글 속성
             'is_secret' => $this->is_secret,
             'status' => $this->status?->value ?? 'published',
-            'status_label' => $this->status?->label() ?? __('sirsoft-board::messages.post.status.published'),
+            'status_label' => $this->status?->label() ?? __('sirsoft-board::enums.post_status.published'),
             'depth' => $this->depth,
             'replies_count' => $this->replies_count ?? 0,
 
             // 타임스탬프
-            'created_at'           => $this->formatCreatedAt($this->created_at),
+            'created_at' => $this->formatCreatedAt($this->created_at),
             'created_at_formatted' => $this->formatCreatedAtFormat(
                 $this->created_at,
                 g7_module_settings('sirsoft-board', 'display.date_display_format', 'standard')
@@ -54,10 +63,19 @@ class CommentResource extends BaseApiResource
             'updated_at' => $this->formatDateTimeStringForUser($this->updated_at),
             'deleted_at' => $this->deleted_at ? $this->formatDateTimeStringForUser($this->deleted_at) : null,
 
+            // 게시글 삭제로 함께 숨겨진(cascade) 댓글 여부.
+            // 프론트는 이 플래그로 cascade 댓글을 사용자 직접 삭제분과 구분해
+            // 마스킹 없이 원문을 노출한다
+            'is_cascade_deleted' => $this->deleted_at !== null
+                && $this->trigger_type === TriggerType::Cascade,
+
             // IP 주소 (admin.manage 권한 보유자만)
             'ip_address' => ($slug && $this->checkBoardPermission($slug, 'admin.manage'))
                 ? $this->ip_address
                 : null,
+
+            // 처리 이력(블라인드/복원 등) — admin.manage 권한 보유자만, 민감 필드 제외
+            'action_logs' => $this->getActionLogsForResponse($slug),
 
             // 소유권 정보
             'is_author' => Auth::id() === $this->user_id,
@@ -76,6 +94,31 @@ class CommentResource extends BaseApiResource
     // =========================================================================
 
     /**
+     * 처리 이력(action_logs)을 권한에 따라 반환합니다. (admin.manage 권한 보유자만)
+     *
+     * 블라인드/복원/삭제 사유·처리자명·처리일을 노출하되, 민감 필드(admin_id, ip_address)는
+     * 제외합니다. 비권한자에게는 null 을 반환하여 사유가 누출되지 않도록 합니다.
+     *
+     * @param  string|null  $slug  게시판 슬러그
+     * @return array<int, array<string, mixed>>|null 표시용 처리 이력 목록
+     */
+    private function getActionLogsForResponse(?string $slug): ?array
+    {
+        if (! $slug || ! $this->checkBoardPermission($slug, 'admin.manage')) {
+            return null;
+        }
+
+        $logs = $this->action_logs ?? [];
+
+        return array_map(static fn (array $log): array => [
+            'action' => $log['action'] ?? null,
+            'reason' => $log['reason'] ?? null,
+            'admin_name' => $log['admin_name'] ?? null,
+            'created_at' => $log['created_at'] ?? null,
+        ], $logs);
+    }
+
+    /**
      * 작성자 정보 배열을 반환합니다.
      *
      * 회원 상태별 정보:
@@ -89,8 +132,8 @@ class CommentResource extends BaseApiResource
     private function getAuthorInfo(): array
     {
         if ($this->user_id && $this->user) {
-            $userStatus = \App\Enums\UserStatus::tryFrom($this->user->status);
-            $isWithdrawn = $userStatus === \App\Enums\UserStatus::Withdrawn;
+            $userStatus = UserStatus::tryFrom($this->user->status);
+            $isWithdrawn = $userStatus === UserStatus::Withdrawn;
 
             return [
                 'uuid' => $this->user?->uuid,
@@ -132,8 +175,9 @@ class CommentResource extends BaseApiResource
         }
 
         // fallback: 개별 쿼리 (목록 등 사전 로드 미적용 경로)
+        // 부모 post 는 컨트롤러가 넘긴 인스턴스를 재사용해 댓글당 lazy-load 를 피한다.
         $user = $request->user();
-        $boardId = $this->post?->board?->id ?? null;
+        $boardId = $this->resolveParentPost($request)?->board?->id ?? null;
 
         if (! $user || ! $boardId) {
             return false;
@@ -168,7 +212,7 @@ class CommentResource extends BaseApiResource
      */
     protected function resolveAbilities(Request $request): array
     {
-        $slug = $this->post?->board?->slug ?? $request->route('slug');
+        $slug = $this->resolveParentPost($request)?->board?->slug ?? $request->route('slug');
         if (! $slug) {
             return [];
         }
@@ -190,45 +234,122 @@ class CommentResource extends BaseApiResource
             ->toArray();
     }
 
-    /**
-     * Admin 요청 여부를 확인합니다.
-     *
-     * Controller 네임스페이스로 판단합니다.
-     *
-     * @param  Request  $request  HTTP 요청
-     * @return bool Admin 요청 여부
-     */
-    private function isAdminRequest(Request $request): bool
-    {
-        $controller = $request->route()?->getController();
-
-        if (! $controller) {
-            return false;
-        }
-
-        return str_contains(get_class($controller), '\\Admin\\');
-    }
-
     // =========================================================================
     // 콘텐츠 필터링 메서드
     // =========================================================================
 
     /**
+     * 부모 게시글(Post)을 조회 없이 해석합니다.
+     *
+     * 우선순위:
+     *  1. 컨트롤러가 요청 속성으로 넘긴 인스턴스(`sirsoft_board_parent_post`) — 목록 경로에서
+     *     댓글당 lazy-load(N+1)를 피하는 SSoT. 모든 댓글이 같은 인스턴스를 공유한다.
+     *  2. 이미 로드된 `post` 관계(상세/생성/admin 등 미주입 경로 하위호환).
+     *
+     * 둘 다 없으면 null — 추가 쿼리를 유발하지 않는다(2차 게이트는 1차 방어가 담당).
+     *
+     * @param  Request  $request  HTTP 요청
+     * @return Post|null 부모 게시글
+     */
+    private function resolveParentPost(Request $request): ?Post
+    {
+        $injected = $request->attributes->get('sirsoft_board_parent_post');
+        if ($injected instanceof Post) {
+            return $injected;
+        }
+
+        return $this->resource->relationLoaded('post') ? $this->post : null;
+    }
+
+    /**
      * 권한에 따라 필터링된 댓글 내용을 반환합니다.
      *
+     * @param  Request  $request  HTTP 요청
      * @param  string|null  $slug  게시판 슬러그
      * @return string|null 필터링된 댓글 내용
      */
-    private function getFilteredContent(?string $slug): ?string
+    private function getFilteredContent(Request $request, ?string $slug): ?string
     {
-        // 삭제된 댓글
-        if ($this->deleted_at) {
-            if (! $slug || ! $this->checkBoardPermission($slug, 'admin.manage')) {
-                return __('sirsoft-board::messages.comment.deleted_comment_content');
-            }
+        // 부모 게시글이 비밀글이면 열람 권한 없는 요청에는 댓글 원문을 숨긴다
+        // (KVE-2026-1914 이중 방어 — 1차 차단은 CommentController::index).
+        // 컨트롤러가 넘긴 부모 post(요청 속성)를 재사용해 댓글당 lazy-load 없이 재확인한다.
+        $parentPost = $this->resolveParentPost($request);
+        if ($parentPost && $parentPost->is_secret && ! PostResource::canViewSecretForPost($parentPost, $request)) {
+            return null;
+        }
+
+        // 게시글 삭제로 함께 숨겨진(cascade) 댓글은 사용자가 직접 지운 것이 아니므로
+        // 마스킹하지 않고 원문을 그대로 노출한다 (글을 볼 수 있는 사람이면 누구나).
+        $isCascadeDeleted = $this->deleted_at !== null
+            && $this->trigger_type === TriggerType::Cascade;
+
+        // 삭제된 댓글(사용자 직접 삭제 등): 관리 권한(manager/admin.manage)이 없으면 내용 숨김
+        if ($this->deleted_at && ! $isCascadeDeleted && ! $this->canViewDeletedContent($request, $slug)) {
+            return __('sirsoft-board::messages.comment.deleted_comment_content');
+        }
+
+        // 블라인드 댓글: 원문 열람 권한(관리자 또는 작성자 본인)이 없으면 content를 null로 반환
+        // - 블라인드 안내 문구는 그대로 노출하되, 원문만 권한자 한정
+        // - null 반환 시 프론트의 '원문 보기' 버튼이 자동으로 미노출됨
+        if ($this->status === PostStatus::Blinded && ! $this->canViewBlindedContent($request, $slug)) {
+            return null;
         }
 
         return $this->content;
     }
 
+    /**
+     * 블라인드 댓글 원문 열람 가능 여부를 확인합니다.
+     *
+     * 열람 가능 조건 (OR):
+     * 1. 작성자 본인 (회원 댓글 — 비회원 댓글은 본인 판정 불가)
+     * 2. 게시판 관리자 (Admin: admin.manage / User: manager)
+     *
+     * @param  Request  $request  HTTP 요청
+     * @param  string|null  $slug  게시판 슬러그
+     * @return bool 원문 열람 가능 여부
+     */
+    private function canViewBlindedContent(Request $request, ?string $slug): bool
+    {
+        // 1. 작성자 본인 (회원 댓글)
+        $user = Auth::user();
+        if ($user && $this->user_id && $this->user_id === $user->id) {
+            return true;
+        }
+
+        // 2. 게시판 관리자 권한
+        if (! $slug) {
+            return false;
+        }
+
+        if ($this->isAdminRequest($request)) {
+            return $this->checkBoardPermission($slug, 'admin.manage');
+        }
+
+        return $this->checkBoardPermission($slug, 'manager', PermissionType::User);
+    }
+
+    /**
+     * 삭제된 댓글 원문 열람 가능 여부를 확인합니다.
+     *
+     * 열람 가능 조건: 게시판 관리자 (Admin: admin.manage / User: manager).
+     * 블라인드(canViewBlindedContent)와 달리 작성자 본인은 인정하지 않습니다.
+     *
+     * @param  Request  $request  HTTP 요청
+     * @param  string|null  $slug  게시판 슬러그
+     * @return bool 원문 열람 가능 여부
+     */
+    private function canViewDeletedContent(Request $request, ?string $slug): bool
+    {
+        if (! $slug) {
+            return false;
+        }
+
+        if ($this->isAdminRequest($request)) {
+            return $this->checkBoardPermission($slug, 'admin.manage');
+        }
+
+        return $this->checkBoardPermission($slug, 'manager', PermissionType::User)
+            || $this->checkBoardPermission($slug, 'admin.manage');
+    }
 }

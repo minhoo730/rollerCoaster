@@ -7,31 +7,28 @@
   "type": "basic",
   "name": "Div",
   "if": "{{(_global.activeSettingsTab || query.tab || 'general') === 'seo'}}",
-  "props": {
-    "className": "mt-6 space-y-6"
-  },
   "children": [
     {
       "id": "card_meta_settings",
       "type": "basic",
       "name": "Div",
       "props": {
-        "className": "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6"
+        "className": "admin-card"
       },
       "children": [
         {
           "type": "basic",
           "name": "H3",
           "props": {
-            "className": "text-lg font-semibold text-gray-900 dark:text-white mb-1"
+            "className": "card-title"
           },
           "text": "$t:admin.settings.seo.meta_settings"
         },
         {
           "type": "basic",
-          "name": "P",
+          "name": "Div",
           "props": {
-            "className": "text-sm text-gray-500 dark:text-gray-400 mb-6"
+            "className": "card-description"
           },
           "text": "$t:admin.settings.seo.meta_settings_desc"
         },
@@ -39,7 +36,7 @@
           "type": "basic",
           "name": "Div",
           "props": {
-            "className": "space-y-4"
+            "className": "row-stack"
           },
           "children": [
             {
@@ -51,7 +48,7 @@
                   "type": "basic",
                   "name": "Label",
                   "props": {
-                    "className": "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                    "className": "form-label"
                   },
                   "text": "$t:admin.settings.seo.meta_title_suffix"
                 },
@@ -63,14 +60,14 @@
                     "name": "seo.meta_title_suffix",
                     "placeholder": " | 그누보드7",
                     "disabled": "{{_computed.isReadOnly}}",
-                    "className": "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:text-gray-400 dark:disabled:text-gray-500 disabled:cursor-not-allowed"
+                    "className": ""
                   }
                 },
                 {
                   "type": "basic",
                   "name": "P",
                   "props": {
-                    "className": "text-xs text-gray-500 dark:text-gray-400 mt-1"
+                    "className": "form-hint"
                   },
                   "text": "$t:admin.settings.seo.meta_title_suffix_hint"
                 }
@@ -85,7 +82,7 @@
                   "type": "basic",
                   "name": "Label",
                   "props": {
-                    "className": "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                    "className": "form-label"
                   },
                   "text": "$t:admin.settings.seo.meta_description"
                 },
@@ -98,14 +95,14 @@
                     "maxLength": 160,
                     "placeholder": "$t:admin.settings.seo.meta_description_placeholder",
                     "disabled": "{{_computed.isReadOnly}}",
-                    "className": "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:text-gray-400 dark:disabled:text-gray-500 disabled:cursor-not-allowed resize-none"
+                    "className": "resize-none"
                   }
                 },
                 {
                   "type": "basic",
                   "name": "P",
                   "props": {
-                    "className": "text-xs text-gray-500 dark:text-gray-400 mt-1"
+                    "className": "form-hint"
                   },
                   "text": "$t:admin.settings.seo.meta_description_hint"
                 }
@@ -120,7 +117,7 @@
                   "type": "basic",
                   "name": "Label",
                   "props": {
-                    "className": "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                    "className": "form-label"
                   },
                   "text": "$t:admin.settings.seo.meta_keywords"
                 },
@@ -132,14 +129,14 @@
                     "name": "seo.meta_keywords",
                     "placeholder": "CMS, 그누보드7, 오픈소스",
                     "disabled": "{{_computed.isReadOnly}}",
-                    "className": "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:text-gray-400 dark:disabled:text-gray-500 disabled:cursor-not-allowed"
+                    "className": ""
                   }
                 },
                 {
                   "type": "basic",
                   "name": "P",
                   "props": {
-                    "className": "text-xs text-gray-500 dark:text-gray-400 mt-1"
+                    "className": "form-hint"
                   },
                   "text": "$t:admin.settings.seo.meta_keywords_hint"
                 }
@@ -154,22 +151,22 @@
       "type": "basic",
       "name": "Div",
       "props": {
-        "className": "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6"
+        "className": "admin-card"
       },
       "children": [
         {
           "type": "basic",
           "name": "H3",
           "props": {
-            "className": "text-lg font-semibold text-gray-900 dark:text-white mb-1"
+            "className": "card-title"
           },
           "text": "$t:admin.settings.seo.generator_settings"
         },
         {
           "type": "basic",
-          "name": "P",
+          "name": "Div",
           "props": {
-            "className": "text-sm text-gray-500 dark:text-gray-400 mb-6"
+            "className": "card-description"
           },
           "text": "$t:admin.settings.seo.generator_settings_desc"
         },
@@ -177,7 +174,7 @@
           "type": "basic",
           "name": "Div",
           "props": {
-            "className": "space-y-4"
+            "className": "row-stack"
           },
           "children": [
             {
@@ -185,7 +182,7 @@
               "type": "basic",
               "name": "Div",
               "props": {
-                "className": "flex items-center justify-between py-3 border-b border-gray-200 dark:border-gray-700"
+                "className": "flex-between"
               },
               "children": [
                 {
@@ -196,7 +193,7 @@
                       "type": "basic",
                       "name": "Span",
                       "props": {
-                        "className": "text-sm font-medium text-gray-900 dark:text-white"
+                        "className": "text-heading"
                       },
                       "text": "$t:admin.settings.seo.generator_enabled"
                     },
@@ -204,11 +201,12 @@
                       "type": "basic",
                       "name": "P",
                       "props": {
-                        "className": "text-sm text-gray-500 dark:text-gray-400"
+                        "className": "text-label-subtle"
                       },
                       "text": "$t:admin.settings.seo.generator_enabled_desc"
                     }
-                  ]
+                  ],
+                  "props": {}
                 },
                 {
                   "type": "composite",
@@ -232,7 +230,7 @@
                   "type": "basic",
                   "name": "Label",
                   "props": {
-                    "className": "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                    "className": "form-label"
                   },
                   "text": "$t:admin.settings.seo.generator_content"
                 },
@@ -245,14 +243,14 @@
                     "maxLength": 200,
                     "placeholder": "GnuBoard7 {{_global.appConfig?.version ?? ''}}",
                     "disabled": "{{_computed.isReadOnly || !_local.form?.seo?.generator_enabled}}",
-                    "className": "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:text-gray-400 dark:disabled:text-gray-500 disabled:cursor-not-allowed"
+                    "className": ""
                   }
                 },
                 {
                   "type": "basic",
                   "name": "P",
                   "props": {
-                    "className": "text-xs text-gray-500 dark:text-gray-400 mt-1"
+                    "className": "form-hint"
                   },
                   "text": "$t:admin.settings.seo.generator_content_hint"
                 }
@@ -267,22 +265,22 @@
       "type": "basic",
       "name": "Div",
       "props": {
-        "className": "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6"
+        "className": "admin-card"
       },
       "children": [
         {
           "type": "basic",
           "name": "H3",
           "props": {
-            "className": "text-lg font-semibold text-gray-900 dark:text-white mb-1"
+            "className": "card-title"
           },
           "text": "$t:admin.settings.seo.og_twitter_settings"
         },
         {
           "type": "basic",
-          "name": "P",
+          "name": "Div",
           "props": {
-            "className": "text-sm text-gray-500 dark:text-gray-400 mb-6"
+            "className": "card-description"
           },
           "text": "$t:admin.settings.seo.og_twitter_settings_desc"
         },
@@ -290,7 +288,7 @@
           "type": "basic",
           "name": "Div",
           "props": {
-            "className": "space-y-4"
+            "className": "row-stack"
           },
           "children": [
             {
@@ -301,7 +299,7 @@
                   "type": "basic",
                   "name": "Label",
                   "props": {
-                    "className": "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                    "className": "form-label"
                   },
                   "text": "$t:admin.settings.seo.og_default_site_name"
                 },
@@ -313,14 +311,14 @@
                     "name": "seo.og_default_site_name",
                     "placeholder": "GNUBOARD.NET",
                     "disabled": "{{_computed.isReadOnly}}",
-                    "className": "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:text-gray-400 dark:disabled:text-gray-500 disabled:cursor-not-allowed"
+                    "className": ""
                   }
                 },
                 {
                   "type": "basic",
                   "name": "P",
                   "props": {
-                    "className": "text-xs text-gray-500 dark:text-gray-400 mt-1"
+                    "className": "form-hint"
                   },
                   "text": "$t:admin.settings.seo.og_default_site_name_hint"
                 }
@@ -330,7 +328,7 @@
               "type": "basic",
               "name": "Div",
               "props": {
-                "className": "grid grid-cols-2 gap-4"
+                "className": "grid-2col"
               },
               "children": [
                 {
@@ -341,7 +339,7 @@
                       "type": "basic",
                       "name": "Label",
                       "props": {
-                        "className": "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                        "className": "form-label"
                       },
                       "text": "$t:admin.settings.seo.og_image_default_width"
                     },
@@ -351,11 +349,11 @@
                       "props": {
                         "type": "number",
                         "name": "seo.og_image_default_width",
-                        "min": "0",
-                        "max": "8000",
+                        "min": "{{_local?.form?._meta?.limits?.seo_og_image_default_width_min ?? 0}}",
+                        "max": "{{_local?.form?._meta?.limits?.seo_og_image_default_width_max ?? 8000}}",
                         "placeholder": "1200",
                         "disabled": "{{_computed.isReadOnly}}",
-                        "className": "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:text-gray-400 dark:disabled:text-gray-500 disabled:cursor-not-allowed"
+                        "className": ""
                       }
                     }
                   ]
@@ -368,7 +366,7 @@
                       "type": "basic",
                       "name": "Label",
                       "props": {
-                        "className": "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                        "className": "form-label"
                       },
                       "text": "$t:admin.settings.seo.og_image_default_height"
                     },
@@ -378,11 +376,11 @@
                       "props": {
                         "type": "number",
                         "name": "seo.og_image_default_height",
-                        "min": "0",
-                        "max": "8000",
+                        "min": "{{_local?.form?._meta?.limits?.seo_og_image_default_height_min ?? 0}}",
+                        "max": "{{_local?.form?._meta?.limits?.seo_og_image_default_height_max ?? 8000}}",
                         "placeholder": "630",
                         "disabled": "{{_computed.isReadOnly}}",
-                        "className": "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:text-gray-400 dark:disabled:text-gray-500 disabled:cursor-not-allowed"
+                        "className": ""
                       }
                     }
                   ]
@@ -393,7 +391,7 @@
               "type": "basic",
               "name": "P",
               "props": {
-                "className": "text-xs text-gray-500 dark:text-gray-400"
+                "className": "text-tertiary"
               },
               "text": "$t:admin.settings.seo.og_image_default_size_hint"
             },
@@ -405,7 +403,108 @@
                   "type": "basic",
                   "name": "Label",
                   "props": {
-                    "className": "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                    "className": "form-label"
+                  },
+                  "text": "$t:admin.settings.seo.og_image_default"
+                },
+                {
+                  "type": "basic",
+                  "name": "P",
+                  "props": {
+                    "className": "text-tertiary mb-2"
+                  },
+                  "text": "$t:admin.settings.seo.og_image_default_desc"
+                },
+                {
+                  "id": "og_image_default_uploader",
+                  "type": "composite",
+                  "name": "FileUploader",
+                  "props": {
+                    "collection": "og_image_default",
+                    "disabled": "{{_computed.isReadOnly}}",
+                    "maxFiles": 1,
+                    "maxSize": "{{_global.settings?.upload?.max_file_size ?? _global.uploadSettings?.max_file_size ?? 10}}",
+                    "accept": "{{_global.settings?.upload?.allowed_extensions_formatted ?? _global.uploadSettings?.allowed_extensions_formatted ?? '.jpg,.jpeg,.png,.gif,.svg,.webp'}}",
+                    "imageCompression": {
+                      "maxSizeMB": 1,
+                      "maxWidthOrHeight": "{{_global.settings?.upload?.image_max_width ?? _global.uploadSettings?.image_max_width ?? 1200}}"
+                    },
+                    "initialFiles": "{{settings?.data?.seo?.og_image_default ?? []}}",
+                    "autoUpload": false,
+                    "uploadTriggerEvent": "upload:og_image_default",
+                    "confirmBeforeRemove": true
+                  },
+                  "actions": [
+                    {
+                      "event": "onFilesChange",
+                      "type": "change",
+                      "if": "{{$args[0] && $args[0].length > 0}}",
+                      "handler": "setState",
+                      "params": {
+                        "target": "local",
+                        "hasChanges": true
+                      }
+                    },
+                    {
+                      "event": "onUploadComplete",
+                      "type": "change",
+                      "handler": "setState",
+                      "params": {
+                        "target": "local",
+                        "hasChanges": true,
+                        "form.seo.og_image_default": "{{[...(_local.form?.seo?.og_image_default ?? []), ...$args[0]]}}"
+                      }
+                    },
+                    {
+                      "event": "onUploadComplete",
+                      "type": "custom",
+                      "handler": "toast",
+                      "params": {
+                        "type": "success",
+                        "message": "$t:attachment.upload_success"
+                      }
+                    },
+                    {
+                      "event": "onUploadError",
+                      "type": "custom",
+                      "handler": "toast",
+                      "params": {
+                        "type": "error",
+                        "message": "{{$args[0]}}"
+                      }
+                    },
+                    {
+                      "event": "onRemove",
+                      "type": "change",
+                      "handler": "setState",
+                      "params": {
+                        "target": "local",
+                        "hasChanges": true,
+                        "form.seo.og_image_default": "{{(_local.form?.seo?.og_image_default ?? []).filter(item => (item.hash || item.id) !== $args[0])}}"
+                      }
+                    },
+                    {
+                      "event": "onRemove",
+                      "type": "custom",
+                      "handler": "toast",
+                      "params": {
+                        "type": "info",
+                        "message": "$t:attachment.deleted"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "basic",
+              "name": "Div",
+              "children": [
+                {
+                  "type": "basic",
+                  "name": "Label",
+                  "props": {
+                    "className": "form-label"
                   },
                   "text": "$t:admin.settings.seo.twitter_default_card"
                 },
@@ -416,19 +515,31 @@
                     "name": "seo.twitter_default_card",
                     "disabled": "{{_computed.isReadOnly}}",
                     "options": [
-                      { "value": "summary_large_image", "label": "summary_large_image" },
-                      { "value": "summary", "label": "summary" },
-                      { "value": "app", "label": "app" },
-                      { "value": "player", "label": "player" }
+                      {
+                        "value": "summary_large_image",
+                        "label": "summary_large_image"
+                      },
+                      {
+                        "value": "summary",
+                        "label": "summary"
+                      },
+                      {
+                        "value": "app",
+                        "label": "app"
+                      },
+                      {
+                        "value": "player",
+                        "label": "player"
+                      }
                     ],
-                    "className": "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:text-gray-400 dark:disabled:text-gray-500 disabled:cursor-not-allowed"
+                    "className": ""
                   }
                 },
                 {
                   "type": "basic",
                   "name": "P",
                   "props": {
-                    "className": "text-xs text-gray-500 dark:text-gray-400 mt-1"
+                    "className": "form-hint"
                   },
                   "text": "$t:admin.settings.seo.twitter_default_card_hint"
                 }
@@ -442,7 +553,7 @@
                   "type": "basic",
                   "name": "Label",
                   "props": {
-                    "className": "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                    "className": "form-label"
                   },
                   "text": "$t:admin.settings.seo.twitter_default_site"
                 },
@@ -454,14 +565,14 @@
                     "name": "seo.twitter_default_site",
                     "placeholder": "@gnuboard",
                     "disabled": "{{_computed.isReadOnly}}",
-                    "className": "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:text-gray-400 dark:disabled:text-gray-500 disabled:cursor-not-allowed"
+                    "className": ""
                   }
                 },
                 {
                   "type": "basic",
                   "name": "P",
                   "props": {
-                    "className": "text-xs text-gray-500 dark:text-gray-400 mt-1"
+                    "className": "form-hint"
                   },
                   "text": "$t:admin.settings.seo.twitter_default_site_hint"
                 }
@@ -476,22 +587,22 @@
       "type": "basic",
       "name": "Div",
       "props": {
-        "className": "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6"
+        "className": "admin-card"
       },
       "children": [
         {
           "type": "basic",
           "name": "H3",
           "props": {
-            "className": "text-lg font-semibold text-gray-900 dark:text-white mb-1"
+            "className": "card-title"
           },
           "text": "$t:admin.settings.seo.bot_settings"
         },
         {
           "type": "basic",
-          "name": "P",
+          "name": "Div",
           "props": {
-            "className": "text-sm text-gray-500 dark:text-gray-400 mb-6"
+            "className": "card-description"
           },
           "text": "$t:admin.settings.seo.bot_settings_desc"
         },
@@ -499,7 +610,7 @@
           "type": "basic",
           "name": "Div",
           "props": {
-            "className": "space-y-4"
+            "className": "row-stack"
           },
           "children": [
             {
@@ -507,7 +618,7 @@
               "type": "basic",
               "name": "Div",
               "props": {
-                "className": "flex gap-3 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm text-blue-900 dark:text-blue-100"
+                "className": "alert-info"
               },
               "children": [
                 {
@@ -547,7 +658,7 @@
               "type": "basic",
               "name": "Div",
               "props": {
-                "className": "flex items-center justify-between py-3 border-b border-gray-200 dark:border-gray-700"
+                "className": "flex-between"
               },
               "children": [
                 {
@@ -558,7 +669,7 @@
                       "type": "basic",
                       "name": "Span",
                       "props": {
-                        "className": "text-sm font-medium text-gray-900 dark:text-white"
+                        "className": "text-heading"
                       },
                       "text": "$t:admin.settings.seo.bot_detection_enabled"
                     },
@@ -566,7 +677,7 @@
                       "type": "basic",
                       "name": "P",
                       "props": {
-                        "className": "text-sm text-gray-500 dark:text-gray-400"
+                        "className": "text-label-subtle"
                       },
                       "text": "$t:admin.settings.seo.bot_detection_enabled_desc"
                     }
@@ -587,7 +698,7 @@
               "type": "basic",
               "name": "Div",
               "props": {
-                "className": "flex items-center justify-between py-3 border-b border-gray-200 dark:border-gray-700 {{_local.form?.seo?.bot_detection_enabled ? '' : 'opacity-50'}}"
+                "className": "flex-between {{_local.form?.seo?.bot_detection_enabled ? '' : 'opacity-50'}}"
               },
               "children": [
                 {
@@ -598,7 +709,7 @@
                       "type": "basic",
                       "name": "Span",
                       "props": {
-                        "className": "text-sm font-medium text-gray-900 dark:text-white"
+                        "className": "text-heading"
                       },
                       "text": "$t:admin.settings.seo.bot_detection_library_enabled"
                     },
@@ -606,7 +717,7 @@
                       "type": "basic",
                       "name": "P",
                       "props": {
-                        "className": "text-sm text-gray-500 dark:text-gray-400"
+                        "className": "text-label-subtle"
                       },
                       "text": "$t:admin.settings.seo.bot_detection_library_enabled_desc"
                     }
@@ -635,7 +746,7 @@
                   "type": "basic",
                   "name": "Label",
                   "props": {
-                    "className": "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                    "className": "form-label"
                   },
                   "text": "$t:admin.settings.seo.bot_user_agents"
                 },
@@ -655,7 +766,7 @@
                   "type": "basic",
                   "name": "P",
                   "props": {
-                    "className": "text-xs text-gray-500 dark:text-gray-400 mt-1"
+                    "className": "form-hint"
                   },
                   "text": "$t:admin.settings.seo.bot_user_agents_hint"
                 }
@@ -670,22 +781,22 @@
       "type": "basic",
       "name": "Div",
       "props": {
-        "className": "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6"
+        "className": "admin-card"
       },
       "children": [
         {
           "type": "basic",
           "name": "H3",
           "props": {
-            "className": "text-lg font-semibold text-gray-900 dark:text-white mb-1"
+            "className": "card-title"
           },
           "text": "$t:admin.settings.seo.seo_cache_settings"
         },
         {
           "type": "basic",
-          "name": "P",
+          "name": "Div",
           "props": {
-            "className": "text-sm text-gray-500 dark:text-gray-400 mb-6"
+            "className": "card-description"
           },
           "text": "$t:admin.settings.seo.seo_cache_settings_desc"
         },
@@ -693,7 +804,7 @@
           "type": "basic",
           "name": "Div",
           "props": {
-            "className": "space-y-4"
+            "className": "row-stack"
           },
           "children": [
             {
@@ -701,7 +812,7 @@
               "type": "basic",
               "name": "Div",
               "props": {
-                "className": "flex items-center justify-between py-3 border-b border-gray-200 dark:border-gray-700"
+                "className": "flex-between"
               },
               "children": [
                 {
@@ -712,7 +823,7 @@
                       "type": "basic",
                       "name": "Span",
                       "props": {
-                        "className": "text-sm font-medium text-gray-900 dark:text-white"
+                        "className": "text-heading"
                       },
                       "text": "$t:admin.settings.seo.cache_enabled"
                     },
@@ -720,7 +831,7 @@
                       "type": "basic",
                       "name": "P",
                       "props": {
-                        "className": "text-sm text-gray-500 dark:text-gray-400"
+                        "className": "text-label-subtle"
                       },
                       "text": "$t:admin.settings.seo.cache_enabled_desc"
                     }
@@ -745,7 +856,7 @@
                   "type": "basic",
                   "name": "Label",
                   "props": {
-                    "className": "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                    "className": "form-label"
                   },
                   "text": "$t:admin.settings.seo.cache_ttl"
                 },
@@ -755,17 +866,17 @@
                   "props": {
                     "type": "number",
                     "name": "seo.cache_ttl",
-                    "min": 60,
-                    "max": 86400,
+                    "min": "{{_local?.form?._meta?.limits?.seo_cache_ttl_min ?? 60}}",
+                    "max": "{{_local?.form?._meta?.limits?.seo_cache_ttl_max ?? 86400}}",
                     "placeholder": "7200",
-                    "className": "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    "className": ""
                   }
                 },
                 {
                   "type": "basic",
                   "name": "P",
                   "props": {
-                    "className": "text-xs text-gray-500 dark:text-gray-400 mt-1"
+                    "className": "form-hint"
                   },
                   "text": "$t:admin.settings.seo.cache_ttl_hint"
                 }
@@ -780,22 +891,22 @@
       "type": "basic",
       "name": "Div",
       "props": {
-        "className": "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6"
+        "className": "admin-card"
       },
       "children": [
         {
           "type": "basic",
           "name": "H3",
           "props": {
-            "className": "text-lg font-semibold text-gray-900 dark:text-white mb-1"
+            "className": "card-title"
           },
           "text": "$t:admin.settings.seo.sitemap_settings"
         },
         {
           "type": "basic",
-          "name": "P",
+          "name": "Div",
           "props": {
-            "className": "text-sm text-gray-500 dark:text-gray-400 mb-6"
+            "className": "card-description"
           },
           "text": "$t:admin.settings.seo.sitemap_settings_desc"
         },
@@ -803,7 +914,7 @@
           "type": "basic",
           "name": "Div",
           "props": {
-            "className": "space-y-4"
+            "className": "row-stack"
           },
           "children": [
             {
@@ -811,7 +922,7 @@
               "type": "basic",
               "name": "Div",
               "props": {
-                "className": "flex items-center justify-between py-3 border-b border-gray-200 dark:border-gray-700"
+                "className": "flex-between"
               },
               "children": [
                 {
@@ -822,7 +933,7 @@
                       "type": "basic",
                       "name": "Span",
                       "props": {
-                        "className": "text-sm font-medium text-gray-900 dark:text-white"
+                        "className": "text-heading"
                       },
                       "text": "$t:admin.settings.seo.sitemap_enabled"
                     },
@@ -830,7 +941,7 @@
                       "type": "basic",
                       "name": "P",
                       "props": {
-                        "className": "text-sm text-gray-500 dark:text-gray-400"
+                        "className": "text-label-subtle"
                       },
                       "text": "$t:admin.settings.seo.sitemap_enabled_desc"
                     }
@@ -855,7 +966,7 @@
                   "type": "basic",
                   "name": "Label",
                   "props": {
-                    "className": "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                    "className": "form-label"
                   },
                   "text": "$t:admin.settings.seo.sitemap_schedule"
                 },
@@ -866,9 +977,18 @@
                     "name": "seo.sitemap_schedule",
                     "className": "w-full",
                     "options": [
-                      { "value": "hourly", "label": "$t:admin.settings.seo.sitemap_schedule_hourly" },
-                      { "value": "daily", "label": "$t:admin.settings.seo.sitemap_schedule_daily" },
-                      { "value": "weekly", "label": "$t:admin.settings.seo.sitemap_schedule_weekly" }
+                      {
+                        "value": "hourly",
+                        "label": "$t:admin.settings.seo.sitemap_schedule_hourly"
+                      },
+                      {
+                        "value": "daily",
+                        "label": "$t:admin.settings.seo.sitemap_schedule_daily"
+                      },
+                      {
+                        "value": "weekly",
+                        "label": "$t:admin.settings.seo.sitemap_schedule_weekly"
+                      }
                     ]
                   }
                 }
@@ -884,7 +1004,7 @@
                   "type": "basic",
                   "name": "Label",
                   "props": {
-                    "className": "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                    "className": "form-label"
                   },
                   "text": "$t:admin.settings.seo.sitemap_schedule_time"
                 },
@@ -895,14 +1015,14 @@
                     "type": "text",
                     "name": "seo.sitemap_schedule_time",
                     "placeholder": "02:00",
-                    "className": "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    "className": ""
                   }
                 },
                 {
                   "type": "basic",
                   "name": "P",
                   "props": {
-                    "className": "text-xs text-gray-500 dark:text-gray-400 mt-1"
+                    "className": "form-hint"
                   },
                   "text": "$t:admin.settings.seo.sitemap_schedule_time_hint"
                 }
@@ -917,7 +1037,7 @@
                   "type": "basic",
                   "name": "Label",
                   "props": {
-                    "className": "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+                    "className": "form-label"
                   },
                   "text": "$t:admin.settings.seo.sitemap_cache_ttl"
                 },
@@ -927,19 +1047,215 @@
                   "props": {
                     "type": "number",
                     "name": "seo.sitemap_cache_ttl",
-                    "min": 3600,
-                    "max": 604800,
+                    "min": "{{_local?.form?._meta?.limits?.seo_sitemap_cache_ttl_min ?? 3600}}",
+                    "max": "{{_local?.form?._meta?.limits?.seo_sitemap_cache_ttl_max ?? 604800}}",
                     "placeholder": "86400",
-                    "className": "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    "className": ""
                   }
                 },
                 {
                   "type": "basic",
                   "name": "P",
                   "props": {
-                    "className": "text-xs text-gray-500 dark:text-gray-400 mt-1"
+                    "className": "form-hint"
                   },
                   "text": "$t:admin.settings.seo.sitemap_cache_ttl_hint"
+                }
+              ]
+            },
+            {
+              "id": "field_sitemap_urls_per_file",
+              "type": "basic",
+              "name": "Div",
+              "children": [
+                {
+                  "type": "basic",
+                  "name": "Label",
+                  "props": {
+                    "className": "form-label"
+                  },
+                  "text": "$t:admin.settings.seo.sitemap_urls_per_file"
+                },
+                {
+                  "type": "basic",
+                  "name": "Input",
+                  "props": {
+                    "type": "number",
+                    "name": "seo.sitemap_urls_per_file",
+                    "min": "{{_local?.form?._meta?.limits?.seo_sitemap_urls_per_file_min ?? 1000}}",
+                    "max": "{{_local?.form?._meta?.limits?.seo_sitemap_urls_per_file_max ?? 50000}}",
+                    "placeholder": "50000",
+                    "className": ""
+                  }
+                },
+                {
+                  "type": "basic",
+                  "name": "P",
+                  "props": {
+                    "className": "form-hint"
+                  },
+                  "text": "$t:admin.settings.seo.sitemap_urls_per_file_hint"
+                }
+              ]
+            },
+            {
+              "id": "field_sitemap_gzip",
+              "type": "basic",
+              "name": "Div",
+              "props": {
+                "className": "flex-between"
+              },
+              "children": [
+                {
+                  "type": "basic",
+                  "name": "Div",
+                  "children": [
+                    {
+                      "type": "basic",
+                      "name": "Span",
+                      "props": {
+                        "className": "text-heading"
+                      },
+                      "text": "$t:admin.settings.seo.sitemap_gzip"
+                    },
+                    {
+                      "type": "basic",
+                      "name": "P",
+                      "props": {
+                        "className": "text-label-subtle"
+                      },
+                      "text": "$t:admin.settings.seo.sitemap_gzip_desc"
+                    }
+                  ]
+                },
+                {
+                  "type": "composite",
+                  "name": "Toggle",
+                  "props": {
+                    "name": "seo.sitemap_gzip",
+                    "size": "md"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "field_sitemap_hreflang_enabled",
+              "type": "basic",
+              "name": "Div",
+              "props": {
+                "className": "flex-between"
+              },
+              "children": [
+                {
+                  "type": "basic",
+                  "name": "Div",
+                  "children": [
+                    {
+                      "type": "basic",
+                      "name": "Span",
+                      "props": {
+                        "className": "text-heading"
+                      },
+                      "text": "$t:admin.settings.seo.sitemap_hreflang_enabled"
+                    },
+                    {
+                      "type": "basic",
+                      "name": "P",
+                      "props": {
+                        "className": "text-label-subtle"
+                      },
+                      "text": "$t:admin.settings.seo.sitemap_hreflang_enabled_desc"
+                    }
+                  ]
+                },
+                {
+                  "type": "composite",
+                  "name": "Toggle",
+                  "props": {
+                    "name": "seo.sitemap_hreflang_enabled",
+                    "size": "md"
+                  }
+                }
+              ]
+            },
+            {
+              "id": "sitemap_progress_block",
+              "type": "basic",
+              "name": "Div",
+              "if": "{{['queued','running','writing','completed','failed'].includes(sitemap_status?.data?.progress?.status ?? '')}}",
+              "props": {
+                "className": "space-y-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-3"
+              },
+              "children": [
+                {
+                  "type": "basic",
+                  "name": "Div",
+                  "props": {
+                    "className": "flex items-center gap-2"
+                  },
+                  "children": [
+                    {
+                      "type": "basic",
+                      "name": "Span",
+                      "props": {
+                        "className": "text-heading"
+                      },
+                      "text": "$t:admin.settings.seo.sitemap_progress"
+                    },
+                    {
+                      "type": "basic",
+                      "name": "Span",
+                      "props": {
+                        "className": "px-2 py-0.5 rounded text-xs font-medium",
+                        "classMap": {
+                          "key": "{{sitemap_status?.data?.progress?.status ?? ''}}",
+                          "variants": {
+                            "queued": "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200",
+                            "running": "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200",
+                            "writing": "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200",
+                            "completed": "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200",
+                            "failed": "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200"
+                          }
+                        }
+                      },
+                      "text": "{{(sitemap_status?.data?.progress?.status === 'queued' && $t('admin.settings.seo.sitemap_status_queued')) || (sitemap_status?.data?.progress?.status === 'running' && $t('admin.settings.seo.sitemap_status_running')) || (sitemap_status?.data?.progress?.status === 'writing' && $t('admin.settings.seo.sitemap_status_writing')) || (sitemap_status?.data?.progress?.status === 'completed' && $t('admin.settings.seo.sitemap_status_completed')) || (sitemap_status?.data?.progress?.status === 'failed' && $t('admin.settings.seo.sitemap_status_failed')) || ''}}"
+                    }
+                  ]
+                },
+                {
+                  "type": "basic",
+                  "name": "P",
+                  "if": "{{sitemap_status?.data?.progress?.status === 'running' && (sitemap_status?.data?.progress?.phase ?? '') !== ''}}",
+                  "props": {
+                    "className": "text-label-subtle text-sm"
+                  },
+                  "text": "$t:admin.settings.seo.sitemap_progress_phase|phase={{sitemap_status?.data?.progress?.phase ?? ''}}"
+                },
+                {
+                  "type": "basic",
+                  "name": "P",
+                  "if": "{{Number(sitemap_status?.data?.progress?.urls ?? 0) > 0}}",
+                  "props": {
+                    "className": "text-label-subtle text-sm"
+                  },
+                  "text": "$t:admin.settings.seo.sitemap_progress_urls|count={{sitemap_status?.data?.progress?.urls ?? 0}}"
+                },
+                {
+                  "type": "basic",
+                  "name": "P",
+                  "if": "{{sitemap_status?.data?.progress?.status === 'failed' && (sitemap_status?.data?.progress?.message ?? '') !== ''}}",
+                  "props": {
+                    "className": "text-red-600 dark:text-red-400 text-sm break-words"
+                  },
+                  "text": "{{sitemap_status?.data?.progress?.message ?? ''}}"
+                },
+                {
+                  "type": "basic",
+                  "name": "P",
+                  "props": {
+                    "className": "text-label-subtle text-xs"
+                  },
+                  "text": "{{sitemap_status?.data?.realtime_enabled === true ? $t('admin.settings.seo.sitemap_realtime_connected') : $t('admin.settings.seo.sitemap_polling')}}"
                 }
               ]
             },
@@ -948,14 +1264,14 @@
               "type": "basic",
               "name": "Div",
               "props": {
-                "className": "space-y-2 pt-4 border-t border-gray-200 dark:border-gray-700"
+                "className": "space-y-2"
               },
               "children": [
                 {
                   "type": "basic",
                   "name": "Span",
                   "props": {
-                    "className": "text-sm font-medium text-gray-900 dark:text-white block"
+                    "className": "text-heading block"
                   },
                   "text": "$t:admin.settings.seo.sitemap_last_updated_at"
                 },
@@ -963,7 +1279,7 @@
                   "type": "basic",
                   "name": "Div",
                   "props": {
-                    "className": "flex flex-col md:flex-row md:items-center md:gap-3 space-y-2 md:space-y-0"
+                    "className": "flex flex-col gap-2 md:flex-row md:items-center md:"
                   },
                   "children": [
                     {
@@ -972,8 +1288,8 @@
                       "props": {
                         "type": "text",
                         "disabled": true,
-                        "value": "{{_local.form?.seo?.sitemap_last_updated_at ?? '-'}}",
-                        "className": "w-full md:flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-300 text-sm"
+                        "value": "{{sitemap_status?.data?.last_updated_at ?? _local.form?.seo?.sitemap_last_updated_at ?? '-'}}",
+                        "className": "md:flex-1 dark:bg-gray-900 text-gray-700 dark:text-gray-300"
                       }
                     },
                     {
@@ -981,63 +1297,41 @@
                       "name": "Button",
                       "props": {
                         "type": "button",
-                        "disabled": "{{_computed.isReadOnly || _local.sitemapUpdating === true}}",
-                        "className": "w-full md:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white text-sm font-medium rounded-lg transition-colors whitespace-nowrap"
+                        "disabled": "{{_computed.isReadOnly || ['queued','running','writing'].includes(sitemap_status?.data?.progress?.status ?? '')}}",
+                        "className": "w-full md:w-auto px-4 py-2 bg-blue-600 dark:bg-blue-500 hover:bg-blue-700 dark:hover:bg-blue-600 disabled:bg-gray-400 dark:disabled:bg-gray-600 text-white dark:text-white text-sm font-medium rounded-lg transition-colors whitespace-nowrap"
                       },
-                      "text": "{{_local.sitemapUpdating === true ? $t('admin.settings.seo.sitemap_updating') : $t('admin.settings.seo.sitemap_manual_update')}}",
+                      "text": "{{['queued','running','writing'].includes(sitemap_status?.data?.progress?.status ?? '') ? $t('admin.settings.seo.sitemap_regenerating') : $t('admin.settings.seo.sitemap_manual_update')}}",
                       "actions": [
                         {
                           "type": "click",
-                          "handler": "setState",
+                          "handler": "apiCall",
+                          "auth_required": true,
+                          "target": "/api/admin/seo/sitemap/regenerate",
                           "params": {
-                            "target": "local",
-                            "sitemapUpdating": true
+                            "method": "POST"
                           },
                           "onSuccess": [
                             {
-                              "handler": "apiCall",
-                              "auth_required": true,
-                              "target": "/api/admin/seo/sitemap/regenerate",
+                              "handler": "refetchDataSource",
                               "params": {
-                                "method": "POST"
-                              },
-                              "onSuccess": [
-                                {
-                                  "handler": "setState",
-                                  "params": {
-                                    "target": "local",
-                                    "sitemapUpdating": false,
-                                    "form": {
-                                      "seo": {
-                                        "sitemap_last_updated_at": "{{response.data?.last_updated_at ?? ''}}"
-                                      }
-                                    }
-                                  }
-                                },
-                                {
-                                  "handler": "toast",
-                                  "params": {
-                                    "type": "success",
-                                    "message": "{{$t('admin.settings.seo.sitemap_update_success')}}"
-                                  }
-                                }
-                              ],
-                              "onError": [
-                                {
-                                  "handler": "setState",
-                                  "params": {
-                                    "target": "local",
-                                    "sitemapUpdating": false
-                                  }
-                                },
-                                {
-                                  "handler": "toast",
-                                  "params": {
-                                    "type": "error",
-                                    "message": "{{error.message ?? $t('admin.settings.seo.sitemap_update_failed')}}"
-                                  }
-                                }
-                              ]
+                                "dataSourceId": "sitemap_status"
+                              }
+                            },
+                            {
+                              "handler": "toast",
+                              "params": {
+                                "type": "success",
+                                "message": "{{$t('admin.settings.seo.sitemap_update_success')}}"
+                              }
+                            }
+                          ],
+                          "onError": [
+                            {
+                              "handler": "toast",
+                              "params": {
+                                "type": "error",
+                                "message": "{{error.message ?? $t('admin.settings.seo.sitemap_update_failed')}}"
+                              }
                             }
                           ]
                         }
@@ -1051,5 +1345,6 @@
         }
       ]
     }
-  ]
+  ],
+  "props": {}
 }

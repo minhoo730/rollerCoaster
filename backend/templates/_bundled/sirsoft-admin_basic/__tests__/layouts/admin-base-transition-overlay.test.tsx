@@ -70,6 +70,58 @@ describe('어드민 베이스 transition_overlay (이슈 #245)', () => {
     });
 });
 
+describe('어드민 베이스 사이드바 프로필 영역 (이슈 #384)', () => {
+    /**
+     * #384 가 막으려는 것은 "사이드바 하단 **프로필/계정 UI**" 이지 sidebar_footer
+     * 컨테이너 자체가 아니다. #450 이 같은 컨테이너에 "사이트 보기" 크로스 이동 링크를
+     * 재도입했으므로, 컨테이너 id 부재로 단언하면 그 정상 기능에 걸린다.
+     * 의도대로 계정 UI 부재를 단언한다.
+     */
+    it('좌측 사이드바에 프로필/계정 UI 를 렌더링하지 않는다', () => {
+        const sidebarProfile = findById((adminBase as any).components, 'user_profile');
+        expect(sidebarProfile).toBeUndefined();
+
+        const sidebarFooter = findById((adminBase as any).components, 'sidebar_footer');
+        if (sidebarFooter) {
+            // 컨테이너가 있어도 그 안에 계정/프로필 컴포넌트가 있으면 안 된다.
+            const names: string[] = [];
+            const walk = (node: any): void => {
+                if (!node || typeof node !== 'object') return;
+                if (Array.isArray(node)) return node.forEach(walk);
+                if (node.name) names.push(node.name);
+                Object.values(node).forEach(walk);
+            };
+            walk(sidebarFooter);
+
+            expect(names).not.toContain('UserProfile');
+            expect(names).not.toContain('Avatar');
+        }
+    });
+
+    /**
+     * #450 크로스 이동 링크는 사이드바 하단에 유지되어야 한다 (제거 회귀 차단).
+     */
+    it('사이드바 하단 "사이트 보기" 크로스 이동 링크는 유지한다', () => {
+        const viewSiteLink = findById((adminBase as any).components, 'sidebar_view_site_link');
+
+        expect(viewSiteLink).toBeDefined();
+        expect(viewSiteLink?.name).toBe('A');
+        expect(viewSiteLink?.props).toMatchObject({ href: '/', target: '_blank' });
+    });
+
+    it('계정 기능은 상단 헤더 드롭다운으로 유지한다', () => {
+        const headerDropdown = findById((adminBase as any).components, 'user_dropdown');
+
+        expect(headerDropdown).toBeDefined();
+        expect(headerDropdown?.name).toBe('UserProfile');
+        expect(headerDropdown?.props).toMatchObject({
+            dropdownOnly: true,
+            showAvatar: false,
+            showName: false,
+        });
+    });
+});
+
 describe('목록 페이지 페이지네이션 transition_overlay_target 가드 (이슈 #245)', () => {
     /**
      * DataGrid 사용 + `params.query.page` 를 가진 navigate handler 가 있는 페이지에서,
@@ -160,6 +212,50 @@ describe('목록 페이지 페이지네이션 transition_overlay_target 가드 (
     }
 });
 
+describe('transition_overlay_target 은 replace:true 와 함께여야 한다 (이슈 #245)', () => {
+    /**
+     * 엔진은 `params.replace === true` 인 navigate 만 `G7Core.updateQueryParams(path, { transitionOverlayTarget })`
+     * 를 태운다(`ActionDispatcher.handleNavigate`). replace 가 없으면 React Router 경로로 빠져
+     * `transition_overlay_target` 이 **읽히지도 않는다** — 오버레이 대상 지정이 조용히 무효가 된다.
+     *
+     * 브라우저 실측(2026-07-29): `admin_identity_logs` 검색은
+     * `updateQueryParams('/admin/identity/logs?...', { transitionOverlayTarget: 'identity_log_datagrid__body' })`
+     * 가 호출되는 반면, `admin_user_list` 검색은 `updateQueryParams` 호출이 **0회**였다.
+     *
+     * 앞선 가드는 `transition_overlay_target` 의 존재와 값만 검사해, 무효 상태를 통과시켰다.
+     */
+    function findOverlayNavigates(node: any, out: any[] = []): any[] {
+        if (!node || typeof node !== 'object') return out;
+        if (node.handler === 'navigate' && node.params && typeof node.params.transition_overlay_target === 'string') {
+            out.push(node);
+        }
+        for (const key of Object.keys(node)) {
+            const v = node[key];
+            if (Array.isArray(v)) for (const item of v) findOverlayNavigates(item, out);
+            else if (v && typeof v === 'object') findOverlayNavigates(v, out);
+        }
+        return out;
+    }
+
+    const layoutFiles = fs.readdirSync(LAYOUTS_DIR).filter((f) => f.endsWith('.json'));
+
+    for (const file of layoutFiles) {
+        const layout = JSON.parse(fs.readFileSync(path.join(LAYOUTS_DIR, file), 'utf-8'));
+        const navigates = findOverlayNavigates(layout);
+        if (navigates.length === 0) continue;
+
+        it(`${file}: transition_overlay_target 을 쓰는 navigate 는 replace:true 여야 한다`, () => {
+            for (let i = 0; i < navigates.length; i++) {
+                const p = navigates[i].params;
+                expect(
+                    p.replace,
+                    `${file} navigate[${i}] (target="${p.transition_overlay_target}"): replace:true 가 없어 오버레이 대상 지정이 무효다`
+                ).toBe(true);
+            }
+        });
+    }
+});
+
 describe('채널 서브 탭 transition_overlay_target 가드 (이슈 #245, engine-v1.36.0)', () => {
     /**
      * 환경설정 알림 탭 안의 채널 서브 탭 클릭 시 채널 콘텐츠 영역에만 spinner 가
@@ -235,11 +331,16 @@ describe('admin_settings 탭 콘텐츠 영역 spinner (이슈 #245)', () => {
         expect(tabContent, 'settings_tab_content wrapper 미존재').toBeDefined();
     });
 
-    it('settings_tab_content 안에 10개 탭 partial 이 모두 들어 있어야 한다', () => {
+    it('settings_tab_content 안에 탭 partial 이 모두 들어 있어야 한다', () => {
         const settingsContent = findById((adminSettings as any).slots?.content ?? [], 'settings_content');
         const tabContent = findById(settingsContent!.children, 'settings_tab_content');
         const partials = (tabContent!.children ?? []).filter((c: any) => c.partial?.includes('partials/admin_settings/_tab_'));
-        expect(partials.length).toBe(10);
+        // tab_navigation 은 #399 Phase 1.3 에서 sticky 래퍼(sticky_header) 안으로 이동했으므로
+        // slots.content[0] 의 직접 자식이 아니다. 재귀 findById 로 중첩 깊이와 무관하게 탐색한다.
+        const tabNav = findById((adminSettings as any).slots?.content ?? [], 'tab_navigation');
+        const expectedPartials = ((tabNav as any)?.props?.tabs ?? [])
+            .map((tab: any) => `partials/admin_settings/_tab_${tab.id}.json`);
+        expect(partials.map((c: any) => c.partial)).toEqual(expectedPartials);
     });
 });
 
@@ -270,7 +371,10 @@ describe('어드민 자식 레이아웃 wait_for 일괄 가드 (이슈 #245, eng
                 .filter((s) => {
                     const type = s.type ?? 'api';
                     const strategy = s.loading_strategy ?? 'progressive';
-                    return type !== 'websocket' && strategy !== 'blocking' && strategy !== 'background';
+                    return s.auto_fetch !== false
+                        && type !== 'websocket'
+                        && strategy !== 'blocking'
+                        && strategy !== 'background';
                 })
                 .map((s) => s.id as string);
             return { name: path.basename(file, '.json'), layout, progressiveIds };

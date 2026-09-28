@@ -1,7 +1,8 @@
 {
   "meta": {
     "is_partial": true,
-    "description": "스케줄 생성/수정 폼 모달"
+    "description": "스케줄 생성/수정 폼 모달",
+    "editor_label": "$t:admin.modal_label.admin_schedule_list.schedule_form_modal"
   },
   "id": "schedule_form_modal",
   "type": "composite",
@@ -15,13 +16,14 @@
       "type": "basic",
       "name": "Form",
       "props": {
-        "className": "space-y-4"
+        "id": "schedule_form_modal",
+        "className": "row-stack"
       },
       "children": [
         {
           "type": "basic",
           "name": "Div",
-          "props": { "className": "grid grid-cols-1 md:grid-cols-2 gap-4" },
+          "props": { "className": "grid-2col-responsive" },
           "children": [
             {
               "type": "basic",
@@ -30,7 +32,7 @@
                 {
                   "type": "basic",
                   "name": "Label",
-                  "props": { "className": "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" },
+                  "props": { "className": "form-label" },
                   "children": [
                     { "type": "basic", "name": "Span", "text": "$t:admin.schedules.form.name" },
                     { "type": "basic", "name": "Span", "props": { "className": "text-red-500 ml-1" }, "text": "*" }
@@ -44,7 +46,7 @@
                     "name": "name",
                     "defaultValue": "{{_global.selectedSchedule?.name ?? ''}}",
                     "placeholder": "$t:admin.schedules.form.name_placeholder",
-                    "className": "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    "className": "input"
                   }
                 }
               ]
@@ -56,7 +58,7 @@
                 {
                   "type": "basic",
                   "name": "Label",
-                  "props": { "className": "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" },
+                  "props": { "className": "form-label" },
                   "children": [
                     { "type": "basic", "name": "Span", "text": "$t:admin.schedules.form.type" },
                     { "type": "basic", "name": "Span", "props": { "className": "text-red-500 ml-1" }, "text": "*" }
@@ -68,13 +70,23 @@
                   "props": {
                     "name": "type",
                     "className": "w-full",
-                    "defaultValue": "{{_global.selectedSchedule?.type ?? 'artisan'}}",
+                    "value": "{{_global.scheduleForm?.type ?? 'artisan'}}",
                     "options": [
                       { "label": "$t:admin.schedules.type.artisan", "value": "artisan" },
                       { "label": "$t:admin.schedules.type.shell", "value": "shell" },
                       { "label": "$t:admin.schedules.type.url", "value": "url" }
                     ]
-                  }
+                  },
+                  "actions": [
+                    {
+                      "type": "change",
+                      "handler": "setState",
+                      "params": {
+                        "target": "global",
+                        "scheduleForm.type": "{{$event.target.value}}"
+                      }
+                    }
+                  ]
                 }
               ]
             }
@@ -87,7 +99,7 @@
             {
               "type": "basic",
               "name": "Label",
-              "props": { "className": "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" },
+              "props": { "className": "form-label" },
               "text": "$t:admin.schedules.form.description"
             },
             {
@@ -98,7 +110,7 @@
                 "rows": 2,
                 "defaultValue": "{{_global.selectedSchedule?.description ?? ''}}",
                 "placeholder": "$t:admin.schedules.form.description_placeholder",
-                "className": "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                "className": "input textarea-sm resize-none"
               }
             }
           ]
@@ -110,7 +122,7 @@
             {
               "type": "basic",
               "name": "Label",
-              "props": { "className": "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" },
+              "props": { "className": "form-label" },
               "children": [
                 { "type": "basic", "name": "Span", "text": "$t:admin.schedules.form.command" },
                 { "type": "basic", "name": "Span", "props": { "className": "text-red-500 ml-1" }, "text": "*" }
@@ -124,13 +136,13 @@
                 "name": "command",
                 "defaultValue": "{{_global.selectedSchedule?.command ?? ''}}",
                 "placeholder": "$t:admin.schedules.form.command_placeholder",
-                "className": "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                "className": "input font-mono"
               }
             },
             {
               "type": "basic",
               "name": "P",
-              "props": { "className": "text-xs text-gray-500 dark:text-gray-400 mt-1" },
+              "props": { "className": "form-hint" },
               "text": "$t:admin.schedules.form.command_help"
             }
           ]
@@ -138,7 +150,7 @@
         {
           "type": "basic",
           "name": "Div",
-          "props": { "className": "grid grid-cols-1 md:grid-cols-2 gap-4" },
+          "props": { "className": "grid-2col-responsive" },
           "children": [
             {
               "type": "basic",
@@ -147,7 +159,7 @@
                 {
                   "type": "basic",
                   "name": "Label",
-                  "props": { "className": "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" },
+                  "props": { "className": "form-label" },
                   "children": [
                     { "type": "basic", "name": "Span", "text": "$t:admin.schedules.form.frequency" },
                     { "type": "basic", "name": "Span", "props": { "className": "text-red-500 ml-1" }, "text": "*" }
@@ -159,7 +171,7 @@
                   "props": {
                     "name": "frequency",
                     "className": "w-full",
-                    "defaultValue": "{{_global.selectedSchedule?.frequency ?? 'daily'}}",
+                    "value": "{{_global.scheduleForm?.frequency ?? 'daily'}}",
                     "options": [
                       { "label": "$t:admin.schedules.frequency.everyMinute", "value": "everyMinute" },
                       { "label": "$t:admin.schedules.frequency.hourly", "value": "hourly" },
@@ -175,7 +187,7 @@
                       "handler": "setState",
                       "params": {
                         "target": "global",
-                        "scheduleFrequency": "{{$event.target.value}}"
+                        "scheduleForm.frequency": "{{$event.target.value}}"
                       }
                     }
                   ]
@@ -185,12 +197,12 @@
             {
               "type": "basic",
               "name": "Div",
-              "if": "{{(_global.scheduleFrequency ?? _global.selectedSchedule?.frequency) === 'custom'}}",
+              "if": "{{(_global.scheduleForm?.frequency ?? 'daily') === 'custom'}}",
               "children": [
                 {
                   "type": "basic",
                   "name": "Label",
-                  "props": { "className": "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" },
+                  "props": { "className": "form-label" },
                   "children": [
                     { "type": "basic", "name": "Span", "text": "$t:admin.schedules.form.expression" },
                     { "type": "basic", "name": "Span", "props": { "className": "text-red-500 ml-1" }, "text": "*" }
@@ -204,13 +216,13 @@
                     "name": "expression",
                     "defaultValue": "{{_global.selectedSchedule?.expression ?? '* * * * *'}}",
                     "placeholder": "* * * * *",
-                    "className": "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    "className": "input font-mono"
                   }
                 },
                 {
                   "type": "basic",
                   "name": "P",
-                  "props": { "className": "text-xs text-gray-500 dark:text-gray-400 mt-1" },
+                  "props": { "className": "form-hint" },
                   "text": "$t:admin.schedules.form.expression_help"
                 }
               ]
@@ -220,7 +232,7 @@
         {
           "type": "basic",
           "name": "Div",
-          "props": { "className": "grid grid-cols-1 md:grid-cols-2 gap-4" },
+          "props": { "className": "grid-2col-responsive" },
           "children": [
             {
               "type": "basic",
@@ -229,7 +241,7 @@
                 {
                   "type": "basic",
                   "name": "Label",
-                  "props": { "className": "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" },
+                  "props": { "className": "form-label" },
                   "text": "$t:admin.schedules.form.timeout"
                 },
                 {
@@ -241,13 +253,13 @@
                     "defaultValue": "{{_global.selectedSchedule?.timeout ?? 60}}",
                     "min": 1,
                     "max": 86400,
-                    "className": "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    "className": "input"
                   }
                 },
                 {
                   "type": "basic",
                   "name": "P",
-                  "props": { "className": "text-xs text-gray-500 dark:text-gray-400 mt-1" },
+                  "props": { "className": "form-hint" },
                   "text": "$t:admin.schedules.form.timeout_help"
                 }
               ]
@@ -257,12 +269,12 @@
         {
           "type": "basic",
           "name": "Div",
-          "props": { "className": "flex flex-col gap-3 pt-4 border-t border-gray-200 dark:border-gray-700" },
+          "props": { "className": "row-stack border-t border-gray-200 dark:border-gray-700" },
           "children": [
             {
               "type": "basic",
               "name": "Div",
-              "props": { "className": "flex items-center justify-between" },
+              "props": { "className": "flex-between" },
               "children": [
                 {
                   "type": "basic",
@@ -277,7 +289,7 @@
                     {
                       "type": "basic",
                       "name": "P",
-                      "props": { "className": "text-xs text-gray-500 dark:text-gray-400" },
+                      "props": { "className": "text-tertiary" },
                       "text": "$t:admin.schedules.form.without_overlapping_help"
                     }
                   ]
@@ -287,16 +299,26 @@
                   "name": "Toggle",
                   "props": {
                     "name": "without_overlapping",
-                    "checked": "{{_global.selectedSchedule?.without_overlapping ?? true}}",
+                    "checked": "{{_global.scheduleForm?.without_overlapping ?? true}}",
                     "size": "sm"
-                  }
+                  },
+                  "actions": [
+                    {
+                      "type": "change",
+                      "handler": "setState",
+                      "params": {
+                        "target": "global",
+                        "scheduleForm.without_overlapping": "{{$event.target.checked}}"
+                      }
+                    }
+                  ]
                 }
               ]
             },
             {
               "type": "basic",
               "name": "Div",
-              "props": { "className": "flex items-center justify-between" },
+              "props": { "className": "flex-between" },
               "children": [
                 {
                   "type": "basic",
@@ -311,7 +333,7 @@
                     {
                       "type": "basic",
                       "name": "P",
-                      "props": { "className": "text-xs text-gray-500 dark:text-gray-400" },
+                      "props": { "className": "text-tertiary" },
                       "text": "$t:admin.schedules.form.run_in_maintenance_help"
                     }
                   ]
@@ -321,16 +343,26 @@
                   "name": "Toggle",
                   "props": {
                     "name": "run_in_maintenance",
-                    "checked": "{{_global.selectedSchedule?.run_in_maintenance ?? false}}",
+                    "checked": "{{_global.scheduleForm?.run_in_maintenance ?? false}}",
                     "size": "sm"
-                  }
+                  },
+                  "actions": [
+                    {
+                      "type": "change",
+                      "handler": "setState",
+                      "params": {
+                        "target": "global",
+                        "scheduleForm.run_in_maintenance": "{{$event.target.checked}}"
+                      }
+                    }
+                  ]
                 }
               ]
             },
             {
               "type": "basic",
               "name": "Div",
-              "props": { "className": "flex items-center justify-between" },
+              "props": { "className": "flex-between" },
               "children": [
                 {
                   "type": "basic",
@@ -345,7 +377,7 @@
                     {
                       "type": "basic",
                       "name": "P",
-                      "props": { "className": "text-xs text-gray-500 dark:text-gray-400" },
+                      "props": { "className": "text-tertiary" },
                       "text": "$t:admin.schedules.form.is_active_help"
                     }
                   ]
@@ -355,9 +387,19 @@
                   "name": "Toggle",
                   "props": {
                     "name": "is_active",
-                    "checked": "{{_global.selectedSchedule?.is_active ?? true}}",
+                    "checked": "{{_global.scheduleForm?.is_active ?? true}}",
                     "size": "sm"
-                  }
+                  },
+                  "actions": [
+                    {
+                      "type": "change",
+                      "handler": "setState",
+                      "params": {
+                        "target": "global",
+                        "scheduleForm.is_active": "{{$event.target.checked}}"
+                      }
+                    }
+                  ]
                 }
               ]
             }
@@ -385,14 +427,14 @@
                 "body": {
                   "name": "{{form.name}}",
                   "description": "{{form.description}}",
-                  "type": "{{form.type}}",
+                  "type": "{{_global.scheduleForm?.type ?? 'artisan'}}",
                   "command": "{{form.command}}",
-                  "frequency": "{{form.frequency}}",
-                  "expression": "{{form.expression}}",
+                  "frequency": "{{_global.scheduleForm?.frequency ?? 'daily'}}",
+                  "expression": "{{(_global.scheduleForm?.frequency ?? 'daily') === 'custom' ? form.expression : ((_global.scheduleForm?.frequency ?? 'daily') === 'everyMinute' ? '* * * * *' : ((_global.scheduleForm?.frequency ?? 'daily') === 'hourly' ? '0 * * * *' : ((_global.scheduleForm?.frequency ?? 'daily') === 'weekly' ? '0 0 * * 0' : ((_global.scheduleForm?.frequency ?? 'daily') === 'monthly' ? '0 0 1 * *' : '0 0 * * *'))))}}",
                   "timeout": "{{form.timeout}}",
-                  "without_overlapping": "{{form.without_overlapping}}",
-                  "run_in_maintenance": "{{form.run_in_maintenance}}",
-                  "is_active": "{{form.is_active}}"
+                  "without_overlapping": "{{_global.scheduleForm?.without_overlapping ?? true}}",
+                  "run_in_maintenance": "{{_global.scheduleForm?.run_in_maintenance ?? false}}",
+                  "is_active": "{{_global.scheduleForm?.is_active ?? true}}"
                 }
               },
               "onSuccess": [
@@ -443,14 +485,14 @@
     {
       "type": "basic",
       "name": "Div",
-      "props": { "className": "flex justify-end gap-3 mt-6 pt-4 border-t border-gray-200 dark:border-gray-700" },
+      "props": { "className": "modal-footer-buttons pt-4 border-t border-gray-200 dark:border-gray-700" },
       "children": [
         {
           "type": "basic",
           "name": "Button",
           "props": {
             "type": "button",
-            "className": "px-4 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed",
+            "className": "btn btn-secondary",
             "disabled": "{{_global.isSubmitting}}"
           },
           "actions": [
@@ -468,7 +510,7 @@
           "props": {
             "type": "submit",
             "form": "schedule_form_modal",
-            "className": "flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed",
+            "className": "flex-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed",
             "disabled": "{{_global.isSubmitting}}"
           },
           "children": [
@@ -476,7 +518,7 @@
               "type": "basic",
               "name": "Icon",
               "if": "{{_global.isSubmitting}}",
-              "props": { "name": "spinner", "className": "w-4 h-4 animate-spin" }
+              "props": { "name": "spinner", "className": "spinner-sm" }
             },
             {
               "type": "basic",

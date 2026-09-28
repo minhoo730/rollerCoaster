@@ -6,13 +6,15 @@ use App\Extension\AbstractModule;
 use App\Models\Role;
 use App\Seo\Concerns\LocalizesSeoValues;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Schema;
 use Modules\Sirsoft\Board\Database\Seeders\BoardTypeSeeder;
 use Modules\Sirsoft\Board\Listeners\ActivityLogDescriptionResolver;
 use Modules\Sirsoft\Board\Listeners\BoardActivityLogListener;
+use Modules\Sirsoft\Board\Listeners\BoardCommentsCountSyncListener;
 use Modules\Sirsoft\Board\Listeners\BoardNotificationChannelListener;
 use Modules\Sirsoft\Board\Listeners\BoardNotificationDataListener;
-use Modules\Sirsoft\Board\Listeners\BoardCommentsCountSyncListener;
 use Modules\Sirsoft\Board\Listeners\BoardPostsCountSyncListener;
+use Modules\Sirsoft\Board\Listeners\Ckeditor5ReferenceSourcesListener;
 use Modules\Sirsoft\Board\Listeners\CommentReplySyncListener;
 use Modules\Sirsoft\Board\Listeners\EcommerceInquiryHookListener;
 use Modules\Sirsoft\Board\Listeners\PostAttachmentCountSyncListener;
@@ -22,6 +24,7 @@ use Modules\Sirsoft\Board\Listeners\SearchPostsListener;
 use Modules\Sirsoft\Board\Listeners\SeoBoardCacheListener;
 use Modules\Sirsoft\Board\Listeners\SeoBoardSettingsCacheListener;
 use Modules\Sirsoft\Board\Listeners\UserNotificationSettingsListener;
+use Modules\Sirsoft\Board\Models\Board;
 
 class Module extends AbstractModule
 {
@@ -39,15 +42,47 @@ class Module extends AbstractModule
     public function uninstall(): bool
     {
         // 게시판별 동적 역할 정리 (sirsoft-board.*.manager, sirsoft-board.*.step)
+        // chunkById(키셋 순회) 필수 — each() 는 OFFSET 기반 청크(기본 1000건)라
+        // 콜백이 순회 대상을 삭제하면 다음 페이지의 OFFSET 이 줄어든 결과 집합을 지나쳐
+        // 1000건을 넘는 역할이 그대로 남는다.
         Role::where('extension_type', 'module')
             ->where('extension_identifier', 'sirsoft-board')
-            ->each(function (Role $role) {
-                $role->permissions()->detach();
-                $role->users()->detach();
-                $role->delete();
+            ->chunkById(100, function ($roles) {
+                foreach ($roles as $role) {
+                    $role->permissions()->detach();
+                    $role->users()->detach();
+                    $role->delete();
+                }
             });
 
         return parent::uninstall();
+    }
+
+    /**
+     * 모듈 스케줄 목록 반환
+     *
+     * 대시보드 게시물 현황 집계를 매시간 실행합니다.
+     *
+     * @return array<int, array<string, string>> 스케줄 정의 목록
+     */
+    public function getSchedules(): array
+    {
+        return [
+            [
+                'command' => 'sirsoft-board:aggregate-stats',
+                'schedule' => 'hourly',
+                'description' => '대시보드 게시물 현황 집계',
+            ],
+            [
+                'command' => 'sirsoft-board:prune-attachments --scheduled',
+                'schedule' => 'daily',
+                'description' => '방치된 임시 첨부 정리 + 보존기간 경과 삭제 첨부 영구 정리',
+                // 임시 첨부 정리 파트는 상시 동작해야 하므로 스케줄 자체는 항상 등록한다.
+                // 사용자 파일을 실제로 파기하는 영구 정리 파트만 커맨드 내부에서 게이트한다
+                // (attachment_settings.purge_enabled, false 폴백).
+                'enabled_config' => null,
+            ],
+        ];
     }
 
     /**
@@ -221,6 +256,33 @@ class Module extends AbstractModule
                         ],
                     ],
                 ],
+                // 대시보드 조회 권한 (type: admin)
+                [
+                    'identifier' => 'dashboard',
+                    'name' => [
+                        'ko' => '게시판 대시보드',
+                        'en' => 'Board Dashboard',
+                    ],
+                    'description' => [
+                        'ko' => '게시판 대시보드 조회 권한',
+                        'en' => 'Board dashboard view permissions',
+                    ],
+                    'permissions' => [
+                        [
+                            'action' => 'view',
+                            'name' => [
+                                'ko' => '대시보드 조회',
+                                'en' => 'View Dashboard',
+                            ],
+                            'description' => [
+                                'ko' => '게시판 대시보드(현황/추세/최신글/미처리 신고) 조회',
+                                'en' => 'View board dashboard (overview, trend, recent posts, pending reports)',
+                            ],
+                            'type' => 'admin',
+                            'roles' => ['admin', 'manager'],
+                        ],
+                    ],
+                ],
                 // 신고 관리 권한 (type: admin)
                 [
                     'identifier' => 'reports',
@@ -290,14 +352,14 @@ class Module extends AbstractModule
      */
     public function getDynamicPermissionIdentifiers(): array
     {
-        if (! \Illuminate\Support\Facades\Schema::hasTable('boards')) {
+        if (! Schema::hasTable('boards')) {
             return [];
         }
 
         $actions = array_keys((array) config('sirsoft-board.board_permission_definitions', []));
         $module = $this->getIdentifier();
         $ids = [];
-        foreach (\Modules\Sirsoft\Board\Models\Board::query()->select('slug')->get() as $board) {
+        foreach (Board::query()->select('slug')->get() as $board) {
             $category = $module.'.'.$board->slug;
             $ids[] = $category;
             foreach ($actions as $action) {
@@ -317,13 +379,13 @@ class Module extends AbstractModule
      */
     public function getDynamicRoleIdentifiers(): array
     {
-        if (! \Illuminate\Support\Facades\Schema::hasTable('boards')) {
+        if (! Schema::hasTable('boards')) {
             return [];
         }
 
         $module = $this->getIdentifier();
         $ids = [];
-        foreach (\Modules\Sirsoft\Board\Models\Board::query()->select('slug')->get() as $board) {
+        foreach (Board::query()->select('slug')->get() as $board) {
             $ids[] = $module.'.'.$board->slug.'.manager';
             $ids[] = $module.'.'.$board->slug.'.step';
         }
@@ -338,12 +400,12 @@ class Module extends AbstractModule
      */
     public function getDynamicMenuSlugs(): array
     {
-        if (! \Illuminate\Support\Facades\Schema::hasTable('boards')) {
+        if (! Schema::hasTable('boards')) {
             return [];
         }
 
         $slugs = [];
-        foreach (\Modules\Sirsoft\Board\Models\Board::query()->select('slug')->get() as $board) {
+        foreach (Board::query()->select('slug')->get() as $board) {
             $slugs[] = 'board-'.$board->slug;
         }
 
@@ -391,6 +453,7 @@ class Module extends AbstractModule
             CommentReplySyncListener::class,
             BoardPostsCountSyncListener::class,
             BoardCommentsCountSyncListener::class,
+            Ckeditor5ReferenceSourcesListener::class,
         ];
     }
 
@@ -560,6 +623,50 @@ class Module extends AbstractModule
         }
 
         return $schema;
+    }
+
+    /**
+     * OG 기본값 키별 데이터 출처(연결 칩) 메타 선언 — 편집기 전용
+     *
+     * seoOgDefaults() 가 resolve 해 반환하는 평문값이 **어느 게시글 데이터에서 왔는지**를 편집기
+     * [검색엔진] 탭이 "대표 이미지"·"게시글 제목" 같은 연결 칩으로 보여주고 교체할 수 있도록,
+     * 키별 데이터 경로(표현식)와 사용자용 라벨을 제공합니다. 단순 1:1 경로 키만 선언합니다.
+     *
+     * @param  string  $pageType  페이지 타입
+     * @return array<string, array{expr: string, label: array<string, string>}> 키별 데이터 경로 메타
+     */
+    public function seoOgDefaultMeta(string $pageType): array
+    {
+        // label 은 번역 키 — 번들 언어팩(ja 등)이 같은 키를 번역하면 추가 언어에 자동 대응(편집기가 __() 해석).
+        if ($pageType === 'post') {
+            return [
+                'image' => ['expr' => '{{post.data.thumbnail}}', 'label' => 'sirsoft-board::seo.auto_value.post_image'],
+                'image_alt' => ['expr' => '{{post.data.subject}}', 'label' => 'sirsoft-board::seo.auto_value.post_title'],
+            ];
+        }
+
+        return [];
+    }
+
+    /**
+     * 구조화 데이터 속성별 데이터 출처(연결 칩) 메타 선언 — 편집기 전용
+     *
+     * seoStructuredData() 의 Article 스키마를 점 경로 키로 평탄화한 기준으로 선언합니다. 파생값
+     * (description=strip_tags·datePublished·author.* 등)은 단순 경로가 아니라 제외합니다(평문 폴백).
+     *
+     * @param  string  $pageType  페이지 타입
+     * @return array<string, array{expr: string, label: array<string, string>}> 점 경로 키별 데이터 경로 메타
+     */
+    public function seoStructuredDataMeta(string $pageType): array
+    {
+        if ($pageType !== 'post') {
+            return [];
+        }
+
+        return [
+            'headline' => ['expr' => '{{post.data.subject}}', 'label' => 'sirsoft-board::seo.auto_value.post_title'],
+            'image' => ['expr' => '{{post.data.thumbnail}}', 'label' => 'sirsoft-board::seo.auto_value.post_image'],
+        ];
     }
 
     /**
@@ -776,6 +883,73 @@ class Module extends AbstractModule
             $this->newPostAdminDefinition(),
             $this->reportReceivedAdminDefinition(),
             $this->reportActionDefinition(),
+        ];
+    }
+
+    /**
+     * 성능 계측 프로파일 정의 (`g7:bench`).
+     *
+     * 게시글 목록의 `columns` 는 `PostRepository::paginate()` 가 select 하는 컬럼 집합입니다
+     * (본문 미리보기용 `SUBSTRING` 표현식은 지연 조인의 outer 에서만 적용되고 계측 대상인
+     * 건너뛰기 비용과 무관하므로 제외). 게시글 목록은 화면이 게시판 하나를 조회하므로 필터
+     * 없이 재면 인덱스 선택이 달라져 화면에서 일어나는 일과 다른 것을 재게 됩니다.
+     *
+     * @return array<string, array<string, mixed>> 프로파일 키 → 정의
+     */
+    public function getBenchmarkProfiles(): array
+    {
+        return [
+            'board_posts' => [
+                'type' => 'list',
+                'label' => '게시글 목록',
+                'table' => 'board_posts',
+                'columns' => [
+                    'id', 'board_id', 'user_id', 'parent_id', 'category',
+                    'title', 'author_name', 'content_mode',
+                    'is_notice', 'is_secret', 'status', 'depth',
+                    'view_count', 'comments_count', 'replies_count', 'attachments_count',
+                    'trigger_type', 'ip_address', 'created_at', 'updated_at', 'deleted_at',
+                ],
+                'order' => [['created_at', 'desc'], ['id', 'desc']],
+                // 실제 목록 쿼리(PostRepository::buildSortedPostList)는 공지와 답글을 빼고
+                // 원글만 페이지네이션한다. 필터를 board_id 만 걸면 등치 사슬이 is_notice 에서
+                // 끊겨 옵티마이저가 다른 인덱스를 골라, 제품이 실행하지 않는 실행 계획을 재게 된다.
+                'filters' => ['board_id' => 1, 'is_notice' => 0, 'parent_id' => null],
+                'seed_overrides' => ['board_id' => 1, 'is_notice' => 0, 'parent_id' => null],
+                'soft_delete' => true,
+            ],
+            'board_posts_by_view_count' => [
+                'type' => 'list',
+                'label' => '게시글 목록 (조회순)',
+                'table' => 'board_posts',
+                'columns' => [
+                    'id', 'board_id', 'user_id', 'parent_id', 'category',
+                    'title', 'author_name', 'content_mode',
+                    'is_notice', 'is_secret', 'status', 'depth',
+                    'view_count', 'comments_count', 'replies_count', 'attachments_count',
+                    'trigger_type', 'ip_address', 'created_at', 'updated_at', 'deleted_at',
+                ],
+                // 조회수 정렬은 화면에서 실제로 도달 가능한 경로다 — 게시판 설정
+                // `order_by='view_count'` 와 목록 URL `?sort_by=view_count` 둘 다 있고,
+                // 저장소 정렬 화이트리스트에도 들어 있다. 작성일 정렬과 같은 술어에
+                // 정렬 축만 다르므로 별도 프로파일로 재야 인덱스 커버리지가 판정된다.
+                'order' => [['view_count', 'desc'], ['id', 'desc']],
+                'filters' => ['board_id' => 1, 'is_notice' => 0, 'parent_id' => null],
+                'seed_overrides' => ['board_id' => 1, 'is_notice' => 0, 'parent_id' => null],
+                'soft_delete' => true,
+            ],
+            // 댓글은 계측 프로파일을 두지 않는다. 페이지네이션되는 댓글 목록은 회원 본인 댓글
+            // 목록뿐이고(CommentRepository), 그 쿼리에는 회원 스코프 · 삭제 게시글 제외
+            // (whereExists 서브쿼리) · 비활성 게시판 제외가 무조건 붙는다. 선언형 필터로
+            // 재현할 수 없는 술어라, 맨 테이블 스캔을 재면 어느 화면도 내지 않는 수치가 된다.
+            'reports' => [
+                'type' => 'list',
+                'label' => '신고 목록',
+                'table' => 'boards_reports',
+                'columns' => ['*'],
+                'order' => [['created_at', 'desc'], ['id', 'desc']],
+                'soft_delete' => true,
+            ],
         ];
     }
 

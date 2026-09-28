@@ -13,6 +13,13 @@
  */
 
 import { createLogger } from '../utils/Logger';
+import { suffixed, extStaticUrl } from '../support/assetUrl';
+import { fetchStaticFirst } from '../support/fetchStaticFirst';
+// 순환 import (DataBindingEngine → TranslationEngine → DataBindingEngine) 이지만
+// 양쪽 모두 모듈 평가 시점이 아니라 메서드 실행 시점에만 서로를 참조하므로
+// live binding 이 채워진 뒤에 사용된다.
+import { dataBindingEngine } from './DataBindingEngine';
+import { hasPipes } from './PipeRegistry';
 
 const logger = createLogger('TranslationEngine');
 
@@ -221,21 +228,31 @@ export class TranslationEngine {
 
     try {
       // API 호출 (캐시 버전 쿼리 파라미터 추가, bustCache가 true면 타임스탬프도 추가)
-      let url = `${apiBaseUrl}/templates/${templateId}/lang/${locale}.json`;
-
-      // 쿼리 파라미터 구성
-      const queryParams: string[] = [];
-      if (this.cacheVersion > 0) {
-        queryParams.push(`v=${this.cacheVersion}`);
-      }
+      // 자산 URL 모드에 따라 `.json` 접미사가 붙거나 빠진다.
+      // 이 경로는 편집기 전용이 아니라 **모든 페이지가 타는 런타임 공통 경로**라,
+      // 여기만 확장자를 직접 조립하면 extensionless 환경에서 다국어가 통째로 404 가 되어
+      // 이슈 #486 의 원래 증상(화면이 온전히 뜨지 않음)이 다국어 계층에서 재현된다.
+      const extraParams: string[] = [];
       if (bustCache) {
-        queryParams.push(`_=${Date.now()}`);
-      }
-      if (queryParams.length > 0) {
-        url += `?${queryParams.join('&')}`;
+        extraParams.push(`_=${Date.now()}`);
       }
 
-      const response = await fetch(url);
+      const url = suffixed(
+        `${apiBaseUrl}/templates/${templateId}/lang/${locale}`,
+        'json',
+        this.cacheVersion > 0 ? this.cacheVersion : null,
+        extraParams.length > 0 ? extraParams.join('&') : undefined,
+      );
+
+      // 정적 게시본(bake) 우선 (#122) — bustCache 재로드는 목적상 정적 캐시를
+      // 우회해야 하므로 legacy 직행. miss 는 fetchStaticFirst 가 legacy 로 폴백.
+      const staticUrl = ! bustCache && this.cacheVersion > 0
+        ? extStaticUrl(`templates/${templateId}/lang/${locale}.json`, this.cacheVersion)
+        : null;
+
+      const response = staticUrl !== null
+        ? await fetchStaticFirst(staticUrl, url, { label: `lang/${locale}.json` })
+        : await fetch(url);
 
       if (!response.ok) {
         throw new TranslationError(
@@ -399,6 +416,44 @@ export class TranslationEngine {
   }
 
   /**
+   * 단일 번역 키 값을 활성 사전에 낙관적으로 주입합니다.
+   *
+   * 레이아웃 편집기 인라인 편집으로 커스텀 키를 생성/수정한 직후, 서버 lang 을 재fetch 하는
+   * 비동기 동안 캔버스가 그 키를 raw(또는 옛 값)로 렌더하지 않도록, 입력한 값을 즉시 사전에
+   * 반영한다. 점선 경로(`custom.layout.2`)를 중첩 객체로 풀어 set 하며, 사전이 아직 없으면
+   * 생성한다. 이후 `loadTranslations(...,true)` 가 서버 권위 값으로 사전을 원자 교체한다.
+   *
+   * 사용자 페이지(비편집)에는 호출되지 않는다 — 편집기 전용 낙관적 경로.
+   *
+   * @param templateId 템플릿 식별자
+   * @param locale 대상 로케일
+   * @param key 번역 키 (점선 경로, `$t:` 접두 없이)
+   * @param value 주입할 값
+   * @return 없음
+   */
+  setTranslationValue(
+    templateId: string,
+    locale: string,
+    key: string,
+    value: string
+  ): void {
+    const cacheKey = `${templateId}:${locale}`;
+    const dict = this.translations.get(cacheKey) ?? {};
+    const parts = key.split('.');
+    let cursor: Record<string, unknown> = dict as Record<string, unknown>;
+    for (let i = 0; i < parts.length - 1; i += 1) {
+      const seg = parts[i];
+      const existing = cursor[seg];
+      if (existing == null || typeof existing !== 'object' || Array.isArray(existing)) {
+        cursor[seg] = {};
+      }
+      cursor = cursor[seg] as Record<string, unknown>;
+    }
+    cursor[parts[parts.length - 1]] = value;
+    this.translations.set(cacheKey, dict as TranslationDictionary);
+  }
+
+  /**
    * 파라미터 문자열을 파싱합니다.
    *
    * `{{...}}` 내부의 `|`와 `&`는 구분자로 취급하지 않습니다.
@@ -451,15 +506,34 @@ export class TranslationEngine {
     if (value.startsWith('{{') && value.endsWith('}}')) {
       const expression = value.slice(2, -2).trim();
 
+      // 파이프 필터(`{{x | datetime}}`)는 표현식 평가기가 모른다 — `|` 를 비트 연산자로
+      // 읽어 평가에 실패하고, 아래 catch 가 빈 문자열을 돌려주므로 문장에서 값만 조용히
+      // 사라진다("유효시간  까지"). 파이프 전용 평가기로 먼저 처리한다.
+      // @since engine-v1.65.0
+      if (hasPipes(expression) && dataContext) {
+        try {
+          const piped = dataBindingEngine.evaluatePipeExpression(expression, dataContext);
+          return String(piped ?? '');
+        } catch (error) {
+          logger.error('Pipe expression evaluation failed:', expression, error);
+          return '';
+        }
+      }
+
       // 복잡한 표현식인지 확인 (연산자, 괄호, 메서드 호출 등 포함)
       // 산술 연산자(+, -, *, /, %), 비교 연산자(<, >, =), 논리 연산자, 공백(피연산자 분리)도 포함
       const isComplexExpression = /[|&()[\]!?:+\-*/%<>=\s]/.test(expression);
 
       if (isComplexExpression && dataContext) {
-        // JavaScript 표현식으로 평가
+        // 평가는 엔진에 위임한다. 종전에는 `new Function(...Object.keys(dataContext))` 로
+        // 자체 평가해 `$localized(...)`/`$t(...)`/`$uuid()` 헬퍼와 optional chaining 전처리,
+        // 표현식 함수 캐시를 쓰지 못했다. 실패 시 조용히 빈 문자열이 되어 번역 문구에서
+        // 값만 사라졌다.
+        // (컨텍스트 키가 식별자가 아닐 때의 실패는 엔진 쪽 문제였고 engine-v1.56.2 에서
+        //  DataBindingEngine 이 그런 키를 제외하도록 고쳤다.)
+        // @since engine-v1.56.1
         try {
-          const func = new Function(...Object.keys(dataContext), `return ${expression}`);
-          const resolved = func(...Object.values(dataContext));
+          const resolved = dataBindingEngine.evaluateExpression(expression, dataContext);
           return String(resolved ?? '');
         } catch (error) {
           logger.error('Expression evaluation failed:', expression, error);

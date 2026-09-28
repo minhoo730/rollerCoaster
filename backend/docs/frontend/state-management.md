@@ -161,6 +161,7 @@ G7이 자동으로 주입하는 `_global` 속성입니다. 레이아웃에서 �
 - **A→B 방향**: 자동바인딩 `performStateUpdate`가 A에 쓸 때 B에도 `setLocal({render:false})`로 동기 기록
 - **B→A 방향**: 자동바인딩 활성 경로를 `__g7AutoBindingPaths: Map<string, number>`에 추적. 플러그인이 `setLocal({render:false})`로 그 경로를 건드리면 엔진이 **자동으로 `render:true`로 승격**
 - **예외**: `selfManaged: true` 명시한 호출은 자동 승격 제외 (CKEditor5 등 자체 DOM 관리 플러그인 전용)
+- **pending 스냅샷**: 자동바인딩은 `__g7PendingLocalState` 에 "지금 화면과 같은 전체 스냅샷" 을 싣는다. 이 값이 뒤이은 `setLocal` 의 base 가 되므로, 저장소 A 스냅샷을 그대로 실으면 B 에만 있던 값(selfManaged 플러그인이 쓴 편집기 본문 등)이 사라진다. 그래서 렌더러가 화면을 만드는 순서(`dataContext._local → dynamicState → __g7ForcedLocalFields`)를 그대로 따라 합성한다 (engine-v1.63.4)
 
 ### 엔진 수정 시 금지 사항 (CRITICAL)
 
@@ -169,6 +170,10 @@ G7이 자동으로 주입하는 `_global` 속성입니다. 레이아웃에서 �
 ❌ `parentFormContext.setState`를 직접 호출하는 우회 경로 추가 (자동바인딩 내부 API)
 ❌ `__g7AutoBindingPaths` 레지스트리를 건드리지 않고 자동바인딩 변형 구현
 ❌ setLocal의 `render:false` 자동 승격 분기를 임의로 제거하거나 조건 완화
+❌ 자동바인딩의 pending 스냅샷을 저장소 A 값만으로 구성 (B 전용 값이 조용히 사라진다)
+❌ 저장소 A 에만 쓰는 `_local` 쓰기 경로 추가 (`context.setState(payload)` 단독 호출)
+❌ 키가 **존재하는** 것만 확인하고 그 값이 **최신인지** 보지 않기 (존재 ≠ 신선도)
+❌ 하네스에서 `globalState._local` 을 손으로 채워 발산 상황을 위조 (실 writer 를 거치지 않으면 결함이 시험에 등장하지 않는다)
 ❌ 구독 기반 선택적 리렌더 재시도 (과거에 도입 후 롤백된 실패 경로 — 반드시 검토 후 논의)
 ```
 
@@ -177,13 +182,52 @@ G7이 자동으로 주입하는 `_global` 속성입니다. 레이아웃에서 �
 ```text
 ✅ _local 쓰기 경로 추가 시 A+B 양쪽 동기화 확인
 ✅ 새 `setLocal({render:false})` 사용처가 자동바인딩 경로와 겹치는지 확인 (겹치면 selfManaged 필요)
+✅ pending 에 쓰는 값이 렌더러가 만드는 `_local` 과 같은 합성 순서인지 확인
 ✅ DynamicRenderer의 레지스트리 useEffect 조건 변경 시 iteration/Strict Mode 이중 마운트 영향 검토
 ✅ SPA 네비게이션 시 레지스트리 재초기화 (new Map()) 유지
+✅ 미러는 그 쓰기를 **지배하는 분기 안**에 둔다 (형제 분기의 미러는 이 분기를 면죄하지 않는다)
+✅ 계약 테스트는 경로마다 A→B / B→A **양방향 쌍**으로 둔다 (한 방향만 두면 반대 방향 회귀가 초록으로 통과한다)
+✅ 하네스는 실제 writer(`G7Core.state.setLocal` · 자동바인딩 · `ActionDispatcher`)를 거친다
+✅ `describe.skip` 은 커버리지가 아니다 — 꺼진 시험은 한 번도 돌지 않는다
 ✅ 수정 후 이중 저장소 동기화 관련 회귀 테스트 전수 통과 확인
 ```
 
 - 상세 설명: [`docs/extension/plugin-development.md`](../extension/plugin-development.md) "폼 상태 정합성" 섹션
 - 구현 참고: [`DynamicRenderer.tsx`](../../resources/js/core/template-engine/DynamicRenderer.tsx) `performStateUpdate` 상단 주석 (~50줄)
+
+### `_localInit` 은 단일 슬롯이 아니다 (engine-v1.52.2+)
+
+데이터소스의 `initLocal` 이 만든 초기화 payload 는 `dataContext._localInit` 한 키로 전달된다.
+생산부는 `updateTemplateData`(3개 write site), 소비부는 `DynamicRenderer` 의 `_localInit` useEffect 다.
+
+소비는 React commit **이후**에 일어난다. progressive 데이터소스는 응답이 오는 대로 각자 독립적으로
+`updateTemplateData({ _localInit })` 를 호출하므로, `initLocal` 을 가진 progressive 소스가 둘 이상이면
+두 호출이 같은 commit 사이에 들어올 수 있다. 이때 슬롯을 교체하면 먼저 도착한 payload 가
+한 번도 관측되지 않고 사라진다.
+
+`_localInit` 슬롯 병합과 `__g7LocalInitTracking` 레지스트리의 단일 소유자는
+[`localInitSlot.ts`](../../resources/js/core/template-engine/localInitSlot.ts) 다.
+
+```text
+❌ updateTemplateData 에서 _localInit 을 얕은 스프레드(...data)로 교체
+❌ 소비 여부와 무관하게 _localInit 을 무조건 누적 병합
+   (소비가 끝난 payload 가 refetchDataSource 시 재적용되어 사용자 폼 편집을 되돌린다)
+❌ 소비 여부 판정을 위해 해시 계산식을 생산부에 복제
+   (생산·소비 양쪽의 판정 기준이 어긋난다 — 슬롯 참조 비교를 쓴다)
+❌ __g7LocalInitTracking 을 레이아웃 전환 시 리셋하지 않음
+   (_local 은 비웠는데 추적 해시가 남아 새 레이아웃의 동일 payload 가 "이미 적용됨" 으로 건너뛰어진다)
+```
+
+```text
+✅ 아직 관측되지 않은(unconsumed) 슬롯만 누적 병합 — mergeLocalInitSlot()
+✅ 관측 시 슬롯 참조 기록 — markLocalInitConsumed(). 적용/건너뜀 여부와 무관하게 호출
+✅ 레이아웃 전환으로 _local 을 리셋할 때 추적 레지스트리도 함께 초기화 — resetLocalInitTracking()
+✅ _forceLocalInit 은 한쪽에만 있으면 보존, 양쪽에 있으면 최신 타임스탬프 (refetchOnMount 강제 초기화 유실 방지)
+✅ 소비부는 A(setLocalDynamicState)/B(_globalSetState) 양쪽을 갱신 — 이 대칭을 깨지 않는다
+```
+
+> 이 결함은 정상 CPU 에서 간헐적이라 놓치기 쉽다. CPU 스로틀링(6배 이상)으로 commit 을 지연시켜야
+> 경합 창이 결정적으로 열린다.
 
 ### 라이프사이클 (SPA 네비게이션)
 

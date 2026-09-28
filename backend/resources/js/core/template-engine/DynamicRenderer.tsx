@@ -26,9 +26,14 @@ import { TranslationEngine, TranslationContext } from './TranslationEngine';
 import { ActionDispatcher, ActionDefinition } from './ActionDispatcher';
 import { resolveIterationSource, evaluateIfCondition, evaluateRenderCondition, bindComponentActions, resolveClassMap } from './helpers/RenderHelpers';
 import { hasPipes } from './PipeRegistry';
+import {
+  extractSingleBinding as canonicalExtractSingleBinding,
+  isComplexExpression as canonicalIsComplexExpression,
+} from './BindingShape';
 import { RAW_PREFIX, RAW_MARKER_START, RAW_MARKER_END, RAW_PLACEHOLDER_MARKER, isRawWrapped, unwrapRaw, containsRawMarker, wrapRawDeep } from './rawMarkers';
 import type { ConditionsProperty } from './helpers/ConditionEvaluator';
 import { useTransitionState } from './TransitionContext';
+import { getLocalInitTracking, markLocalInitConsumed, resolveLocalInitAction } from './localInitSlot';
 import { useResponsive } from './ResponsiveContext';
 import { createLogger } from '../utils/Logger';
 import { shallowObjectEqual } from '../hooks/useControllableState';
@@ -49,6 +54,44 @@ function getDevTools(): G7DevToolsInterface | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * 값(객체/배열/문자열) 내부의 `$t:` 토큰을 재귀적으로 해석한다.
+ *
+ * `extensionPointProps` 처럼 일반 props 와 별도로 평가되어 자식 컴포넌트의
+ * 핸들러로 전달되는 값에서 `$t:board.form.content_placeholder` 같은 평문 i18n
+ * 키를 풀어준다. 일반 props 의 `resolveTranslationsDeep` 와 동일 의미.
+ *
+ * @since engine-v1.50.0
+ */
+function resolveTranslationsInValue(
+  value: any,
+  translationEngine: TranslationEngine,
+  translationContext: TranslationContext,
+  dataContext: Record<string, any>,
+): any {
+  if (typeof value === 'string') {
+    if (/\$t:[a-zA-Z_][a-zA-Z0-9_.\-]*/.test(value)) {
+      try {
+        return translationEngine.resolveTranslations(value, translationContext, dataContext);
+      } catch {
+        return value;
+      }
+    }
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => resolveTranslationsInValue(item, translationEngine, translationContext, dataContext));
+  }
+  if (value && typeof value === 'object') {
+    const result: Record<string, any> = {};
+    for (const [k, v] of Object.entries(value)) {
+      result[k] = resolveTranslationsInValue(v, translationEngine, translationContext, dataContext);
+    }
+    return result;
+  }
+  return value;
 }
 import { responsiveManager } from './ResponsiveManager';
 import { FormProvider, FormContextValue, useFormContext, getNestedValue, setNestedValue } from './FormContext';
@@ -177,27 +220,81 @@ export const deepMergeState = (
 };
 
 /**
+ * 자동바인딩이 `__g7PendingLocalState` 에 실을 스냅샷을 합성합니다.
+ *
+ * 자동바인딩의 base 는 `parentFormContext.state`(= `extendedDataContext._local`)다.
+ * 그 값은 `useMemo` 결과라, memo 가 재계산되지 않은 구간에서는 **입력 이전 스냅샷으로 고정**된다.
+ * `setLocal({ render:false, selfManaged:true })`(CKEditor5 등 자체 DOM 관리 플러그인)이
+ * 저장소 B 에만 쓰면 React 렌더가 0회라 memo 가 갱신되지 않고, 그 뒤 memo deps 와 무관한
+ * 리렌더(폭 변경 등)가 `__g7PendingLocalState` 를 null 로 지우면 base 가 stale 인 채 남는다.
+ *
+ * 그 stale 스냅샷을 그대로 pending 에 실으면, 이어지는 `setLocal` 이
+ * `currentSnapshot = pendingState || baseLocal`(G7CoreGlobals) 로 그것을 채택해
+ * 저장소 B 를 통째 교체한다 — 편집기 본문이 예외도 콘솔 에러도 없이 사라진다.
+ *
+ * 그래서 pending 은 **렌더러가 화면에 쓰는 것과 같은 순서**로 합성한다.
+ * `extendedDataContext._local` 이 `dataContext._local → dynamicState → __g7ForcedLocalFields`
+ * 순으로 합성하는 것과 동형이며, pending 은 `getLocal()` 이 읽는 "화면과 같은 전체 스냅샷"
+ * 이어야 하므로 이 정합이 맞다.
+ *
+ * `__g7ForcedLocalFields` 는 `setLocal` 이 쓴 필드만 담고(engine-v1.17.4 · 사례 11),
+ * 자동바인딩의 매 키입력이 자기 경로로 그것을 갱신하므로 stale 이 되지 않는다.
+ * 방금 입력한 경로만 마지막에 다시 얹어, forced 의 직전 값이 입력을 되돌리지 못하게 한다.
+ *
+ * 저장소 A 경로(`parentFormContext.setState`)에는 적용하지 않는다 — 그쪽 base 를 바꾸는 것이
+ * 2026-04-22 에 로그인 폼 email 손실로 철회된 수정이다(사례 36 이력).
+ *
+ * @param update 저장소 A 기반 전체 스냅샷 (`setNestedValue(parentFormContext.state, path, value)`)
+ * @param forced `__g7ForcedLocalFields` — setLocal 이 소유한 필드만 담긴 오버레이
+ * @param fullPath 방금 입력된 필드 경로 (`${dataKey}.${name}`)
+ * @param newValue 방금 입력된 값
+ * @returns pending 에 실을 스냅샷 (인자를 변이하지 않음)
+ *
+ * @since engine-v1.63.4
+ */
+export const composeAutoBindingPendingSnapshot = (
+  update: Record<string, any>,
+  forced: unknown,
+  fullPath: string,
+  newValue: any
+): Record<string, any> => {
+  if (!forced || typeof forced !== 'object' || Array.isArray(forced)) return update;
+  const merged = deepMergeState(update, forced as Record<string, any>);
+  return setNestedValue(merged, fullPath, newValue);
+};
+
+/**
  * setLocal()이 업데이트한 키를 localDynamicState에서 재귀적으로 제거
  *
  * setLocal()은 dataContext._local을 직접 업데이트하므로,
  * localDynamicState에 남은 stale 값이 deepMergeState에서 우선 적용되는 것을 방지합니다.
  * 객체 키는 재귀적으로 처리하고, 배열/원시값은 해당 키를 삭제합니다.
  *
+ * 제거된 것이 하나도 없으면 **원본 참조를 그대로 반환**합니다 (@since engine-v1.54.8).
+ * 호출부가 참조 비교로 "실제 제거 여부" 를 판정하기 때문입니다 — 내용이 같은데 사본을
+ * 새로 만들면 그 판정이 거짓 양성이 되어 불필요한 상태 갱신·캐시 무효화가 상시 발생합니다.
+ * 제거가 일어난 경우에도 변경이 없는 형제 가지는 참조를 보존합니다.
+ *
  * @param target localDynamicState (제거 대상)
  * @param keysToRemove setLocal이 업데이트한 키 구조
- * @returns 해당 키가 제거된 새 객체
+ * @returns 해당 키가 제거된 새 객체 (제거가 없으면 target 원본 참조)
  */
 export const removeMatchingLeafKeys = (
   target: Record<string, any>,
   keysToRemove: Record<string, any>
 ): Record<string, any> => {
-  const result: Record<string, any> = { ...target };
+  let result: Record<string, any> | null = null;
+  const ensureCopy = (): Record<string, any> => {
+    if (result === null) result = { ...target };
+
+    return result;
+  };
 
   for (const key of Object.keys(keysToRemove)) {
-    if (!(key in result)) continue;
+    if (!(key in target)) continue;
 
     const removeValue = keysToRemove[key];
-    const targetValue = result[key];
+    const targetValue = target[key];
 
     if (
       removeValue !== null &&
@@ -209,18 +306,21 @@ export const removeMatchingLeafKeys = (
     ) {
       // 양쪽 모두 객체: 재귀적으로 처리
       const cleaned = removeMatchingLeafKeys(targetValue, removeValue);
+      // 하위에서 제거된 것이 없으면(참조 동일) 이 가지는 손대지 않는다.
+      if (cleaned === targetValue) continue;
+
       if (Object.keys(cleaned).length === 0) {
-        delete result[key];
+        delete ensureCopy()[key];
       } else {
-        result[key] = cleaned;
+        ensureCopy()[key] = cleaned;
       }
     } else {
       // 리프 값 또는 배열: 해당 키 삭제
-      delete result[key];
+      delete ensureCopy()[key];
     }
   }
 
-  return result;
+  return result ?? target;
 };
 
 /**
@@ -1210,6 +1310,12 @@ const DynamicRenderer: React.FC<DynamicRendererProps> = memo(
     // API 데이터를 덮어쓰는 것을 방지 (플러그인 onMount setLocal 경합 해소)
     const lastProcessedInitRef = useRef<any>(null);
 
+    // @since engine-v1.54.7: 이 인스턴스가 마지막으로 처리한 _localInit 추적 키
+    // 전역 추적(__g7LocalInitTracking)은 "payload 를 처음 관측했는가"만 판정하는데,
+    // 리셋 대상인 localDynamicState(저장소 A)는 인스턴스별이다. 전역 1회 소비만으로 끝내면
+    // 나머지 루트 렌더러의 저장소 A 에 stale leaf 가 영구 잔존한다 → resolveLocalInitAction 참조
+    const localInitHandledKeyRef = useRef<string | null>(null);
+
     // 최신 _local 상태를 참조하는 ref (expandChildren 상태 동기화용)
     // useCallback으로 캐싱된 componentContext에서도 최신 상태에 접근 가능하도록 함
     const latestLocalStateRef = useRef<Record<string, any>>({});
@@ -1280,19 +1386,25 @@ const DynamicRenderer: React.FC<DynamicRendererProps> = memo(
         // - extends 레이아웃에서 여러 컴포넌트가 동일한 _localInit을 받을 수 있음
         // - 컴포넌트 ID 기반 추적은 각 컴포넌트가 독립적으로 처리하여 중복 적용됨
         // - 데이터 해시만으로 추적하여, 같은 데이터는 어떤 컴포넌트에서든 한 번만 처리
-        const globalTrackingKey = '__g7LocalInitTracking';
-        if (!(window as any)[globalTrackingKey]) {
-          (window as any)[globalTrackingKey] = { hash: '', timestamp: undefined };
-        }
-        const tracking = (window as any)[globalTrackingKey] as { hash: string; timestamp?: number };
+        const tracking = getLocalInitTracking();
 
         // 추적 키는 데이터 해시 + 타임스탬프 (컴포넌트 ID 제외)
         // refetchOnMount 시 _forceLocalInit 타임스탬프가 변경되면 재적용됨
         const trackingKey = `${currentHash}:${_forceLocalInit || 'no-force'}`;
-        const isNewData = tracking.hash !== trackingKey;
-        const shouldApply = isNewData;
+
+        // @since engine-v1.54.7: 적용 판정을 전역 해시 단독에서 (전역 해시 + 인스턴스 기록) 으로 확장
+        // - apply: 아무도 적용하지 않은 payload → 종전과 동일 (저장소 A + B + 캐시 무효화)
+        // - prune: 다른 인스턴스가 이미 적용 → 이 인스턴스의 저장소 A 에서 payload 키 공간만 제거
+        // - skip : 이 인스턴스가 이미 처리 → 무동작
+        const localInitAction = resolveLocalInitAction({
+          globalTrackedKey: tracking.hash,
+          instanceHandledKey: localInitHandledKeyRef.current,
+          trackingKey,
+        });
+        const shouldApply = localInitAction === 'apply';
 
         if (shouldApply) {
+          localInitHandledKeyRef.current = trackingKey;
           // 전역 추적 업데이트
           tracking.hash = trackingKey;
           tracking.timestamp = _forceLocalInit;
@@ -1336,16 +1448,26 @@ const DynamicRenderer: React.FC<DynamicRendererProps> = memo(
           // 전역 상태도 함께 업데이트 (컴포넌트 로컬 상태와 전역 상태 동기화)
           // G7Core.state.get()._local에서도 데이터를 조회할 수 있도록 함
           if (dataContext._globalSetState) {
-            const currentGlobalLocal = (dataContext._global as any)?._local || {};
-            let globalLocalUpdate: Record<string, any>;
-            if (mergeStrategy === 'replace') {
-              globalLocalUpdate = { ...initDataWithoutMeta, hasChanges: false };
-            } else if (mergeStrategy === 'deep') {
-              globalLocalUpdate = deepMergeState(currentGlobalLocal, { ...initDataWithoutMeta, hasChanges: false });
-            } else {
-              globalLocalUpdate = { ...currentGlobalLocal, ...initDataWithoutMeta, hasChanges: false };
-            }
-            dataContext._globalSetState({ _local: globalLocalUpdate });
+            // @since engine-v1.54.5: 병합 base 는 렌더 시점 스냅샷(dataContext._global._local)이 아니라
+            // **쓰기 시점의 canonical _local(prev._local)** 이어야 한다.
+            //
+            // setGlobalState 는 updates 를 얕게 펼치므로 `{ _local: X }` 는 저장소 B 를 통째로 교체한다.
+            // 이 effect 는 마운트 후(렌더 커밋 뒤)에 실행되는데, 그 사이에 init_actions 가 URL query 로
+            // _local 을 시드해 두었다면(목록 화면의 필터·정렬 컨트롤) 렌더 시점 스냅샷을 base 로 쓴 교체가
+            // 그 시드를 통째로 되돌린다 — 뒤로가기 복귀 시 URL·목록은 필터가 걸린 상태인데 필터 컨트롤만
+            // 기본값으로 표시되는 결함(#492 D-20). 함수형 업데이트로 prev 를 읽어 그 역전을 제거한다.
+            dataContext._globalSetState((prev: Record<string, any>) => {
+              const currentGlobalLocal = (prev as any)?._local || {};
+              let globalLocalUpdate: Record<string, any>;
+              if (mergeStrategy === 'replace') {
+                globalLocalUpdate = { ...initDataWithoutMeta, hasChanges: false };
+              } else if (mergeStrategy === 'deep') {
+                globalLocalUpdate = deepMergeState(currentGlobalLocal, { ...initDataWithoutMeta, hasChanges: false });
+              } else {
+                globalLocalUpdate = { ...currentGlobalLocal, ...initDataWithoutMeta, hasChanges: false };
+              }
+              return { ...prev, _local: globalLocalUpdate };
+            });
           }
 
           // _localInit 데이터가 변경되면 DataBindingEngine 캐시 무효화
@@ -1354,12 +1476,51 @@ const DynamicRenderer: React.FC<DynamicRendererProps> = memo(
           bindingEngine.invalidateCacheByKeys(['_local']);
 
           logger.log('_localInit applied (data changed):', Object.keys(localInitData));
+        } else if (localInitAction === 'prune') {
+          // @since engine-v1.54.7
+          // 다른 인스턴스가 이 payload 를 이미 적용했다. 저장소 B(globalState._local)는 갱신되어
+          // 있으나, 이 인스턴스의 저장소 A(localDynamicState)에는 자동바인딩이 남긴 stale leaf 가
+          // 그대로다. 병합은 A 우선(`deepMergeState(dataContext._local, dynamicState)`)이므로
+          // 그대로 두면 신선한 B 를 stale A 가 덮는다 — 화면만 옛 값이 되는 조용한 결함.
+          //
+          // 값을 다시 쓰지 않고 payload 키 공간만 제거한다. 재적용을 택하면 늦게 마운트된
+          // 인스턴스가 소비된 과거 payload 를 B 에 되쓰면서 그 사이의 사용자 편집을 되돌린다
+          // (localInitSlot.ts 의 `consumed → 교체` 규칙이 막고 있는 회귀).
+          localInitHandledKeyRef.current = trackingKey;
+
+          const { _merge: _pruneMergeMode, ...pruneKeys } = localInitData as Record<string, any>;
+
+          // 상태 갱신은 updater 로 넘긴다 (@since engine-v1.54.8) — 같은 commit 에서
+          // useLayoutEffect 가 큐에 넣은 제거가 아직 반영되기 전일 수 있으므로,
+          // 커밋 시점 스냅샷을 직접 쓰면 그 제거를 되살릴 수 있다.
+          // removeMatchingLeafKeys 는 제거할 것이 없으면 원본 참조를 그대로 돌려주므로,
+          // no-op 일 때 React 가 바로 bail out 한다 (불필요한 리렌더 없음).
+          setLocalDynamicState(prev => removeMatchingLeafKeys(prev, pruneKeys));
+
+          // 캐시 무효화 여부는 커밋된 현재 값 기준으로 동기 판정한다 — updater 안에서
+          // 플래그를 세우면 StrictMode 이중 호출과 배치 지연 때문에 신뢰할 수 없다.
+          // 헬퍼가 no-op 시 원본 참조를 반환하므로 참조 비교가 곧 "실제 제거 여부" 다.
+          // (내용 비교나 얕은 비교로 판정하면 중첩 경로에서 사본이 새로 생겨 거짓 양성이 된다.)
+          const didPrune = removeMatchingLeafKeys(localDynamicState, pruneKeys) !== localDynamicState;
+
+          if (didPrune) {
+            // 병합 결과가 바뀌므로 _local 경로 캐시를 무효화한다. 단순 경로 바인딩
+            // (`{{_local.form.x}}` 등)은 캐시 대상이라, 무효화하지 않으면 제거 후에도
+            // 캐시된 옛 값이 반환되어 화면이 갱신되지 않는다 (troubleshooting-cache 사례 8·9).
+            bindingEngine.invalidateCacheByKeys(['_local']);
+            logger.log('_localInit pruned (applied by another renderer):', Object.keys(pruneKeys));
+          }
         }
 
         // engine-v1.41.0: _localInit 처리 완료 후 ref 갱신
         // hash tracking에 의해 shouldApply가 false(skip)된 경우에도 갱신하여
         // extendedDataContext useMemo가 정상 병합(deepMergeState)을 재개하도록 함
         lastProcessedInitRef.current = dataContext._localInit;
+
+        // @since engine-v1.52.2: 이 슬롯을 관측했음을 생산부(updateTemplateData)에 알림.
+        // 생산부는 아직 관측되지 않은 슬롯만 누적 병합하고, 관측된 슬롯은 교체한다.
+        // skip(동일 해시)된 경우에도 그 payload는 이미 _local에 반영되어 있으므로 소비된 것이다.
+        markLocalInitConsumed(dataContext._localInit);
       }
     }, [dataContext._localInit, parentDataContext, bindingEngine]);
 
@@ -1418,6 +1579,11 @@ const DynamicRenderer: React.FC<DynamicRendererProps> = memo(
         text: override.text ?? baseDef.text,
         if: override.if ?? baseDef.if,
         iteration: override.iteration ?? baseDef.iteration,
+        // 편집기 path 발급용 — 자식이 **분기 children 으로 교체**된 경우에만 분기 키를
+        // 남긴다(자식 path 에 `.responsive.{key}` prefix 를 끼워 base children 과 구분).
+        // props-만 오버라이드(override.children 부재)는 base children 그대로라 base path
+        // 유지.
+        __responsiveChildrenKey: override.children !== undefined ? matchedKey : undefined,
       };
     }, [componentDef, responsiveWidth]);
 
@@ -1605,7 +1771,13 @@ const DynamicRenderer: React.FC<DynamicRendererProps> = memo(
               if (expression.startsWith('{{') && expression.endsWith('}}')) {
                 // {{...}} 형태의 표현식 평가
                 const innerExpression = (expression as string).slice(2, -2).trim();
-                const result = bindingEngine.evaluateExpression(innerExpression, computedContext, { skipCache: true });
+                // 파이프 표현식은 evaluatePipeExpression 으로 평가한다 — evaluateExpression 은
+                // `|` 를 JS 비트 OR 로 보므로 인자 있는 파이프는 예외로 아래 catch 에 걸려
+                // computed 가 이전 값에 고정된다(값이 바뀌지 않는 조용한 실패).
+                // @since engine-v1.54.10
+                const result = hasPipes(innerExpression)
+                  ? bindingEngine.evaluatePipeExpression(innerExpression, computedContext, { skipCache: true })
+                  : bindingEngine.evaluateExpression(innerExpression, computedContext, { skipCache: true });
                 newComputed[key] = result;
               } else {
                 // 순수 문자열은 그대로 사용
@@ -1672,12 +1844,20 @@ const DynamicRenderer: React.FC<DynamicRendererProps> = memo(
       // extension_point 컴포넌트의 props가 주입된 컴포넌트에서 {{extensionPointProps.xxx}}로 접근 가능
       // LayoutExtensionService에서 extension_point의 props를 injectedComponent.extensionPointProps에 추가
       // @since engine-v1.28.0: resolveObject()로 표현식 재귀 평가 (일반 props와 동일 수준)
+      // @since engine-v1.50.0: **편집 모드 전용** `$t:` 키 2차
+      //   해석 — `extensionPointProps.placeholder: "$t:board.form.content_placeholder"`
+      //   같은 평문 i18n 키를 핸들러(예: ckeditor5 initEditor) 가 받기 전에 풀어
+      //   편집기 캔버스에서 raw 키로 노출되지 않도록 한다. 일반 사이트 렌더는
+      //   `isEditMode === false` 라 본 분기 미진입 → 동작 100% 보존.
       if (componentDef.extensionPointProps) {
-        result.extensionPointProps = bindingEngine.resolveObject(
+        const resolved = bindingEngine.resolveObject(
           componentDef.extensionPointProps,
           result,
           isInsideIteration ? { skipCache: true } : undefined
         );
+        result.extensionPointProps = isEditMode && translationEngine
+          ? resolveTranslationsInValue(resolved, translationEngine, translationContext, result)
+          : resolved;
       }
 
       // extensionPointCallbacks가 있으면 데이터 컨텍스트에 추가 (평가 없이 그대로 전달)
@@ -1685,6 +1865,28 @@ const DynamicRenderer: React.FC<DynamicRendererProps> = memo(
       // @since engine-v1.28.0
       if (componentDef.extensionPointCallbacks) {
         result.extensionPointCallbacks = componentDef.extensionPointCallbacks;
+      }
+
+      // **편집 모드 전용** $templateId / $locale 자동 주입 — `{{삼항 ? '$t:A' : '$t:B'}}`
+      // 같은 표현식의 `$t()` 함수가 templateId 폴백을 위해
+      // `window.__templateApp.getConfig()` 를 호출하지 않고 컨텍스트에서 바로 가져올
+      // 수 있도록 보장.
+      //
+      // 동기: 편집기 캔버스의 격리 `__templateApp` façade 에는 `getConfig` 가 없어
+      // 폴백이 빈 templateId 를 반환 → 사전 조회 실패 → raw key 노출. dataContext 에
+      // `$templateId` 가 미리 있으면 그 값을 우선 사용한다(DataBindingEngine 의
+      // `$t` 함수 line 1145). 일반 사이트 렌더는 `isEditMode === false` 이므로 본
+      // 분기 미진입 → 호스트 `window.__templateApp.getConfig()` fallback 그대로 사용.
+      //
+      // @since engine-v1.50.0 (라우트 10/12 글쓰기/글수정 i18n
+      //   `$t:board.write` raw 키 노출 결함 수정. 호스트 사이트 영향 0)
+      if (isEditMode) {
+        if (result.$templateId === undefined && translationContext?.templateId) {
+          result.$templateId = translationContext.templateId;
+        }
+        if (result.$locale === undefined && translationContext?.locale) {
+          result.$locale = translationContext.locale;
+        }
       }
 
       return result;
@@ -1872,7 +2074,13 @@ const DynamicRenderer: React.FC<DynamicRendererProps> = memo(
             componentName: effectiveComponentDef.name,
             propName: 'slot',
           };
-          const result = bindingEngine.evaluateExpression(expr, extendedDataContext, slotTrackingInfo);
+          // 파이프 표현식은 evaluatePipeExpression 으로 평가한다 — evaluateExpression 은
+          // `|` 를 JS 비트 OR 로 보므로 결과가 문자열이 아니게 되고, 아래 `typeof result === 'string'`
+          // 가드에 걸려 슬롯 미등록으로 조용히 흡수된다(컴포넌트가 화면에서 사라짐).
+          // @since engine-v1.54.10
+          const result = hasPipes(expr)
+            ? bindingEngine.evaluatePipeExpression(expr, extendedDataContext, undefined, slotTrackingInfo)
+            : bindingEngine.evaluateExpression(expr, extendedDataContext, slotTrackingInfo);
           logger.log(`[Slot] 표현식 평가: "${expr}" => "${result}" (컴포넌트: ${effectiveComponentDef.id})`);
           return typeof result === 'string' ? result : null;
         } catch (error) {
@@ -2088,66 +2296,30 @@ const DynamicRenderer: React.FC<DynamicRendererProps> = memo(
     /**
      * 복잡한 표현식 여부 감지
      *
-     * 삼항 연산자, 논리 연산자 등이 포함된 경우 true 반환
+     * 판정은 BindingShape 정본에 위임한다 — 종전에는 이 자리의 문자 집합이 좁아
+     * `query['sales_status[]']` 같은 따옴표 키 인덱싱과 배열/객체 리터럴이
+     * "단순 경로" 로 오판되어 경로 탐색으로 갔고, 결과는 조용한 undefined 였다.
+     * 같은 식이 `if`(RenderHelpers 방언)에서는 정상 동작해 재현 위치를 특정하기 어려웠다.
+     *
+     * @since engine-v1.55.0
      */
-    const isComplexExpression = useCallback((expr: string): boolean => {
-      // 삼항 연산자나 복잡한 표현식 감지 (?, :, ||, &&, !, 산술 연산자, 함수 호출 등)
-      // () 추가: $localized(menu.name) 같은 함수 호출 표현식도 복잡한 표현식으로 처리
-      return /[?:|&!+\-*/<>=()]/.test(expr);
-    }, []);
+    const isComplexExpression = useCallback(
+      (expr: string): boolean => canonicalIsComplexExpression(expr),
+      [],
+    );
 
     /**
-     * 단일 바인딩 표현식 매칭 정규식
+     * 단일 바인딩 표현식 추출
      *
-     * 전체가 {{...}}로 감싸진 표현식을 매칭합니다.
-     * 내부에 문자열 리터럴('...' 또는 "...")이 포함된 복잡한 표현식도 지원합니다.
+     * 전체가 `{{...}}` 로 감싸진 식이면 내부 식을, 아니면 null 을 반환한다.
+     * 판정은 BindingShape 정본에 위임한다 (따옴표·이스케이프·중괄호 균형 추적).
      *
-     * 예시:
-     * - {{user.name}} -> 매칭
-     * - {{row.status === 'active' ? 'yes' : 'no'}} -> 매칭
-     * - Hello {{name}} -> 매칭 안됨 (문자열 보간)
+     * @since engine-v1.55.0
      */
-    const extractSingleBinding = useCallback((value: string): string | null => {
-      // 시작이 {{이고 끝이 }}인지 확인
-      if (!value.startsWith('{{') || !value.endsWith('}}')) {
-        return null;
-      }
-
-      // 중간 내용 추출
-      const inner = value.slice(2, -2);
-
-      // 중간에 }}가 있으면 단일 바인딩이 아님 (예: {{a}} {{b}})
-      // 단, 문자열 리터럴 안의 }는 제외해야 함
-      let inString: string | null = null;
-      let braceCount = 0;
-
-      for (let i = 0; i < inner.length; i++) {
-        const char = inner[i];
-        const prevChar = i > 0 ? inner[i - 1] : '';
-
-        // 이스케이프된 문자는 무시
-        if (prevChar === '\\') continue;
-
-        // 문자열 시작/종료 감지
-        if ((char === '"' || char === "'") && !inString) {
-          inString = char;
-        } else if (char === inString) {
-          inString = null;
-        }
-
-        // 문자열 밖에서 중괄호 카운트
-        if (!inString) {
-          if (char === '{') braceCount++;
-          if (char === '}') braceCount--;
-
-          // 닫는 중괄호가 더 많으면 단일 바인딩이 아님
-          if (braceCount < 0) return null;
-        }
-      }
-
-      // 중괄호가 균형이 맞으면 단일 바인딩
-      return braceCount === 0 ? inner.trim() : null;
-    }, []);
+    const extractSingleBinding = useCallback(
+      (value: string): string | null => canonicalExtractSingleBinding(value),
+      [],
+    );
 
     /**
      * Props 처리
@@ -2173,6 +2345,13 @@ const DynamicRenderer: React.FC<DynamicRendererProps> = memo(
       // iteration 컨텍스트에서는 캐시 사용 안 함
       // 같은 표현식이 다른 아이템 컨텍스트로 평가되어야 하므로 캐시 사용 시 잘못된 값 반환
       const bindingOptions = isInsideIteration ? { skipCache: true } : undefined;
+
+      // 중첩 객체 해석에도 컴포넌트별 skipBindingKeys 를 전달한다.
+      // 종전에는 전달하지 않아 resolveObject 의 기본 4개만 적용됐고, 그래서 컴포넌트가
+      // "내가 직접 반복 렌더한다" 고 선언한 키가 중첩 위치에서는 선평가됐다 —
+      // 그 시점에는 항목 컨텍스트가 없으므로 표현식이 stale 값으로 고정된다.
+      // 저장소 전수 스캔 기준 현재 해당 위치 0건(예방 목적). @since engine-v1.55.1
+      const nestedBindingOptions = { ...(bindingOptions ?? {}), skipBindingKeys };
 
       // _computed 참조 표현식의 캐시 스킵 여부를 판별하는 헬퍼
       // _computed는 컴포넌트마다 _local 기반으로 재계산되므로 컴포넌트 간 공유 캐시 사용 시
@@ -2212,7 +2391,29 @@ const DynamicRenderer: React.FC<DynamicRendererProps> = memo(
             };
 
             let resolvedValue;
-            if (isComplexExpression(effectivePath)) {
+            if (hasPipes(effectivePath)) {
+              // 파이프 표현식은 evaluatePipeExpression 으로 평가한다.
+              // isComplexExpression 은 `|` 를 연산자로 보므로 그대로 두면
+              // `value | pipe` 가 JS 비트 OR 로 평가된다 — text 처리와 동일 분기.
+              // @since engine-v1.54.3
+              // prop 값은 원본 타입이 필요하므로 문자열 서식을 거치지 않으며,
+              // 캐시 옵션도 다른 분기와 동일하게 _computed 인지를 반영한다.
+              // @since engine-v1.54.9
+              try {
+                resolvedValue = bindingEngine.evaluatePipeExpression(
+                  effectivePath,
+                  extendedDataContext,
+                  getComputedAwareOptions(effectivePath),
+                  trackingInfo,
+                );
+              } catch (error) {
+                logger.warn(
+                  `파이프 표현식 평가 실패 (컴포넌트: ${effectiveComponentDef.id}, prop: ${key}):`,
+                  error
+                );
+                resolvedValue = undefined;
+              }
+            } else if (isComplexExpression(effectivePath)) {
               try {
                 resolvedValue = bindingEngine.evaluateExpression(effectivePath, extendedDataContext, trackingInfo);
               } catch (error) {
@@ -2240,11 +2441,11 @@ const DynamicRenderer: React.FC<DynamicRendererProps> = memo(
             typeof item === 'string'
               ? bindingEngine.resolveBindings(item, extendedDataContext, bindingOptions)
               : typeof item === 'object' && item !== null
-                ? bindingEngine.resolveObject(item, extendedDataContext, bindingOptions)
+                ? bindingEngine.resolveObject(item, extendedDataContext, nestedBindingOptions)
                 : item
           );
         } else if (value && typeof value === 'object') {
-          props[key] = bindingEngine.resolveObject(value, extendedDataContext, bindingOptions);
+          props[key] = bindingEngine.resolveObject(value, extendedDataContext, nestedBindingOptions);
         }
       }
 
@@ -2261,9 +2462,15 @@ const DynamicRenderer: React.FC<DynamicRendererProps> = memo(
       }
 
       // 3. 액션 바인딩 (공유 유틸리티 함수 사용)
+      //
+      // 편집 모드에서는 navigate/apiCall/openModal 등 모든 액션을 발동하지
+      // 않는다 — actions 를 undefined 로 넘겨 바인딩 자체를 건너뛴다. 편집 모드의
+      // 클릭은 오직 "요소 선택" 만 의미하며, 액션 발동은 운영 화면에서만 일어난다.
+      // (편집 모드 진입 시 actions JSON 값은 보존된 채 단지 onClick 핸들러로 변환되지
+      // 않을 뿐이므로 무손실. 저장 시 그대로 직렬화됨.)
       props = bindComponentActions(
         props,
-        effectiveComponentDef.actions,
+        isEditMode ? undefined : effectiveComponentDef.actions,
         extendedDataContext,
         { componentContext, actionDispatcher }
       );
@@ -2374,6 +2581,27 @@ const DynamicRenderer: React.FC<DynamicRendererProps> = memo(
       previousResolvedPropsRef.current = resolvedProps;
       return resolvedProps;
     }, [resolvedProps]);
+
+    /**
+     * DOM id 표현식 해석 (engine-v1.50.0)
+     *
+     * 노드의 최상위 `id` 필드는 props 가 아니므로 props 바인딩 경로를 타지 않는다.
+     * iteration 내부에서 `id: "item_{{$idx}}"` 처럼 표현식을 쓰면 각 row 마다
+     * 고유 DOM id 가 되어야 하지만, 보간 없이 그대로 출력되면 같은 리터럴이
+     * row 마다 반복되어 W3C HTML id 중복을 유발한다.
+     *
+     * `{{` 가 포함된 경우에만 extendedDataContext($idx 등 iteration 변수 포함)로
+     * 문자열 보간한다. 표현식이 없는 정적 id 는 원본을 그대로 반환하여 비용을 회피한다.
+     * 이 값은 DOM 출력 전용이며, slot 등록·DevTools 등 내부 식별에는 원본 id 를 계속 사용한다.
+     */
+    const resolvedComponentId = useMemo(() => {
+      const rawId = effectiveComponentDef.id;
+      if (typeof rawId !== 'string' || !rawId.includes('{{')) {
+        return rawId;
+      }
+      const resolved = bindingEngine.resolveBindings(rawId, extendedDataContext, { skipCache: true });
+      return typeof resolved === 'string' ? resolved : rawId;
+    }, [effectiveComponentDef.id, extendedDataContext, bindingEngine]);
 
     /**
      * 자식에게 전달할 FormContext
@@ -2498,13 +2726,35 @@ const DynamicRenderer: React.FC<DynamicRendererProps> = memo(
           const singleBindingPath = extractSingleBinding(text);
 
           if (singleBindingPath !== null) {
-            // 파이프가 있는 경우 resolveBindings 사용 (파이프 처리 포함)
-            if (hasPipes(singleBindingPath)) {
-              resolvedText = bindingEngine.resolveBindings(text, extendedDataContext, { skipCache: true }, textTrackingInfo);
-            } else if (isComplexExpression(singleBindingPath)) {
+            // raw: 접두사 감지 — props 처리(위 renderProps)와 동일 규칙.
+            // 접두사를 벗기지 않으면 `raw:` 의 콜론이 식의 일부로 파싱되어
+            // evaluateExpression 이 `Unexpected token ':'` 로 던지고 텍스트가 통째로 사라진다.
+            // @since engine-v1.54.4
+            let isRawBinding = false;
+            let effectivePath = singleBindingPath;
+            if (singleBindingPath.startsWith(RAW_PREFIX)) {
+              isRawBinding = true;
+              effectivePath = singleBindingPath.slice(RAW_PREFIX.length);
+            }
+
+            // 파이프가 있는 경우 evaluatePipeExpression 사용 (파이프 체인 실행 포함).
+            // 다른 두 분기(resolve/evaluateExpression)와 마찬가지로 원본 타입을 유지한다 —
+            // 문자열 서식을 거치면 `first`/`filter` 같은 파이프의 결과 타입이 바뀐다.
+            // @since engine-v1.54.9
+            if (hasPipes(effectivePath)) {
+              try {
+                resolvedText = bindingEngine.evaluatePipeExpression(effectivePath, extendedDataContext, { skipCache: true }, textTrackingInfo);
+              } catch (error) {
+                logger.warn(
+                  `text 파이프 표현식 평가 실패 (컴포넌트: ${effectiveComponentDef.id}):`,
+                  error
+                );
+                resolvedText = '';
+              }
+            } else if (isComplexExpression(effectivePath)) {
               // 복잡한 표현식인 경우 evaluateExpression 사용
               try {
-                resolvedText = bindingEngine.evaluateExpression(singleBindingPath, extendedDataContext, textTrackingInfo);
+                resolvedText = bindingEngine.evaluateExpression(effectivePath, extendedDataContext, textTrackingInfo);
               } catch (error) {
                 logger.warn(
                   `text 표현식 평가 실패 (컴포넌트: ${effectiveComponentDef.id}):`,
@@ -2513,7 +2763,11 @@ const DynamicRenderer: React.FC<DynamicRendererProps> = memo(
                 resolvedText = '';
               }
             } else {
-              resolvedText = bindingEngine.resolve(singleBindingPath, extendedDataContext, { skipCache: true }, textTrackingInfo);
+              resolvedText = bindingEngine.resolve(effectivePath, extendedDataContext, { skipCache: true }, textTrackingInfo);
+            }
+
+            if (isRawBinding && resolvedText != null) {
+              resolvedText = wrapRawDeep(resolvedText);
             }
           } else if (text.includes('{{')) {
             // 문자열 보간
@@ -2544,7 +2798,13 @@ const DynamicRenderer: React.FC<DynamicRendererProps> = memo(
         // 자식 컴포넌트에도 componentContext와 formContext를 전달하여 상태 공유
         // extendedDataContext를 전달하여 _local 상태를 자식에게도 공유
         // componentPath를 누적하여 자식에게 전달 (WYSIWYG 편집기용)
-        const childPath = componentPath ? `${componentPath}.children.${index}` : `${index}`;
+        // 자식이 responsive 분기 children 으로 교체된 경우, 편집 path 에 분기 출처를
+        // 명시한다: `{부모}.responsive.{key}.children.{N}`. 그래야 편집기가 base children
+        // 의 같은 인덱스 노드가 아니라 보이는 분기 노드를 정확히 선택·패치한다.
+        // base children(분기 키 부재)은 종전 `.children.{N}` 형식 유지.
+        const branchKey = (effectiveComponentDef as any).__responsiveChildrenKey as string | undefined;
+        const childrenPathSeg = branchKey ? `responsive.${branchKey}.children` : 'children';
+        const childPath = componentPath ? `${componentPath}.${childrenPathSeg}.${index}` : `${index}`;
 
         // @since engine-v1.24.8 _fromBase children은 stable key → 보존(update)
         // non-_fromBase children은 layoutKey suffix로 페이지 전환 시 remount 보장
@@ -2644,9 +2904,14 @@ const DynamicRenderer: React.FC<DynamicRendererProps> = memo(
         // 각 아이템에 대해 자식 컴포넌트 렌더링
         return dataArray.map((item, index) => {
           // 반복 컨텍스트 생성 (extendedDataContext 기반, _local 포함)
+          //
+          // `{item_var}_index` 자동 변수는 반복 렌더 경로(renderItemChildren)가 이미
+          // 제공하던 것으로, 이 경로에만 없어서 같은 작성이 한쪽에서만 동작했다.
+          // @since engine-v1.56.0
           const iterationContext: Record<string, any> = {
             ...extendedDataContext,
             [effectiveComponentDef.iteration!.item_var]: item,
+            [`${effectiveComponentDef.iteration!.item_var}_index`]: index,
           };
 
           if (effectiveComponentDef.iteration!.index_var) {
@@ -3387,7 +3652,18 @@ const DynamicRenderer: React.FC<DynamicRendererProps> = memo(
 
         // 저장소 A: React setState가 비동기이므로, 액션 핸들러에서 즉시 최신 값을 읽을 수 있도록
         // 전역 캐시(__g7PendingLocalState)에 업데이트된 상태를 저장. G7Core.state.getLocal()이 이 캐시를 우선 사용.
-        (window as any).__g7PendingLocalState = update;
+        //
+        // engine-v1.63.4 (사례 41): `update` 를 그대로 싣지 않는다. base 인 parentFormContext.state 는
+        // 재계산되지 않은 useMemo 결과일 수 있어, selfManaged 플러그인이 저장소 B 에만 쓴 편집분을
+        // 담고 있지 않다. 그 stale 스냅샷이 pending 에 실리면 아래 setLocal 이 그것을 base 로 채택해
+        // (`currentSnapshot = pendingState || baseLocal`) 저장소 B 를 통째 교체한다.
+        // 렌더러와 같은 순서로 __g7ForcedLocalFields 를 얹어 화면과 같은 스냅샷을 싣는다.
+        (window as any).__g7PendingLocalState = composeAutoBindingPendingSnapshot(
+          update,
+          (window as any).__g7ForcedLocalFields,
+          fullPath,
+          newValue
+        );
 
         // 저장소 A: React localDynamicState — 해당 Input 트리 리렌더 (기존 경로, 성능 보존)
         parentFormContext.setState!(update);
@@ -3539,8 +3815,19 @@ const DynamicRenderer: React.FC<DynamicRendererProps> = memo(
       }
 
       // 조건부 렌더링 체크
+      //
+      // iteration 이 있으면 여기서 끊지 않는다. `if` 가 항목 변수(`{{user.is_active}}` 등)를
+      // 참조하는 경우 이 시점의 컨텍스트에는 그 변수가 없어 조건이 항상 false 가 되고,
+      // **목록 전체가 렌더되지 않는다**(에러도 경고도 없음). 반복 렌더 경로
+      // (renderItemChildren)는 항목별 컨텍스트에서 평가하므로 같은 작성이 정상 동작했다 —
+      // 그 비대칭을 없앤다. 항목별 재평가는 자식 DynamicRenderer 가 수행한다
+      // (iteration 만 제거한 정의를 넘기므로 `if` 는 그대로 남는다).
+      // @since engine-v1.56.0
       if (!shouldRender) {
-        return null;
+        if (!effectiveComponentDef.iteration) {
+          return null;
+        }
+        return renderIteration;
       }
 
       // 정렬 가능 리스트 렌더링 체크 (sortable은 iteration보다 우선)
@@ -3569,7 +3856,7 @@ const DynamicRenderer: React.FC<DynamicRendererProps> = memo(
 
         return (
           <div
-            id={effectiveComponentDef.id}
+            id={resolvedComponentId}
             className={containerClass || undefined}
             {...restProps}
           >
@@ -3596,7 +3883,7 @@ const DynamicRenderer: React.FC<DynamicRendererProps> = memo(
       const remountKeys = dataContext._global?._remountKeys;
       const finalProps: Record<string, any> = {
         ...propsWithAutoBinding,
-        id: propsWithAutoBinding.id ?? effectiveComponentDef.id,
+        id: propsWithAutoBinding.id ?? resolvedComponentId,
         // _remountKeys가 변경되면 React가 props 변경을 감지하여 컴포넌트 리렌더링
         // cellChildren 내부의 컴포넌트가 새 key를 받을 수 있도록 함
         ...(remountKeys && Object.keys(remountKeys).length > 0 && {
@@ -3619,73 +3906,123 @@ const DynamicRenderer: React.FC<DynamicRendererProps> = memo(
         }
       }
 
-      // 편집 모드일 때 data-editor-id 속성 추가
+      // 편집 모드일 때 data-editor-* 표식 + 선택/hover 핸들러 주입
+      //
+      // @since engine-v1.50.0 — 주입분을 단일 `editorAttrs` 객체로도 묶어
+      //   전달한다. composite/layout 컴포넌트는 도메인 prop 만 명시 구조분해하고 미명시
+      //   props 를 DOM 으로 흘리지 않으므로, 개별 키 주입만으로는 `data-editor-*`/핸들러가
+      //  유실되어 그 노드가 편집기의 드롭 슬롯/선택/드래그 대상에서 누락됐다.
+      //   각 nesting 컴포넌트가 `editorAttrs` 를 받아 시각적 루트에 spread 하면 유실이 해소된다.
+      //   basic 컴포넌트(`{...props}` 패스스루)는 아래 개별 키 주입으로 종전대로 동작하며,
+      //   `editorAttrs` 객체 키는 basic/layout DOM-safe 필터(아래)에서 제외해 DOM 누출을 막는다.
       if (isEditMode) {
         // id가 없는 컴포넌트에 자동 ID 생성 (컴포넌트 타입과 랜덤 문자열 기반)
         const editorId =
           effectiveComponentDef.id ||
           `auto_${effectiveComponentDef.name || effectiveComponentDef.type || 'unknown'}_${Math.random().toString(36).substring(2, 8)}`;
 
-        finalProps['data-editor-id'] = editorId;
-        finalProps['data-editor-name'] = effectiveComponentDef.name;
-        finalProps['data-editor-type'] = effectiveComponentDef.type;
-        // 인덱스 경로 추가 (ID 없는 컴포넌트 편집용)
-        if (componentPath) {
-          finalProps['data-editor-path'] = componentPath;
-        }
-
-        // 편집 모드 클릭 핸들러 (기존 onClick과 병합)
-        const originalOnClick = finalProps.onClick;
-        finalProps.onClick = (e: React.MouseEvent) => {
-          // 편집기 선택 핸들러 호출
+        // 편집 모드 클릭 핸들러 
+        // - 편집 모드에서는 그 컴포넌트의 모든 액션이 발동되지 않는다 (위에서
+        //   bindComponentActions 에 actions=undefined 전달로 가로채짐).
+        // - 추가로 `<a href>` 의 기본 브라우저 네비게이션을 막기 위해 preventDefault.
+        // - 클릭 의미는 오직 "요소 선택" — onComponentSelect 만 호출.
+        const editorOnClick = (e: React.MouseEvent) => {
+          // <a href> 기본 네비게이션 차단 — 전체 페이지 리로드 방지
+          // (편집 모드에서 전체 화면 리프레시가 일어나서는 안 된다)
+          if (typeof e.preventDefault === 'function') {
+            e.preventDefault();
+          }
           if (onComponentSelect) {
             e.stopPropagation();
             onComponentSelect(editorId, e);
           }
-          // 기존 onClick도 실행
-          if (typeof originalOnClick === 'function') {
-            originalOnClick(e);
-          }
         };
+
+        // editorAttrs 단일 객체 — composite/layout 컴포넌트가 명시 수신 후 루트에 spread.
+        const editorAttrs: Record<string, unknown> = {
+          'data-editor-id': editorId,
+          'data-editor-name': effectiveComponentDef.name,
+          'data-editor-type': effectiveComponentDef.type,
+          onClick: editorOnClick,
+        };
+        // 인덱스 경로 추가 (ID 없는 컴포넌트 편집용)
+        if (componentPath) {
+          editorAttrs['data-editor-path'] = componentPath;
+        }
+        // 슬롯 마커 — 공통(base) 레이아웃 편집 시 자식 콘텐츠가 삽입될 슬롯
+        // 위치(`slot: "content"` 등)를 편집기 오버레이/CSS 가 시각화할 수 있도록 슬롯 이름을
+        // DOM 속성으로 노출한다. base 편집 캔버스는 슬롯 노드가 SlotContext 의 원위치 미렌더
+        // (`return null`)에 걸리지 않도록 PreviewCanvas 가 `slot` 키를 표시 마커
+        // `__editorSlotName` 으로 치환해 공급하므로 마커를 우선 읽는다. 편집 모드(editorAttrs
+        // 부여 시)에만 추가 — 운영 렌더 영향 0.
+        const slotMarker =
+          (effectiveComponentDef as { __editorSlotName?: unknown }).__editorSlotName ??
+          (effectiveComponentDef as { slot?: unknown }).slot;
+        if (typeof slotMarker === 'string') {
+          editorAttrs['data-editor-slot'] = slotMarker;
+        }
 
         // 편집 모드 호버 핸들러
         // onMouseMove + stopPropagation을 사용하여 가장 안쪽(자식) 컴포넌트가 우선 하이라이트되도록 함
         if (onComponentHover) {
-          finalProps.onMouseMove = (e: React.MouseEvent) => {
+          editorAttrs.onMouseMove = (e: React.MouseEvent) => {
             e.stopPropagation(); // 부모 컴포넌트로 이벤트 전파 방지
             onComponentHover(editorId, e);
           };
-          finalProps.onMouseLeave = (e: React.MouseEvent) => {
+          editorAttrs.onMouseLeave = (e: React.MouseEvent) => {
             onComponentHover(null, e);
           };
         }
 
-        // 편집 모드 드래그 핸들러 (프리뷰 캔버스에서 드래그 앤 드롭)
-        finalProps.draggable = true;
+        // (1) basic 컴포넌트(`{...props}` 패스스루)용 — 개별 키 주입 유지.
+        Object.assign(finalProps, editorAttrs);
+        // (2) composite/layout 컴포넌트용 — 단일 객체 주입(명시 수신 → 루트 spread).
+        finalProps.editorAttrs = editorAttrs;
 
-        if (onDragStart) {
-          finalProps.onDragStart = (e: React.DragEvent) => {
-            e.stopPropagation(); // 부모 컴포넌트로 이벤트 전파 방지
-            onDragStart(editorId, e);
-          };
-        }
-
-        if (onDragEnd) {
-          finalProps.onDragEnd = (e: React.DragEvent) => {
-            onDragEnd(e);
-          };
-        }
+        // 드래그(draggable/onDragStart/onDragEnd) props 주입은 제거됨.
+        //   - 끌어 이동은 `DndCanvasLayer` 가 `[data-editor-path]` 를 DOM 쿼리해 투명 드래그
+        //  핸들 오버레이를 얹고 dnd-kit PointerSensor 로 처리한다.
+        //   - `PreviewCanvas` 는 DynamicRenderer 에 onDragStart/onDragEnd 를 전달하지 않으므로
+        //     기존 `if (onDragStart)` 블록은 이미 죽은 경로였고, native `draggable=true` 는
+        //     HTML5 drag 와 dnd-kit pointer drag 가 동시에 걸리는 충돌 표면일 뿐이었다.
+        //   호출 그래프 전수 확인 후 제거(engine-regression-code-first 규율). @since engine-v1.50.0
       }
 
       // 컴포넌트 렌더링
       // Basic/Layout 컴포넌트는 HTML 요소를 직접 렌더링하므로
       // 내부 props(__componentContext 등)를 DOM에 전달하면 [object Object]로 노출됨
       // Composite 컴포넌트(React 컴포넌트)는 내부 props를 직접 처리하므로 그대로 전달
-      const isBasicOrLayoutComponent = effectiveComponentDef.type === 'basic' || effectiveComponentDef.type === 'layout';
+      //
+      // @since engine-v1.50.0 `__` 시작 키 일괄 차단 안전망.
+      // 백엔드가 `with_source_meta=1` 옵션 응답에 `__source` 메타를 부여할 수 있으며,
+      // 일반 사이트 렌더에도 만일의 누수가 발생해도 React props 로 전달되지 않도록 차단.
+      const isBasicComponent = effectiveComponentDef.type === 'basic';
+      const isLayoutComponent = effectiveComponentDef.type === 'layout';
+      const isBasicOrLayoutComponent = isBasicComponent || isLayoutComponent;
       const propsForRendering = isBasicOrLayoutComponent
         ? (() => {
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            const { __componentContext, __componentLayoutDefs, ...domSafeProps } = finalProps;
+            const domSafeProps: Record<string, any> = {};
+            for (const [key, value] of Object.entries(finalProps)) {
+              // `__` 접두사는 G7 내부 메타 전용 약속 — DOM 노출 차단(basic/layout 공통)
+              if (key.startsWith('__')) {
+                continue;
+              }
+              // `editorAttrs` 객체 키 처리 — **타입별로 다르다**:
+              //   - **basic**: `{...props}` 패스스루라 `editorAttrs` 가 그대로 DOM 에 흘러
+              //     `<div editorAttrs={..}>` 누출 + React 경고 → **제거**. 편집 표식은
+              //     위 Object.assign 으로 주입한 개별 `data-editor-*` 키가 담당(basic 이 spread).
+              //   - **layout**: Container/Flex/Grid 등은 도메인 prop 만 명시 구조분해하고
+              //     `{...props}` 패스스루를 **안 하므로** 개별 `data-editor-*` 키가 DOM 에
+              //     도달하지 못한다. 대신 `editorAttrs` 를 **명시 수신해 루트에 spread** 하므로
+              //     이 키를 **남겨야** 한다(제거하면 layout 노드가 편집기에서 누락 — 컨테이너
+              //  바깥 드롭존 소실의 원인.). DOM 누출은 컴포넌트가 editorAttrs 만
+              //     spread 하고 객체 자체를 DOM 에 안 흘리므로 발생하지 않는다.
+              // @since engine-v1.50.0
+              if (key === 'editorAttrs' && isBasicComponent) {
+                continue;
+              }
+              domSafeProps[key] = value;
+            }
             return domSafeProps;
           })()
         : finalProps;
@@ -3793,6 +4130,10 @@ const DynamicRenderer: React.FC<DynamicRendererProps> = memo(
               componentName: effectiveComponentDef.name,
               propName: 'blur_until_loaded',
             };
+            // blur_until_loaded 는 truthiness 게이트다. 파이프를 resolveBindings 로
+            // 위임하면 결과가 항상 문자열이 되어 "false"/"0" 도 truthy 가 되므로
+            // 여기서는 파이프 분기를 두지 않는다(블러가 영구히 켜지는 편이 더 나쁘다).
+            // 파이프는 값 서식용이므로 이 속성에 쓰이지 않는다.
             const result = bindingEngine.evaluateExpression(singleBindingPath, extendedDataContext, blurTrackingInfo);
             return Boolean(result);
           } catch (error) {
@@ -3867,6 +4208,60 @@ const DynamicRenderer: React.FC<DynamicRendererProps> = memo(
     }
 
     /**
+     * blur_until_loaded 래퍼에 전달할 그리드 아이템 클래스 추출
+     *
+     * CSS Grid에서 col-span, row-span 등은 그리드 컨테이너의 직접 자식에만 적용됩니다.
+     * blur_until_loaded가 래퍼 div를 생성하면 그리드 레이아웃이 깨지므로,
+     * 그리드 아이템 관련 클래스를 래퍼로 전달합니다.
+     *
+     * @since engine-v1.17.6
+     *
+     * 중요: Rules of Hooks 준수 — 아래 early return(slot 조건) 보다 먼저 호출되어야 함.
+     * 같은 컴포넌트에서 렌더 경로가 달라지더라도 hook 호출 순서/개수가 일관되어야 한다.
+     */
+    const getBlurWrapperClasses = useMemo(() => {
+      if (!effectiveComponentDef.blur_until_loaded) {
+        return { wrapperClasses: '', innerClasses: '' };
+      }
+
+      const className = resolvedProps?.className || '';
+      if (!className) {
+        return { wrapperClasses: '', innerClasses: '' };
+      }
+
+      // 그리드 아이템/플렉스 아이템 관련 클래스 패턴
+      // - col-span-*, row-span-*: 그리드 셀 확장
+      // - col-start-*, col-end-*, row-start-*, row-end-*: 그리드 위치
+      // - self-*, place-self-*: 아이템 정렬
+      // - order-*: 순서
+      // - flex-shrink-*, flex-grow-*, flex-*: 플렉스 아이템
+      // 반응형 접두사 포함: sm:, md:, lg:, xl:, 2xl:
+      const gridItemPatterns = [
+        /^(sm:|md:|lg:|xl:|2xl:)?(col-span-|row-span-|col-start-|col-end-|row-start-|row-end-)/,
+        /^(sm:|md:|lg:|xl:|2xl:)?(self-|place-self-|order-)/,
+        /^(sm:|md:|lg:|xl:|2xl:)?(flex-shrink|flex-grow|flex-\d|basis-)/,
+      ];
+
+      const classes = className.split(/\s+/).filter(Boolean);
+      const wrapperClassList: string[] = [];
+      const innerClassList: string[] = [];
+
+      for (const cls of classes) {
+        const isGridItemClass = gridItemPatterns.some(pattern => pattern.test(cls));
+        if (isGridItemClass) {
+          wrapperClassList.push(cls);
+        } else {
+          innerClassList.push(cls);
+        }
+      }
+
+      return {
+        wrapperClasses: wrapperClassList.join(' '),
+        innerClasses: innerClassList.join(' '),
+      };
+    }, [effectiveComponentDef.blur_until_loaded, resolvedProps?.className]);
+
+    /**
      * slot 속성이 있는 컴포넌트는 원래 위치에서 렌더링하지 않음
      *
      * SlotContext에 등록되어 SlotContainer에서 렌더링됩니다.
@@ -3887,7 +4282,10 @@ const DynamicRenderer: React.FC<DynamicRendererProps> = memo(
         componentName={componentDef.name}
       >
         {effectiveComponentDef.blur_until_loaded ? (
-          <div className={shouldApplyBlur ? "opacity-50 blur-sm transition-all duration-300 pointer-events-none" : undefined}>
+          <div className={[
+            getBlurWrapperClasses.wrapperClasses,
+            shouldApplyBlur ? "opacity-50 blur-sm transition-all duration-300 pointer-events-none" : undefined
+          ].filter(Boolean).join(' ') || undefined}>
             {renderComponent}
           </div>
         ) : (

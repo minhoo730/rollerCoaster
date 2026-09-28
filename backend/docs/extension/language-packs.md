@@ -34,6 +34,87 @@ lang-packs/
     └── seed/*.json                             # 시드 다국어 데이터
 ```
 
+## 코어 다국어 자원의 위치
+
+코어 자체의 다국어 자원은 모듈/플러그인/템플릿과 동일한 `lang/` 트리 구조를
+사용한다 (언어팩 디렉토리 구조와는 별개). 어떤 템플릿이 부팅되든 자동 노출된다.
+
+```text
+lang/
+├── ko/                  # 백엔드 .php (Laravel __() / trans())
+│   └── activity_log.php, admin_layout.php, auth.php, ...
+├── en/                  # 백엔드 .php
+│   └── activity_log.php, admin_layout.php, ...
+├── partial/             # 프론트엔드 .json 분할 (선택)
+│   ├── ko/
+│   │   └── (영역별 .json — 필요 시)
+│   └── en/
+├── ko.json              # 프론트엔드 엔트리 ($t: 프리픽스)
+└── en.json              # 프론트엔드 엔트리
+```
+
+| 축 | 코어 | 모듈 (sirsoft-board) | 동일 패턴 |
+|---|---|---|---|
+| 백엔드 .php | `lang/{ko,en}/*.php` | `modules/_bundled/sirsoft-board/resources/lang/{ko,en}/*.php` | ✓ |
+| 프론트엔드 엔트리 | `lang/{ko,en}.json` | `modules/_bundled/sirsoft-board/resources/lang/{ko,en}.json` | ✓ |
+| 프론트엔드 partial | `lang/partial/{ko,en}/*.json` | `modules/_bundled/sirsoft-board/resources/lang/partial/{ko,en}/*.json` | ✓ |
+
+### 코어 키 공간 컨벤션
+
+코어 프론트엔드 lang JSON 의 root 키는 `core.*` prefix 로 일원화한다. 영역별 세분화:
+
+- `core.errors.*` — 템플릿 엔진 에러 메시지 (`TemplateNotFoundError` 등)
+- `core.toast.*` — 코어가 발화하는 시스템 토스트
+- `core.layout_editor.*` — 레이아웃 편집기 chrome
+- `core.<영역>.*` — 향후 코어 UI 추가 시
+
+호스팅 템플릿/모듈/플러그인의 lang JSON 은 root 에 `core` 키를 정의하지 않는다.
+정적 검사가 차단한다.
+
+### 런타임 병합 흐름
+
+`TemplateService::getLanguageDataWithModules` 가 다음 순서로 병합:
+
+1. 코어 자체 (`lang/{locale}.json` + partial) — 가장 베이스
+2. 템플릿 (`templates/{id}/lang/{locale}.json`)
+3. 모듈 (`modules/{id}/resources/lang/{locale}.json`) — 식별자 wrap
+4. 플러그인 (`plugins/{id}/lang/{locale}.json`) — 식별자 wrap
+5. 활성 언어팩 (`lang-packs/{id}/frontend/*.json` — `MergeFrontendLanguage` 필터)
+
+코어가 베이스로 들어가 가장 낮은 우선순위 — 템플릿/모듈/플러그인/언어팩이 코어 키를
+덮어쓸 수 있다 (예: `g7-core-ja/frontend/ko.json` 이 활성화되면 일본어로 번역).
+
+### 병합 정책 — Deep Merge (재귀 병합)
+
+`TemplateService::getLanguageDataWithModules` 는 `array_merge` 가 아닌 재귀 deep merge
+(`deepMergeLanguageData`) 로 4개 레이어를 합친다. 동일 top-level 키(예: `layout_editor`,
+`core`, `auth`) 의 하위 트리를 leaf 까지 내려가며 합치고, 어느 한쪽이 다른 레이어의
+부분 트리만 정의해도 나머지 형제 키가 보존된다.
+
+- assoc 트리끼리 충돌 → 재귀 병합 (양쪽 leaf 모두 보존, 동일 leaf 는 뒤가 우선)
+- list / scalar / 한쪽만 array → 뒤 입력으로 덮어쓰기
+- 우선순위(낮음 → 높음): 코어 < 템플릿 < 모듈 < 플러그인 < 활성 언어팩(filter 훅)
+
+이 정책으로 템플릿이 `layout_editor.palette` 만 정의해도 코어의 `layout_editor.chrome /
+device / zoom / preview / save` 가 살아남는다. 과거 shallow `array_merge` 는 동일
+top-level 키 시 트리 전체가 교체되어, 템플릿이 한 sub-key 만 정의해도 코어의 다른
+sub-key 가 통째 누락되는 결함이 발생했다.
+
+확장 작성 시 권장 패턴:
+
+- 코어가 정의한 도메인 네임스페이스(예: `layout_editor.*`, `core.*`, `auth.*`) 안에
+  자신의 sub-key 만 정의하면 deep merge 가 자동으로 양쪽 보존
+- 코어 leaf 를 의도적으로 오버라이드하려면 동일 키 경로에 leaf 만 정의 (트리 교체
+  의도가 아니라 leaf override 의도임을 코드로 표현)
+- 모듈/플러그인은 식별자 wrap (`module.{id}.*`, `plugin.{id}.*`) 사용을 우선 — 코어
+  도메인과 충돌할 일이 없고, deep merge 의 잠재적 부작용도 회피
+
+### 호스팅 템플릿 무관성
+
+코어가 자체 자원을 베이스로 제공하므로, 호스팅 템플릿이 바뀌어도 `$t:core.errors.*`
+같은 키는 항상 해석된다. 코어가 발화하는 에러/토스트/편집기 등이 호스팅 템플릿
+종속이 되지 않는다.
+
 ## Manifest 명세 (language-pack.json)
 
 언어팩 매니페스트는 모듈/플러그인/템플릿 매니페스트와 동일한 필드 구조로 정렬되어 있어 외부 작성자가 다른 확장과 동일한 표준으로 언어팩을 만들 수 있습니다.
@@ -53,7 +134,7 @@ lang-packs/
         "en": "G7 core Japanese language pack (bundled)",
         "ja": "G7 コア 日本語 言語パック(バンドル)"
     },
-    "version": "1.0.0-beta.1",
+    "version": "1.0.0",
     "license": "MIT",
     "scope": "core",
     "target_identifier": null,
@@ -61,7 +142,7 @@ lang-packs/
     "locale_name": "Japanese",
     "locale_native_name": "日本語",
     "text_direction": "ltr",
-    "g7_version": ">=7.0.0-beta.4",
+    "g7_version": ">=7.0.0",
     "requires": {
         "target_version": null,
         "depends_on_core_locale": false
@@ -143,6 +224,32 @@ UI 에서 라디오로 즉시 전환 가능. 활성 팩이 제거되면 slot 의
 - 설치 실행 시 5단계의 모든 확장 install/activate 가 완료된 뒤 `php artisan language-pack:install {identifier} --source=bundled` 가 선택된 각 언어팩에 대해 호출됩니다(자동 활성화 default).
 - 언어팩 1건 설치 실패는 best-effort 처리 — 전체 설치를 중단하지 않고 경고 로그만 남긴 뒤 다음 언어팩으로 진행합니다. 코어/모듈/플러그인 install 실패와 달리 rollback 을 발생시키지 않습니다.
 
+## 프로비저닝과 드리프트 발견 (supported_locales)
+
+코어의 `ko`/`en` 은 가상 보호 행으로 DB 설치 없이 항상 서빙되지만, 그 외 로케일(예: `ja`)의 번들 언어팩은 `lang-packs/_bundled/` 에 소스가 있어도 설치본 디렉토리로 복사·등록되어야 서빙됩니다. 이 비대칭 때문에 "설치본이 없거나 어긋난" 상태가 오류 없이 조용히 `ko` 로 폴백할 수 있어, 다음 도구로 프로비저닝·발견을 지원합니다.
+
+### `language-pack:provision` (멱등 프로비저닝)
+
+```bash
+php artisan language-pack:provision                 # supported_locales 의 비-base 로케일을 대상으로 미설치 번들 팩 설치
+php artisan language-pack:provision --locale=ja      # 특정 로케일만
+php artisan language-pack:provision --scope=core     # 스코프 한정
+```
+
+- 대상 로케일 기본값은 `config('app.supported_locales')` 에서 base locale(ko/en)을 뺀 집합입니다. 즉 "사이트가 쓰겠다고 선언한 로케일" 만 채웁니다(불필요한 로케일 대량 설치 없음).
+- 미설치 번들 팩(신규 설치)과 설치본 파일이 사라진 드리프트 팩(복구)을 함께 대상으로 삼습니다. 정상 설치된 팩은 어느 쪽에도 해당하지 않아 재실행해도 신규 설치가 0 건으로 수렴합니다(완전 멱등). fresh install · 복구 · 시더가 공유하는 단일 프로비저닝 경로입니다.
+- 대상 확장 미설치/미활성 등 설치 차단 사유가 있는 팩은 건너뛰고 경고만 남깁니다(best-effort).
+
+### 미설치·드리프트 발견
+
+- `language-pack:list` 는 설치된 DB 행뿐 아니라 "번들에 있으나 미설치"(`uninstalled`) 및 "active 로 기록됐으나 설치본 파일 부재(드리프트)" 를 함께 표시합니다. 드리프트 행의 Status 는 `active (파일 없음)` 처럼 표기됩니다.
+- 관리자 언어팩 목록 화면도 동일하게 드리프트 행에 "파일 없음" 배지와 원클릭 재설치 버튼을 노출합니다(번들 소스 재설치).
+- 재설치 버튼은 **번들 소스가 실재하는 팩**에만 뜹니다. 설치 경로(zip/GitHub/URL)와 무관하게 동일 식별자의 `lang-packs/_bundled/` 소스가 있으면 복구할 수 있고, 소스가 없는 서드파티 팩은 배지로 발견만 되고 복구 버튼은 뜨지 않습니다(복구할 원본이 없기 때문).
+
+### supported_locales ↔ 번들 소스 정합
+
+`config/app.php` 의 `supported_locales` 에 비-base 로케일을 선언했다면, 대응하는 코어 번들 소스(`lang-packs/_bundled/g7-core-{locale}/`)가 존재해야 프로비저닝으로 채울 수 있습니다. 대응 소스가 없는 로케일을 선언하면 설치할 팩 자체가 없어 그 로케일이 조용히 `ko` 로 폴백합니다(복구 경로 없음). 이 정합은 정적 검사로 확인됩니다 — 소스를 추가하거나 미지원 로케일을 선언에서 제거하세요.
+
 ## 시더 통합 (HookManager 필터)
 
 기존 시더에 `applyFilters` 1줄만 추가하면 자동으로 다국어 키가 병합됩니다.
@@ -179,6 +286,48 @@ foreach ($config['categories'] as $cat) { ... }
 - `roles.json` → `{scope}.{target}.roles.translations` 필터 (module/plugin)
 - `permissions.json` → `{scope}.{target}.permissions.translations` 필터 (3-레벨 트리: module/categories/permissions)
 - 기타 → `seed.{target}.{entity}.translations` 필터 (단순 entity 시드)
+
+### 복원 경로의 언어팩 병합
+
+[기본값 복원](알림 템플릿·본인인증 메시지)은 위 시딩 필터가 아니라 자체 기본값 필터
+(`core.notification.filter_default_definitions` / `core.identity.filter_default_message_definitions`)를
+탄다. 복원 기본값에는 **활성 언어팩 seed 로케일이 반드시 병합**되어야 한다 — 병합하지 않으면
+복원이 팩이 주입해 둔 로케일(ja 등)을 config 의 ko/en 만으로 대체해 영구 소실시키며,
+오류도 로그도 남지 않는다. 코어 서비스(NotificationTemplateService·IdentityMessageTemplateService)가
+필터 적용 후 시딩과 같은 주입기(SSoT)로 병합하며, 정적 검사(테스트)가 이 계약을 고정한다.
+
+시딩 필터의 페이로드는 **발화 주체의 원형 키를 보존**해야 한다 — 코어 알림 시더는 config
+원형(연관 배열, 키가 곧 type), 본인인증은 복합 키(`mail.purpose.signup` 등)가 매칭 키다.
+키를 버리고 리스트로 만들면 주입기가 전 항목을 스킵해 팩 로케일이 오류 없이 주입되지 않는다.
+알림 주입기는 두 형태(문자열 키 우선, 없으면 type 필드)를 수용한다.
+
+### 사용자 수정 보존 판정과 시딩 컨텍스트
+
+언어팩 병합·제거의 사용자 수정 보존 판정은 운영자 수정의 실제 기록 형식인 **dot-path 항목**
+(`user_overrides` 의 `"{컬럼}.{로케일}"`)을 기준으로 한다. 컬럼 전체 항목(`"subject"`)은 시더
+재실행의 컬럼 보호 선언이며 팩 병합을 막지 않는다 — 막으면 팩 업데이트가 자기 로케일 번역을
+갱신하지 못한다.
+
+이를 위해 두 가지가 함께 지켜져야 한다:
+
+- 다국어 JSON 컬럼을 추적하는 모델은 `translatableTrackableFields` 를 선언한다 — 미선언 시
+  운영자 수정이 컬럼 전체 항목으로 기록되어 로케일 단위 보존이 불가능해진다.
+- 언어팩 주입·제거처럼 시스템이 수행하는 저장은 시딩 컨텍스트(`user_overrides.seeding` 바인딩)
+  안에서 실행한다 — 바인딩 없이 저장하면 주입 자체가 "사용자 수정"으로 오인 기록되어 이후
+  시더 재실행의 컬럼 갱신이 영구히 얼어붙는다.
+
+### 실패한 업데이트의 상태 복원
+
+`language-pack:update` 가 설치 트랜잭션 이후(활성화 단계)에 실패하면 팩 상태를 이전 상태로
+복원한다. 복원하지 않으면 active 였던 팩이 installed 로 방치되어 해당 로케일의 백엔드 번역이
+안내 없이 기본 로케일로 폴백된다.
+
+### 같은 프로세스 활성화와 필터 인스턴스
+
+시더 번역 필터 클로저는 boot 시점의 injector→registry **인스턴스**를 캡처한다. 활성 팩 목록
+캐시를 갱신할 때는 싱글톤을 유지한 채 `LanguagePackRegistry::invalidate()` 로 내부 캐시만
+비운다 — `forgetInstance` 로 바인딩을 교체하면 캡처된 구 인스턴스의 stale 캐시가 남아, 같은
+프로세스에서 활성화된 신규 팩이 시더 필터에 보이지 않는다(오류 없이 해당 로케일만 미주입).
 
 ### IDV 도메인 lang pack 커버리지
 
@@ -343,7 +492,20 @@ G7 는 일본어 번들 언어팩 12종을 공식 제공합니다. ko 원본을 
 - 통화/숫자 단위 변환 금지 (런타임 처리)
 - 공식체(です·ます) 강제, 친근체 금지
 - 한글 미포함 value(영문/숫자/기호만) 는 번역 스킵 → 원문 유지
-- 고정 용어집 50항목으로 일관성 강제 (예: `관리자 → 管理者`, `장바구니 → カート`)
+- 고정 용어집으로 일관성 강제 (예: `관리자 → 管理者`, `장바구니 → カート`)
+
+### 용어집 등록 의무
+
+번역 결과의 표기는 고정 용어집이 정한다. 용어집에 없는 도메인 용어는 어간만 번역되어
+**원본 로케일 문자가 값에 그대로 남는다** — 예외도 오류도 나지 않고, 키 대칭 검사도 값은 보지 않으므로
+그 로케일로 화면을 열기 전까지 드러나지 않는다.
+
+- 새 도메인 용어를 도입하면 번역 빌드 **전에** 용어집에 등록한다
+- 이미 생성된 값을 손으로 고쳤다면 용어집도 함께 고친다 — 용어집을 두면 다음 키에서 같은 오역이 되풀이된다
+- 같은 용어는 팩 전체에서 한 표기로 통일한다 (용어집이 단일 출처)
+
+정적 검사가 번역 값의 원본 로케일 문자 잔존을 검출한다. 매니페스트와 CHANGELOG,
+그리고 한국어 주석은 대상이 아니다.
 
 ### 설치 및 활성화
 
@@ -372,7 +534,7 @@ ko 에서 키 제거 시 번들 ja 의 대응 키도 수동 제거 권장 (자�
 
 번들 언어팩 자산을 수정할 때마다 모듈/플러그인/템플릿 확장과 동일한 수준의 버전 + CHANGELOG 관리를 적용한다.
 
-- **버전 bump 시점**: 패키지가 외부에 한 번이라도 출시(릴리즈/배포) 된 이후의 수정에 한해 버전을 올린다. 아직 출시되지 않은 번들 패키지의 사전 보강(키 추가/번역 정정 등) 은 `1.0.0` 그대로 유지한다.
+- **버전 bump 시점**: 패키지가 외부에 한 번이라도 출시(릴리즈/배포) 된 이후의 수정에 한해 버전을 올린다. 아직 출시되지 않은 번들 패키지의 사전 보강(키 추가/번역 정정 등) 은 `1.0.0` 그대로 유지한다. 이미 출시된 버전의 콘텐츠를 수정하면 patch bump 가 필수다 (출시 확정 버전의 콘텐츠를 버전 유지한 채 덮어쓰지 않는다).
 - **버전 bump 단위**: 출시 후 키 추가/누락 보강은 패치 (1.0.0 → 1.0.1), 의미적으로 큰 변경이나 제거는 마이너 (1.0.0 → 1.1.0).
 - **CHANGELOG.md**: 패키지 루트에 `CHANGELOG.md` 작성. Keep a Changelog 표준 (`## [버전] - YYYY-MM-DD` + `### Added/Changed/Fixed/Removed`).
 - **톤**: 사용자 관점, 1~2줄 불릿. 내부 파일 경로/내부 함수명/이슈 번호 미기재.

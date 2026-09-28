@@ -6,6 +6,7 @@ import { IconName } from '../basic/IconTypes';
 import { Span } from '../basic/Span';
 import { Select } from '../basic/Select';
 import { scrollToSectionHandler } from '../../handlers/scrollToSectionHandler';
+import type { EditorAttrs } from '../../types';
 
 // Logger 설정 (G7Core 초기화 전에도 동작하도록 폴백 포함)
 const logger = ((window as any).G7Core?.createLogger?.('Comp:TabNavigation')) ?? {
@@ -61,6 +62,12 @@ export interface TabNavigationScrollProps {
   scrollSpyOffset?: number;
   /** 스크롤 컨테이너 ID (IntersectionObserver root 및 scrollToSection 대상, 미지정 시 window) */
   scrollContainerId?: string;
+  /**
+   * DOM id 속성 (레이아웃 편집기 코어 일괄 ID)
+   */
+  id?: string;
+  /** 레이아웃 편집기 주입 속성 (편집 모드 전용, 루트에 spread) */
+  editorAttrs?: EditorAttrs;
 }
 
 /**
@@ -90,10 +97,10 @@ export interface TabNavigationScrollProps {
 export const TabNavigationScroll: React.FC<TabNavigationScrollProps> = ({
   tabs,
   activeTabId,
-  className = 'bg-white dark:bg-gray-800 flex gap-1 border-b border-gray-200 dark:border-gray-700 px-6',
+  className = 'bg-white dark:bg-gray-800 flex gap-2 border-b border-gray-200 dark:border-gray-700 px-6',
   style,
-  activeClassName = 'flex items-center gap-2 px-3 py-2 border-b-2 border-blue-500 bg-white dark:bg-gray-800 text-blue-600 dark:text-blue-400 font-medium -mb-px text-sm',
-  inactiveClassName = 'flex items-center gap-2 px-3 py-2 border-b-2 border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600 text-sm',
+  activeClassName = 'tab-btn-base tab-btn-default-active',
+  inactiveClassName = 'tab-btn-base tab-btn-default',
   sectionIdPrefix = 'tab_content_',
   scrollOffset = 120,
   scrollDelay = 100,
@@ -101,6 +108,8 @@ export const TabNavigationScroll: React.FC<TabNavigationScrollProps> = ({
   enableScrollSpy = false,
   scrollSpyOffset = 80,
   scrollContainerId,
+  id,
+  editorAttrs,
 }) => {
   const [activeTab, setActiveTab] = useState<string | number>(
     activeTabId ?? (tabs.length > 0 ? tabs[0].id : '')
@@ -117,6 +126,9 @@ export const TabNavigationScroll: React.FC<TabNavigationScrollProps> = ({
   // Scroll Spy 일시 중지를 위한 ref
   const isScrollingRef = useRef(false);
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  /** 탭 버튼 DOM 참조 — 화살표 이동 시 초점을 옮기기 위해 보관한다. */
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   /**
    * 탭 클릭 핸들러
@@ -174,6 +186,48 @@ export const TabNavigationScroll: React.FC<TabNavigationScrollProps> = ({
         isScrollingRef.current = false;
       }, finalDelay + 500);
     }
+  };
+
+  /**
+   * WAI-ARIA Tabs 키보드 규약 — 좌우 화살표로 탭 이동, Home/End 로 양 끝 이동.
+   *
+   * 비활성 탭은 건너뛴다. 활성 탭만 Tab 키 초점을 받는 roving tabindex 를 쓰므로 탭 목록
+   * 안에서의 이동은 화살표가 담당한다.
+   *
+   * @param e 키보드 이벤트
+   * @param currentIndex 이벤트가 발생한 탭의 인덱스
+   */
+  const handleTabKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>, currentIndex: number) => {
+    const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+
+    let nextIndex: number | null = null;
+
+    if (step !== 0) {
+      for (let i = 1; i <= tabs.length; i += 1) {
+        const candidate = (currentIndex + step * i + tabs.length * i) % tabs.length;
+        if (!tabs[candidate]?.disabled) {
+          nextIndex = candidate;
+          break;
+        }
+      }
+    } else if (e.key === 'Home') {
+      nextIndex = tabs.findIndex((tab) => !tab.disabled);
+    } else if (e.key === 'End') {
+      for (let i = tabs.length - 1; i >= 0; i -= 1) {
+        if (!tabs[i]?.disabled) {
+          nextIndex = i;
+          break;
+        }
+      }
+    }
+
+    if (nextIndex === null || nextIndex < 0) {
+      return;
+    }
+
+    e.preventDefault();
+    tabRefs.current[nextIndex]?.focus();
+    handleTabClick(tabs[nextIndex]);
   };
 
   /**
@@ -334,7 +388,7 @@ export const TabNavigationScroll: React.FC<TabNavigationScrollProps> = ({
   // 모바일: Select 드롭다운 단일 렌더
   if (isMobile) {
     return (
-      <Div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3">
+      <Div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3" id={id} {...editorAttrs}>
         <Select
           value={String(activeTab)}
           onChange={handleSelectChange}
@@ -349,15 +403,34 @@ export const TabNavigationScroll: React.FC<TabNavigationScrollProps> = ({
     );
   }
 
+  // 활성 탭이 없으면 첫 활성화 가능 탭이 Tab 키 초점을 받는다 (roving tabindex 진입점 보장).
+  const activeIndex = tabs.findIndex((tab) => tab.id === activeTab);
+  const focusableIndex = activeIndex >= 0 ? activeIndex : tabs.findIndex((tab) => !tab.disabled);
+
   // 데스크톱: 탭 버튼 단일 렌더
   return (
-    <Div className={className} style={style}>
-      {tabs.map((tab) => (
+    <Div
+      className={className}
+      style={style}
+      role="tablist"
+      aria-orientation="horizontal"
+      id={id}
+      {...editorAttrs}
+    >
+      {tabs.map((tab, tabIndex) => (
         <Button
           key={tab.id}
+          ref={(el) => {
+            tabRefs.current[tabIndex] = el;
+          }}
+          type="button"
+          role="tab"
+          aria-selected={activeTab === tab.id}
+          tabIndex={tabIndex === focusableIndex ? 0 : -1}
           className={activeTab === tab.id ? activeClassName : inactiveClassName}
           disabled={tab.disabled}
           onClick={() => handleTabClick(tab)}
+          onKeyDown={(e) => handleTabKeyDown(e, tabIndex)}
         >
           {tab.iconName && (
             <Icon name={tab.iconName} size="sm" />

@@ -5,6 +5,7 @@ namespace Tests\Feature\Services;
 use App\Contracts\Extension\ModuleManagerInterface;
 use App\Contracts\Extension\PluginManagerInterface;
 use App\Contracts\Extension\TemplateManagerInterface;
+use App\Contracts\Repositories\LayoutVersionRepositoryInterface;
 use App\Enums\ExtensionStatus;
 use App\Models\Template;
 use App\Repositories\TemplateRepository;
@@ -35,8 +36,11 @@ class TemplateServiceInstallationTest extends TestCase
         // TemplateManager Mock 생성
         $this->templateManager = Mockery::mock(TemplateManagerInterface::class);
 
-        // loadTemplates() 호출 허용 (생성자에서 호출됨)
+        // loadTemplates()/ensureLoaded() 호출 허용 (생성자에서 ensureLoaded 호출됨)
         $this->templateManager->shouldReceive('loadTemplates')
+            ->zeroOrMoreTimes()
+            ->andReturnNull();
+        $this->templateManager->shouldReceive('ensureLoaded')
             ->zeroOrMoreTimes()
             ->andReturnNull();
 
@@ -54,7 +58,8 @@ class TemplateServiceInstallationTest extends TestCase
             $this->templateRepository,
             $this->templateManager,
             $this->moduleManager,
-            $this->pluginManager
+            $this->pluginManager,
+            app(LayoutVersionRepositoryInterface::class)
         );
     }
 

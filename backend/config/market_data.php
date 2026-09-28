@@ -2,12 +2,10 @@
 
 return [
     'default_provider' => env('MARKET_DATA_PROVIDER', 'kis'),
-
     'cache' => [
         'rankings_ttl' => (int) env('MARKET_DATA_RANKINGS_TTL', 300),
         'ranking_universe_ttl' => (int) env('MARKET_DATA_RANKING_UNIVERSE_TTL', 240),
     ],
-
     'rankings' => [
         'default_limit' => (int) env('MARKET_DATA_RANKINGS_LIMIT', 10),
         'max_limit' => (int) env('MARKET_DATA_RANKINGS_MAX_LIMIT', 50),

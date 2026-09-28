@@ -2,16 +2,19 @@
 
 namespace App\Services;
 
-use App\Exceptions\ModuleOperationException;
 use App\Contracts\Extension\ModuleManagerInterface;
 use App\Contracts\Repositories\ModuleRepositoryInterface;
 use App\Enums\ExtensionStatus;
+use App\Exceptions\ModuleOperationException;
 use App\Extension\Helpers\ChangelogParser;
+use App\Extension\Helpers\EditorSpecAssembler;
 use App\Extension\Helpers\GithubHelper;
 use App\Extension\Helpers\ZipInstallHelper;
 use App\Extension\HookManager;
+use App\Extension\Vendor\VendorMode;
 use App\Helpers\PermissionHelper;
 use App\Models\Module;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\File;
 use Illuminate\Validation\ValidationException;
@@ -102,7 +105,7 @@ class ModuleService
     /**
      * 설치된 모듈 목록을 조회합니다.
      *
-     * @return \Illuminate\Database\Eloquent\Collection 설치된 모듈 목록
+     * @return Collection 설치된 모듈 목록
      */
     public function getInstalledModules()
     {
@@ -112,7 +115,7 @@ class ModuleService
     /**
      * 마켓플레이스에서 이용 가능한 모듈 목록을 조회합니다.
      *
-     * @return \Illuminate\Database\Eloquent\Collection 마켓플레이스 모듈 목록
+     * @return Collection 마켓플레이스 모듈 목록
      */
     public function getMarketplaceModules()
     {
@@ -122,7 +125,7 @@ class ModuleService
     /**
      * 의존성 정보가 포함된 모든 모듈을 조회합니다.
      *
-     * @return \Illuminate\Database\Eloquent\Collection 의존성 정보가 포함된 모듈 목록
+     * @return Collection 의존성 정보가 포함된 모듈 목록
      */
     public function getAllModulesWithDependencies()
     {
@@ -169,17 +172,16 @@ class ModuleService
      * 지정된 모듈을 업데이트합니다.
      *
      * @param  string  $moduleName  업데이트할 모듈 identifier
-     * @param  \App\Extension\Vendor\VendorMode  $vendorMode  Vendor 설치 모드
+     * @param  VendorMode  $vendorMode  Vendor 설치 모드
      * @param  string  $layoutStrategy  레이아웃 전략 (overwrite|keep)
-     * @return array 업데이트 결과 (identifier, from_version, to_version 등)
-     *
      * @param  bool  $force  코어 버전 비호환 강제 우회 (위험 — 사용자 명시 필요)
+     * @return array 업데이트 결과 (identifier, from_version, to_version 등)
      *
      * @throws ValidationException 업데이트 실패 시
      */
     public function updateModule(
         string $moduleName,
-        \App\Extension\Vendor\VendorMode $vendorMode = \App\Extension\Vendor\VendorMode::Auto,
+        VendorMode $vendorMode = VendorMode::Auto,
         string $layoutStrategy = 'overwrite',
         bool $force = false,
     ): array {
@@ -238,22 +240,26 @@ class ModuleService
      * 모듈을 시스템에 설치합니다.
      *
      * @param  string  $moduleName  설치할 모듈명
-     * @param  \App\Extension\Vendor\VendorMode  $vendorMode  Vendor 설치 모드
+     * @param  VendorMode  $vendorMode  Vendor 설치 모드
      * @param  bool  $force  Updating/Failed 등 진행 중 상태도 무시하고 강제 설치 여부
+     * @param  string|null  $failureReason  실패 시 사유가 담기는 out 파라미터 (성공 시 null)
      * @return array|null 설치된 모듈 정보 또는 null
      *
      * @throws ValidationException 모듈 설치 실패 시
      */
     public function installModule(
         string $moduleName,
-        \App\Extension\Vendor\VendorMode $vendorMode = \App\Extension\Vendor\VendorMode::Auto,
+        VendorMode $vendorMode = VendorMode::Auto,
         bool $force = false,
+        ?string &$failureReason = null,
     ): ?array {
+        $failureReason = null;
+
         HookManager::doAction('core.modules.before_install', $moduleName);
 
         try {
             $this->moduleManager->loadModules();
-            $result = $this->moduleManager->installModule($moduleName, null, $vendorMode, $force);
+            $result = $this->moduleManager->installModule($moduleName, null, $vendorMode, $force, $failureReason);
 
             if ($result) {
                 // 설치 후 모듈 정보 반환
@@ -305,7 +311,9 @@ class ModuleService
                 ];
             }
 
-            return ['success' => false];
+            // 실패 사유(reason)를 그대로 전달한다 — 여기서 떨어뜨리면 관리자 화면의
+            // 실패 문구에 원인 자리가 비어 자리표시자가 그대로 노출된다.
+            return $result;
         } catch (\Exception $e) {
             throw ValidationException::withMessages([
                 'module_name' => [__('modules.activation_failed', ['error' => $e->getMessage()])],
@@ -357,12 +365,22 @@ class ModuleService
      *
      * @param  string  $moduleName  제거할 모듈명
      * @param  bool  $deleteData  모듈 데이터(테이블) 삭제 여부
+     * @param  string|null  $failureReason  실패 시 사유가 담기는 out 파라미터 (성공 시 null)
+     * @param  array<int, array{directory: string, archive: string}>|null  $preservedBackups
+     *                                                                                        삭제 전에 보관한 운영자 소유 디렉토리(`custom/`)의 사본 경로가 담기는 out 파라미터
      * @return bool 제거 성공 여부
      *
      * @throws ValidationException 모듈 제거 실패 시
      */
-    public function uninstallModule(string $moduleName, bool $deleteData = false): bool
-    {
+    public function uninstallModule(
+        string $moduleName,
+        bool $deleteData = false,
+        ?string &$failureReason = null,
+        ?array &$preservedBackups = null,
+    ): bool {
+        $failureReason = null;
+        $preservedBackups = [];
+
         HookManager::doAction('core.modules.before_uninstall', $moduleName, $deleteData);
 
         try {
@@ -370,7 +388,13 @@ class ModuleService
             $this->moduleManager->loadModules();
             $moduleInfo = $this->moduleManager->getModuleInfo($moduleName);
 
-            $result = $this->moduleManager->uninstallModule($moduleName, $deleteData);
+            $result = $this->moduleManager->uninstallModule(
+                $moduleName,
+                $deleteData,
+                null,
+                $failureReason,
+                $preservedBackups
+            );
 
             if ($result) {
                 $module = $this->moduleRepository->findByName($moduleName);
@@ -736,6 +760,7 @@ class ModuleService
             ],
         ];
     }
+
     /**
      * 업로드된 ZIP 파일로부터 모듈을 추출/검증하고 _pending 으로 이동 후 설치합니다.
      *
@@ -771,6 +796,13 @@ class ModuleService
                 }
                 throw $e;
             }
+        } catch (ModuleOperationException $e) {
+            throw $e;
+        } catch (\RuntimeException $e) {
+            // ZipInstallHelper 등 설치 원본 처리의 raw RuntimeException(깨진 zip·manifest
+            // 누락 같은 사용자 입력 오류)을 도메인 예외로 승격한다 — 컨트롤러의 좁혀진
+            // catch 가 인프라 예외와 구분해 종전 422 계약을 유지하고, 사유는 :error 로 보존.
+            throw new ModuleOperationException('modules.errors.install_failed', ['error' => $e->getMessage()], $e);
         } finally {
             if (File::exists($extractPath)) {
                 File::deleteDirectory($extractPath);
@@ -824,6 +856,12 @@ class ModuleService
                 }
                 throw $e;
             }
+        } catch (ModuleOperationException $e) {
+            throw $e;
+        } catch (\RuntimeException $e) {
+            // GithubHelper·ZipInstallHelper 의 raw RuntimeException(잘못된 URL·다운로드
+            // 실패·manifest 오류)을 도메인 예외로 승격한다 — 종전 422 계약 유지, 사유 보존.
+            throw new ModuleOperationException('modules.errors.install_failed', ['error' => $e->getMessage()], $e);
         } finally {
             if (File::exists($extractPath)) {
                 File::deleteDirectory($extractPath);
@@ -864,10 +902,14 @@ class ModuleService
     private function executeModuleInstall(string $identifier): array
     {
         $this->moduleManager->loadModules();
-        $result = $this->moduleManager->installModule($identifier);
+        $result = $this->moduleManager->installModule($identifier, null, VendorMode::Auto, false, $failureReason);
 
         if (! $result) {
-            throw new ModuleOperationException('modules.errors.install_failed');
+            // 사유를 실어 올리지 않으면 'modules.errors.install_failed' 의 치환 자리가
+            // 비어 관리자 화면에 리터럴 ':error' 가 그대로 노출된다.
+            throw new ModuleOperationException('modules.errors.install_failed', [
+                'error' => $failureReason ?? __('modules.errors.unknown_error'),
+            ]);
         }
 
         return $this->moduleManager->getModuleInfo($identifier);
@@ -951,6 +993,83 @@ class ModuleService
     }
 
     /**
+     * 모듈 편집기 스펙(editor-spec.json) 디코드 결과를 반환합니다.
+     *
+     * 활성 모듈만 대상으로 하며, 활성 디렉토리 → _bundled 폴백 순으로 읽습니다.
+     * editor-spec.json 은 수작업 작성 파일로 모듈 루트(module.json 옆)에 둡니다.
+     * 파일 미존재/미작성 시 spec=null 로 폴백합니다(편집 컨트롤 부재).
+     *
+     * @param  string  $identifier  모듈 식별자 (vendor-module 형식)
+     * @return array{success: bool, spec: array<string, mixed>|null, error: string|null}
+     */
+    public function getEditorSpec(string $identifier): array
+    {
+        $module = $this->moduleRepository->findByIdentifier($identifier);
+
+        if (! $module || $module->status !== ExtensionStatus::Active->value) {
+            return ['success' => false, 'spec' => null, 'error' => 'module_not_found'];
+        }
+
+        // 분할 editor-spec.json 은 manifest + `$include` 블록으로 구성되므로
+        // 단순 디코드가 아닌 합본이 필요하다. 활성 디렉토리만 기준으로 합본한다
+        // (_bundled 폴백 없음). _bundled 작업분은 module:update 로 활성에
+        // 반영된 뒤에만 런타임에 보인다. 미분할 파일은 원본 그대로(하위 호환).
+        $spec = EditorSpecAssembler::assemble(
+            base_path("modules/{$identifier}/editor-spec.json")
+        );
+
+        return ['success' => true, 'spec' => $spec, 'error' => null];
+    }
+
+    /**
+     * 모듈 컴포넌트 매니페스트(components.json) 디코드 결과를 반환합니다.
+     *
+     * components.json 은 module:build 산출물로 모듈 루트에 둡니다.
+     * 활성 디렉토리 → _bundled 폴백 순으로 읽으며, 미생성(구버전 모듈) 시
+     * components=null 로 폴백합니다(무손실 보존 디그레이드 — 원칙 4.6).
+     *
+     * @param  string  $identifier  모듈 식별자
+     * @return array{success: bool, components: array<string, mixed>|null, error: string|null}
+     */
+    public function getComponents(string $identifier): array
+    {
+        $module = $this->moduleRepository->findByIdentifier($identifier);
+
+        if (! $module || $module->status !== ExtensionStatus::Active->value) {
+            return ['success' => false, 'components' => null, 'error' => 'module_not_found'];
+        }
+
+        $components = $this->readJsonWithBundledFallback("modules/{$identifier}/components.json");
+
+        return ['success' => true, 'components' => $components, 'error' => null];
+    }
+
+    /**
+     * 활성 디렉토리 → _bundled 폴백 순으로 JSON 파일을 읽어 디코드합니다.
+     *
+     * @param  string  $relativePath  base_path 기준 상대 경로 (modules/{id}/file.json)
+     * @return array<string, mixed>|null 디코드된 배열, 미존재/파싱 실패 시 null
+     */
+    private function readJsonWithBundledFallback(string $relativePath): ?array
+    {
+        // modules/{id}/file.json → modules/_bundled/{id}/file.json 폴백
+        $bundledPath = preg_replace('#^modules/#', 'modules/_bundled/', $relativePath, 1);
+        $candidates = [base_path($relativePath), base_path((string) $bundledPath)];
+
+        foreach ($candidates as $path) {
+            if (! file_exists($path) || ! is_file($path)) {
+                continue;
+            }
+            $decoded = json_decode((string) file_get_contents($path), true);
+            if (is_array($decoded)) {
+                return $decoded;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * MIME 타입 감지
      *
      * @param  string  $filePath  파일 경로
@@ -963,7 +1082,6 @@ class ModuleService
             'mjs' => 'application/javascript',
             'css' => 'text/css',
             'json' => 'application/json',
-            'map' => 'application/json',
             'png' => 'image/png',
             'jpg' => 'image/jpeg',
             'jpeg' => 'image/jpeg',

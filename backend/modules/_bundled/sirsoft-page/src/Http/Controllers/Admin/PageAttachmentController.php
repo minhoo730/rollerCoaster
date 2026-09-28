@@ -3,17 +3,19 @@
 namespace Modules\Sirsoft\Page\Http\Controllers\Admin;
 
 use App\Http\Controllers\Api\Base\AdminBaseController;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
+use Modules\Sirsoft\Page\Exceptions\AttachmentLimitExceededException;
 use Modules\Sirsoft\Page\Http\Requests\ReorderPageAttachmentsRequest;
 use Modules\Sirsoft\Page\Http\Requests\UploadPageAttachmentRequest;
 use Modules\Sirsoft\Page\Http\Resources\PageAttachmentResource;
 use Modules\Sirsoft\Page\Services\PageAttachmentService;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * 관리자 페이지 첨부파일 컨트롤러
  *
- * 페이지 첨부파일 업로드/삭제/다운로드/순서변경을 처리합니다.
+ * 페이지 첨부파일 업로드/삭제/순서변경을 처리합니다.
+ * 파일 서빙(다운로드/미리보기)은 공개 hash 라우트(PublicPageAttachmentController)로 단일화됨.
  */
 class PageAttachmentController extends AdminBaseController
 {
@@ -49,6 +51,14 @@ class PageAttachmentController extends AdminBaseController
                 ],
                 201
             );
+        } catch (AttachmentLimitExceededException $e) {
+            // 첨부 개수 상한 초과 — generic 500 이 아닌 422 명시 차단
+            return $this->error(
+                $e->getMessageKey(),
+                422,
+                ['code' => 'attachment_limit_exceeded'],
+                $e->getMessageParams()
+            );
         } catch (\Exception $e) {
             return $this->error('sirsoft-page::messages.attachment.upload_failed', 500, $e->getMessage());
         }
@@ -71,7 +81,7 @@ class PageAttachmentController extends AdminBaseController
             }
 
             return $this->success('sirsoft-page::messages.attachment.delete_success');
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        } catch (ModelNotFoundException $e) {
             return $this->notFound('sirsoft-page::messages.attachment.not_found');
         } catch (\Exception $e) {
             return $this->error('sirsoft-page::messages.attachment.delete_failed', 500, $e->getMessage());
@@ -98,41 +108,5 @@ class PageAttachmentController extends AdminBaseController
         } catch (\Exception $e) {
             return $this->error('sirsoft-page::messages.attachment.reorder_failed', 500, $e->getMessage());
         }
-    }
-
-    /**
-     * 첨부파일을 다운로드합니다 (해시 기반).
-     *
-     * @param  string  $hash  첨부파일 해시 (12자)
-     * @return StreamedResponse|JsonResponse 파일 스트리밍 응답 또는 오류
-     */
-    public function download(string $hash): StreamedResponse|JsonResponse
-    {
-        $attachment = $this->attachmentService->getByHash($hash);
-        if (! $attachment) {
-            return $this->notFound('sirsoft-page::messages.attachment.not_found');
-        }
-
-        $response = $this->attachmentService->download($attachment);
-
-        return $response ?: $this->error('sirsoft-page::messages.attachment.file_not_found', 404);
-    }
-
-    /**
-     * 이미지 첨부파일을 미리봅니다 (해시 기반, inline).
-     *
-     * @param  string  $hash  첨부파일 해시 (12자)
-     * @return StreamedResponse|JsonResponse 파일 스트리밍 응답 또는 오류
-     */
-    public function preview(string $hash): StreamedResponse|JsonResponse
-    {
-        $attachment = $this->attachmentService->getByHash($hash);
-        if (! $attachment) {
-            return $this->notFound('sirsoft-page::messages.attachment.not_found');
-        }
-
-        $response = $this->attachmentService->preview($attachment);
-
-        return $response ?: $this->error('sirsoft-page::messages.attachment.file_not_found', 404);
     }
 }

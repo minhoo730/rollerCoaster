@@ -2,6 +2,7 @@
 
 namespace Tests\Unit\Installer;
 
+use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 use ValidationApi;
@@ -19,7 +20,10 @@ use ValidationApi;
 class InstallerSecurityHardeningTest extends TestCase
 {
     private static bool $loaded = false;
+
     private static string $tempBase = '';
+
+    private static string $skipReason = '';
 
     public static function setUpBeforeClass(): void
     {
@@ -27,7 +31,7 @@ class InstallerSecurityHardeningTest extends TestCase
             return;
         }
 
-        require_once __DIR__ . '/stubs/lang_stub.php';
+        require_once __DIR__.'/stubs/lang_stub.php';
 
         if (! defined('MIN_PHP_VERSION')) {
             define('MIN_PHP_VERSION', '8.2.0');
@@ -44,41 +48,63 @@ class InstallerSecurityHardeningTest extends TestCase
             define('BASE_PATH', $projectRoot);
         }
         // STATE_PATH 는 테스트 격리용 임시 경로로 분리 — 운영 storage/installer-state.json 미오염.
-        self::$tempBase = sys_get_temp_dir() . '/g7-installer-hardening-' . bin2hex(random_bytes(4));
-        @mkdir(self::$tempBase . '/storage/app', 0755, true);
+        self::$tempBase = sys_get_temp_dir().'/g7-installer-hardening-'.bin2hex(random_bytes(4));
+        @mkdir(self::$tempBase.'/storage/app', 0755, true);
 
         if (! defined('STATE_PATH')) {
-            define('STATE_PATH', self::$tempBase . '/storage/installer-state.json');
+            define('STATE_PATH', self::$tempBase.'/storage/installer-state.json');
         }
 
-        require_once $projectRoot . '/public/install/api/check-configuration.php';
-        require_once $projectRoot . '/public/install/includes/installer-state.php';
-        require_once $projectRoot . '/public/install/includes/functions.php';
-        require_once $projectRoot . '/public/install/includes/task-runner.php';
+        // 안전 가드: STATE_PATH 는 PHP 상수라 한 프로세스에서 단 한 번만 정의된다.
+        // 다른 Installer 테스트(ComposerPathValidationTest 등)가 먼저 BASE_PATH 기반
+        // 루트 경로로 STATE_PATH 를 박으면 본 테스트의 writeState/clearState 가 실제 운영
+        // installer-state.json 을 파괴하게 된다. STATE_PATH 가 시스템 temp 하위가 아니면 skip.
+        $tempPrefix = realpath(sys_get_temp_dir()) ?: sys_get_temp_dir();
+        $resolvedState = realpath(dirname((string) STATE_PATH)) ?: dirname((string) STATE_PATH);
+        if (strpos($resolvedState, $tempPrefix) !== 0) {
+            self::$skipReason = 'STATE_PATH ('.STATE_PATH.') 가 시스템 temp 하위가 아님 — '
+                .'다른 Installer 테스트의 상수 정의가 선행됨. 실제 installer-state.json 파괴 방지를 위해 skip. '
+                .'격리 실행: php vendor/bin/phpunit --filter=InstallerSecurityHardeningTest';
+            self::$loaded = true;
+
+            return;
+        }
+
+        require_once $projectRoot.'/public/install/api/check-configuration.php';
+        require_once $projectRoot.'/public/install/includes/installer-state.php';
+        require_once $projectRoot.'/public/install/includes/functions.php';
+        require_once $projectRoot.'/public/install/includes/task-runner.php';
 
         self::$loaded = true;
+    }
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        if (self::$skipReason !== '') {
+            $this->markTestSkipped(self::$skipReason);
+        }
     }
 
     private function invokePrivate(object $obj, string $method, array $args)
     {
         $ref = new ReflectionClass($obj);
         $m = $ref->getMethod($method);
+
         return $m->invokeArgs($obj, $args);
     }
 
     /**
-     * 테스트가 도중 종료되어도 사용자 작업 디렉토리에 state.json 잔여물이 남지 않도록 항상 정리.
-     * BASE_PATH 가 다른 테스트 인프라에 의해 프로젝트 루트로 바인딩되는 경우를 대비해
-     * 프로젝트 루트의 storage/installer-state.json 도 함께 정리.
+     * 테스트가 도중 종료되어도 임시 디렉토리에 state.json 잔여물이 남지 않도록 정리.
+     * STATE_PATH 는 setUpBeforeClass 의 안전 가드로 시스템 temp 하위임이 보장된 경우에만
+     * 이 지점에 도달하므로, 운영 storage/installer-state.json 은 절대 건드리지 않는다.
+     * (과거 루트 state 를 무조건 @unlink 하던 코드는 실제 운영 설치 상태를 파괴할 수 있어 제거)
      */
     protected function tearDown(): void
     {
-        if (is_file(STATE_PATH)) {
+        if (self::$skipReason === '' && is_file(STATE_PATH)) {
             @unlink(STATE_PATH);
-        }
-        $projectStateFile = dirname(__DIR__, 3) . '/storage/installer-state.json';
-        if (is_file($projectStateFile)) {
-            @unlink($projectStateFile);
         }
         parent::tearDown();
     }
@@ -101,7 +127,7 @@ class InstallerSecurityHardeningTest extends TestCase
     // Critical-1 — getComposerCommand 공백 분기 RCE 차단
     // ========================================================================
 
-    public function test_getComposerCommand_rejects_space_containing_input_falls_back_to_composer(): void
+    public function test_get_composer_command_rejects_space_containing_input_falls_back_to_composer(): void
     {
         $this->writeState(['composer_binary' => 'sh -c "id > /tmp/g7_should_not_run"']);
 
@@ -111,7 +137,7 @@ class InstallerSecurityHardeningTest extends TestCase
         $this->clearState();
     }
 
-    public function test_getComposerCommand_rejects_shell_metachars_falls_back_to_composer(): void
+    public function test_get_composer_command_rejects_shell_metachars_falls_back_to_composer(): void
     {
         foreach ([
             '/bin/sh; touch /tmp/x',
@@ -127,7 +153,7 @@ class InstallerSecurityHardeningTest extends TestCase
         $this->clearState();
     }
 
-    public function test_getComposerCommand_passes_through_safe_absolute_path(): void
+    public function test_get_composer_command_passes_through_safe_absolute_path(): void
     {
         // open_basedir 같은 PHP 런타임 제약 환경의 false negative 를 피하기 위해
         // stat 의존 가드가 제거됨. 메타문자 없는 단일 절대경로는 escape 후 그대로 사용.
@@ -140,7 +166,7 @@ class InstallerSecurityHardeningTest extends TestCase
         $this->clearState();
     }
 
-    public function test_getComposerCommand_empty_returns_default(): void
+    public function test_get_composer_command_empty_returns_default(): void
     {
         $this->writeState(['composer_binary' => '']);
 
@@ -148,7 +174,7 @@ class InstallerSecurityHardeningTest extends TestCase
         $this->clearState();
     }
 
-    public function test_getComposerCommandForDisplay_does_not_leak_shell_payload(): void
+    public function test_get_composer_command_for_display_does_not_leak_shell_payload(): void
     {
         $this->writeState(['composer_binary' => 'rm -rf /']);
 
@@ -159,15 +185,15 @@ class InstallerSecurityHardeningTest extends TestCase
         $this->clearState();
     }
 
-    public function test_isInstallerExecutablePath_rejects_metachars(): void
+    public function test_is_installer_executable_path_rejects_metachars(): void
     {
         // 백슬래시는 Windows 경로 구분자이므로 차단 대상 아님 (escapeshellarg 가 셸 인젝션 차단)
         foreach (['foo bar', 'a;b', 'a`b', 'a$b', 'a|b', "a\nb", 'a"b', "a'b", "a\0b", "a\x01b", "a\rb"] as $bad) {
-            $this->assertFalse(isInstallerExecutablePath($bad), "메타문자 거부: " . bin2hex($bad));
+            $this->assertFalse(isInstallerExecutablePath($bad), '메타문자 거부: '.bin2hex($bad));
         }
     }
 
-    public function test_isInstallerExecutablePath_accepts_windows_paths(): void
+    public function test_is_installer_executable_path_accepts_windows_paths(): void
     {
         // Windows 절대경로는 백슬래시 포함이지만 공백·메타문자 없으면 통과.
         // 공백 포함 디렉토리(예: 'C:\\Program Files\\...') 는 공백 분리 입력 형식의 토큰
@@ -182,7 +208,7 @@ class InstallerSecurityHardeningTest extends TestCase
         }
     }
 
-    public function test_isInstallerExecutablePath_rejects_windows_path_with_space_known_limitation(): void
+    public function test_is_installer_executable_path_rejects_windows_path_with_space_known_limitation(): void
     {
         // 'C:\\Program Files\\...' 같은 공백 포함 Windows 경로는 본 회복 범위 외.
         // 공백 분리 입력(PHP + Composer 합성) 형식 휴리스틱과 충돌 — escapeshellarg 단일 토큰
@@ -199,7 +225,7 @@ class InstallerSecurityHardeningTest extends TestCase
      * stat 가드가 제거되어 시놀로지 DSM 등 open_basedir 환경에서도
      * 정상 절대경로 입력이 통과해야 함. 실제 실행 가능 여부는 exec 결과로 판정.
      */
-    public function test_isInstallerExecutablePath_accepts_safe_absolute_path_without_stat(): void
+    public function test_is_installer_executable_path_accepts_safe_absolute_path_without_stat(): void
     {
         // 실제로 존재하지 않는 경로지만 메타문자 없음 — stat 가드 제거로 true
         $this->assertTrue(isInstallerExecutablePath('/usr/local/bin/php83'));
@@ -211,7 +237,7 @@ class InstallerSecurityHardeningTest extends TestCase
     // Composer 공백 분리 입력 안전 복원 — 멀티 PHP 환경 호환성
     // ========================================================================
 
-    public function test_getComposerCommand_accepts_php_composer_space_separated_input(): void
+    public function test_get_composer_command_accepts_php_composer_space_separated_input(): void
     {
         // 시놀로지/cPanel/Plesk 멀티 PHP 환경의 운영 패턴
         $this->writeState(['composer_binary' => '/usr/local/bin/php83 /usr/local/bin/composer']);
@@ -219,12 +245,12 @@ class InstallerSecurityHardeningTest extends TestCase
         $cmd = getComposerCommand();
 
         // 두 토큰 각각 escapeshellarg 적용 후 공백으로 합성
-        $expected = escapeshellarg('/usr/local/bin/php83') . ' ' . escapeshellarg('/usr/local/bin/composer');
+        $expected = escapeshellarg('/usr/local/bin/php83').' '.escapeshellarg('/usr/local/bin/composer');
         $this->assertSame($expected, $cmd);
         $this->clearState();
     }
 
-    public function test_getComposerCommand_rejects_space_separated_with_metachar_in_first_token(): void
+    public function test_get_composer_command_rejects_space_separated_with_metachar_in_first_token(): void
     {
         // 첫 토큰에 메타문자 → 거부, composer 폴백
         $this->writeState(['composer_binary' => '/usr/local/bin/php$(id) /usr/local/bin/composer']);
@@ -235,7 +261,7 @@ class InstallerSecurityHardeningTest extends TestCase
         $this->clearState();
     }
 
-    public function test_getComposerCommand_rejects_space_separated_with_metachar_in_second_token(): void
+    public function test_get_composer_command_rejects_space_separated_with_metachar_in_second_token(): void
     {
         // 두 번째 토큰에 메타문자 → 거부, composer 폴백
         $this->writeState(['composer_binary' => '/usr/local/bin/php83 /usr/local/bin/composer;id']);
@@ -246,7 +272,7 @@ class InstallerSecurityHardeningTest extends TestCase
         $this->clearState();
     }
 
-    public function test_getComposerCommand_rejects_three_or_more_tokens(): void
+    public function test_get_composer_command_rejects_three_or_more_tokens(): void
     {
         // 3 토큰 이상은 두 번째 토큰에 공백이 남음 → 두 번째 토큰의 메타문자(공백) 로 거부
         $this->writeState(['composer_binary' => '/bin/php /bin/composer extra_arg']);
@@ -257,7 +283,7 @@ class InstallerSecurityHardeningTest extends TestCase
         $this->clearState();
     }
 
-    public function test_getComposerCommandForDisplay_shows_human_friendly_space_separated_form(): void
+    public function test_get_composer_command_for_display_shows_human_friendly_space_separated_form(): void
     {
         $this->writeState(['composer_binary' => '/usr/local/bin/php83 /usr/local/bin/composer']);
 
@@ -268,7 +294,7 @@ class InstallerSecurityHardeningTest extends TestCase
         $this->clearState();
     }
 
-    public function test_getComposerCommandForDisplay_does_not_leak_shell_payload_in_space_separated(): void
+    public function test_get_composer_command_for_display_does_not_leak_shell_payload_in_space_separated(): void
     {
         // 두 토큰 중 하나라도 메타문자 포함이면 display 도 composer 폴백
         $this->writeState(['composer_binary' => '/bin/php `id`']);
@@ -284,9 +310,9 @@ class InstallerSecurityHardeningTest extends TestCase
     // validatePhpPath / validateComposerPath stat 가드 완화 (인스톨러 검증 API)
     // ========================================================================
 
-    public function test_validatePhpPath_rejects_shell_metachars(): void
+    public function test_validate_php_path_rejects_shell_metachars(): void
     {
-        $api = new ValidationApi();
+        $api = new ValidationApi;
         foreach ([
             '/usr/local/bin/php; id',
             '/usr/local/bin/php$(id)',
@@ -299,28 +325,28 @@ class InstallerSecurityHardeningTest extends TestCase
         }
     }
 
-    public function test_validatePhpPath_rejects_empty(): void
+    public function test_validate_php_path_rejects_empty(): void
     {
-        $api = new ValidationApi();
+        $api = new ValidationApi;
         $result = $this->invokePrivate($api, 'validatePhpPath', ['']);
         $this->assertFalse($result['valid']);
     }
 
-    public function test_validatePhpPath_safe_path_reaches_exec_phase(): void
+    public function test_validate_php_path_safe_path_reaches_exec_phase(): void
     {
         // 메타문자 없는 절대경로는 stat 가드 없이 exec 단계까지 도달.
         // 존재하지 않으면 exec 실패 (return code != 0) 로 거부 — 단, 거부 메시지는
         // 'error_php_exec_failed' 로 stat 거부와 동일. 핵심: stat 가드가 사라졌다는 점.
-        $api = new ValidationApi();
+        $api = new ValidationApi;
         $result = $this->invokePrivate($api, 'validatePhpPath', ['/nonexistent/path/to/php']);
 
         // 실제 실행 실패로 invalid 이지만, 그 판정이 exec 결과에 기반함을 의미적으로 검증.
         $this->assertFalse($result['valid']);
     }
 
-    public function test_validateComposerPath_rejects_shell_metachars(): void
+    public function test_validate_composer_path_rejects_shell_metachars(): void
     {
-        $api = new ValidationApi();
+        $api = new ValidationApi;
         foreach ([
             '/usr/local/bin/composer; id',
             '/usr/local/bin/composer$(id)',
@@ -332,10 +358,10 @@ class InstallerSecurityHardeningTest extends TestCase
         }
     }
 
-    public function test_validateComposerPath_rejects_space_separated_with_metachar(): void
+    public function test_validate_composer_path_rejects_space_separated_with_metachar(): void
     {
         // 공백 분리 입력의 토큰별 메타문자 검증
-        $api = new ValidationApi();
+        $api = new ValidationApi;
         foreach ([
             '/bin/php$(id) /bin/composer',
             '/bin/php /bin/composer;id',
@@ -347,23 +373,23 @@ class InstallerSecurityHardeningTest extends TestCase
         }
     }
 
-    public function test_splitPhpComposerTokens_helper_splits_into_two_tokens(): void
+    public function test_split_php_composer_tokens_helper_splits_into_two_tokens(): void
     {
-        $api = new ValidationApi();
+        $api = new ValidationApi;
         $result = $this->invokePrivate($api, 'splitPhpComposerTokens', ['/usr/local/bin/php83 /usr/local/bin/composer']);
         $this->assertSame(['php' => '/usr/local/bin/php83', 'composer' => '/usr/local/bin/composer'], $result);
     }
 
-    public function test_splitPhpComposerTokens_helper_returns_null_for_single_token(): void
+    public function test_split_php_composer_tokens_helper_returns_null_for_single_token(): void
     {
-        $api = new ValidationApi();
+        $api = new ValidationApi;
         $result = $this->invokePrivate($api, 'splitPhpComposerTokens', ['/usr/local/bin/composer']);
         $this->assertNull($result);
     }
 
-    public function test_isInstallerSafePathArg_helper_accepts_safe_paths(): void
+    public function test_is_installer_safe_path_arg_helper_accepts_safe_paths(): void
     {
-        $api = new ValidationApi();
+        $api = new ValidationApi;
 
         foreach ([
             '/usr/local/bin/php83',
@@ -379,14 +405,14 @@ class InstallerSecurityHardeningTest extends TestCase
         }
     }
 
-    public function test_isInstallerSafePathArg_helper_rejects_metachars_and_empty(): void
+    public function test_is_installer_safe_path_arg_helper_rejects_metachars_and_empty(): void
     {
-        $api = new ValidationApi();
+        $api = new ValidationApi;
 
         $this->assertFalse($this->invokePrivate($api, 'isInstallerSafePathArg', ['']));
         // 백슬래시는 Windows 경로 구분자이므로 차단 대상이 아님 — 셸 인젝션 차단은 escapeshellarg 가 담당
         foreach (['foo bar', 'a;b', 'a`b', 'a$b', 'a|b', "a\nb", 'a"b', "a'b", "a\0b", "a\x01b", "a\rb"] as $bad) {
-            $this->assertFalse($this->invokePrivate($api, 'isInstallerSafePathArg', [$bad]), "메타문자 거부: " . bin2hex($bad));
+            $this->assertFalse($this->invokePrivate($api, 'isInstallerSafePathArg', [$bad]), '메타문자 거부: '.bin2hex($bad));
         }
     }
 
@@ -394,7 +420,7 @@ class InstallerSecurityHardeningTest extends TestCase
     // 워커 정합 — 검증 통과한 입력이 워커에서도 silent fallback 없이 전달
     // ========================================================================
 
-    public function test_getComposerCommand_passes_through_single_absolute_path_without_silent_fallback(): void
+    public function test_get_composer_command_passes_through_single_absolute_path_without_silent_fallback(): void
     {
         // 검증 단계에서 통과한 단일 절대경로가 워커에서도 그대로 사용됨을 보장.
         // stat 가드 제거 후 회귀 — 정상 입력이 silent fallback 으로 사라지지 않음.
@@ -411,9 +437,9 @@ class InstallerSecurityHardeningTest extends TestCase
     // High-2 — checkCorePendingPath traversal 차단
     // ========================================================================
 
-    public function test_checkCorePendingPath_rejects_parent_traversal(): void
+    public function test_check_core_pending_path_rejects_parent_traversal(): void
     {
-        $api = new ValidationApi();
+        $api = new ValidationApi;
 
         foreach (['../../../etc', '..', 'foo/../bar', 'foo/..\\bar'] as $bad) {
             $_GET = ['path' => $bad];
@@ -430,9 +456,9 @@ class InstallerSecurityHardeningTest extends TestCase
         $_GET = [];
     }
 
-    public function test_checkCorePendingPath_rejects_null_byte(): void
+    public function test_check_core_pending_path_rejects_null_byte(): void
     {
-        $api = new ValidationApi();
+        $api = new ValidationApi;
         $_GET = ['path' => "valid\0../etc"];
         ob_start();
         $this->invokePrivate($api, 'checkCorePendingPath', []);
@@ -443,10 +469,10 @@ class InstallerSecurityHardeningTest extends TestCase
         $_GET = [];
     }
 
-    public function test_checkCorePendingPath_returns_uniform_message_for_nonexistent(): void
+    public function test_check_core_pending_path_returns_uniform_message_for_nonexistent(): void
     {
-        $api = new ValidationApi();
-        $_GET = ['path' => '/nonexistent/g7-test-' . bin2hex(random_bytes(4))];
+        $api = new ValidationApi;
+        $_GET = ['path' => '/nonexistent/g7-test-'.bin2hex(random_bytes(4))];
         ob_start();
         $this->invokePrivate($api, 'checkCorePendingPath', []);
         $body = ob_get_clean();
@@ -459,39 +485,35 @@ class InstallerSecurityHardeningTest extends TestCase
     }
 
     // ========================================================================
-    // Medium-1 — escapeEnvValue 개행 제거
+    // Medium-1 — escapeEnvValue 개행 거부
     // ========================================================================
+    //
+    // 종전에는 개행을 조용히 지웠다(Medium-1). KVE-2026-2042 정정으로 직렬화기는 개행을
+    // 만나면 예외를 던진다 — 지우면 운영자가 입력한 값과 저장된 값이 달라지는데 그 사실이
+    // 화면에 나타나지 않기 때문이다. 하위호환 별칭 escapeEnvValue 도 같은 관문에 위임한다.
 
-    public function test_escapeEnvValue_strips_newlines(): void
+    public function test_escape_env_value_rejects_newlines(): void
     {
-        $payload = "secret\nINJECTED=true";
-        $result = escapeEnvValue($payload);
+        $this->expectException(InvalidArgumentException::class);
 
-        // 핵심 보안 속성: 결과에 개행 문자가 없어야 한다 (라인 주입 차단).
-        // INJECTED=true 가 따옴표 내부 일부로 포함되는 것은 문제 아님 — .env 파서는
-        // 따옴표 닫힘 전까지 단일 값으로만 해석.
-        $this->assertStringNotContainsString("\n", $result, 'LF 가 결과에 포함되면 안 됨');
-        $this->assertStringNotContainsString("\r", $result);
-        // 결과는 따옴표로 시작/종료 (라인 주입이 성립하려면 따옴표가 닫힌 뒤 개행이 와야 하나 개행이 제거됨)
-        $this->assertStringStartsWith('"', $result);
-        $this->assertStringEndsWith('"', $result);
+        escapeEnvValue("secret\nINJECTED=true");
     }
 
-    public function test_escapeEnvValue_strips_crlf(): void
+    public function test_escape_env_value_rejects_crlf(): void
     {
-        $result = escapeEnvValue("a\r\nb");
+        $this->expectException(InvalidArgumentException::class);
 
-        $this->assertSame('"ab"', $result);
+        escapeEnvValue("a\r\nb");
     }
 
-    public function test_escapeEnvValue_preserves_normal_password(): void
+    public function test_escape_env_value_preserves_normal_password(): void
     {
         $result = escapeEnvValue('p@ssw0rd!#$%');
 
         $this->assertSame('"p@ssw0rd!#$%"', $result);
     }
 
-    public function test_escapeEnvValue_escapes_quotes_and_backslashes(): void
+    public function test_escape_env_value_escapes_quotes_and_backslashes(): void
     {
         $result = escapeEnvValue('a"b\\c');
 
@@ -502,7 +524,7 @@ class InstallerSecurityHardeningTest extends TestCase
     // Medium-2 — PDO DSN 파라미터 sanitize
     // ========================================================================
 
-    public function test_getDatabaseConnection_rejects_semicolon_in_host(): void
+    public function test_get_database_connection_rejects_semicolon_in_host(): void
     {
         $this->expectException(\PDOException::class);
 
@@ -515,7 +537,7 @@ class InstallerSecurityHardeningTest extends TestCase
         ], false);
     }
 
-    public function test_getDatabaseConnection_rejects_equals_in_database(): void
+    public function test_get_database_connection_rejects_equals_in_database(): void
     {
         $this->expectException(\PDOException::class);
 
@@ -528,7 +550,7 @@ class InstallerSecurityHardeningTest extends TestCase
         ], false);
     }
 
-    public function test_getDatabaseConnection_rejects_newline_in_port(): void
+    public function test_get_database_connection_rejects_newline_in_port(): void
     {
         $this->expectException(\PDOException::class);
 
@@ -539,5 +561,103 @@ class InstallerSecurityHardeningTest extends TestCase
             'db_write_username' => 'root',
             'db_write_password' => '',
         ], false);
+    }
+
+    // ========================================================================
+    // KVE-2026-1677 — 설치 워커의 실행 바이너리 경로
+    // ========================================================================
+
+    /**
+     * 저장된 php_binary 가 형태 규칙을 위반하면 시스템 기본값으로 폴백한다.
+     *
+     * 이 값은 설치 워커에서 실제 명령의 실행 바이너리가 된다(`--version` 이 붙지 않는
+     * 호출 지점). 이전에는 아무 검증 없이 그대로 반환해, 저장만 되면 인자 자리가 열렸다.
+     *
+     * @scenario vector=getPhpBinary, payload_class=argument_injection_dash_r
+     *
+     * @effects getPhpBinary_falls_back_to_default_for_disallowed_shape
+     */
+    public function test_get_php_binary_falls_back_to_default_for_disallowed_shape(): void
+    {
+        foreach ([
+            '-rphpinfo();' => '코드 실행 플래그',
+            '-dauto_prepend_file=/tmp/x' => 'ini 주입',
+            'bin/php' => '상대경로',
+            '/usr/local/../../tmp/php' => '.. 세그먼트',
+            '/usr/bin/php$(id)' => '셸 메타문자',
+        ] as $payload => $reason) {
+            $this->writeState(['php_binary' => $payload]);
+
+            $this->assertSame(
+                'php',
+                getPhpBinary(),
+                "형태 위반 값이 그대로 실행 바이너리가 됨 ({$reason}): {$payload}"
+            );
+        }
+    }
+
+    /**
+     * 정상 절대경로는 그대로 사용된다 (stat 미사용 — 존재하지 않아도 통과).
+     *
+     * @scenario vector=getPhpBinary, payload_class=wrapper_script_name
+     *
+     * @effects getPhpBinary_passes_through_legitimate_paths
+     */
+    public function test_get_php_binary_passes_through_legitimate_paths(): void
+    {
+        foreach ([
+            '/usr/local/php84/bin/php',
+            '/usr/local/bin/php-8.2-wrapper.sh',
+            'C:\\php\\php.exe',
+            '/usr/local/php99/bin/php',
+        ] as $path) {
+            $this->writeState(['php_binary' => $path]);
+
+            $this->assertSame($path, getPhpBinary(), "정상 경로가 폴백됨: {$path}");
+        }
+    }
+
+    /**
+     * Composer 자리에 인터프리터 + 임의 스크립트를 넣으면 기본값으로 폴백한다.
+     *
+     * 하이픈 선두만 막으면 `PHP경로 /tmp/올려둔파일` 형태가 남는다.
+     *
+     * @scenario vector=getComposerCommand, payload_class=interpreter_plus_script
+     *
+     * @effects getComposerCommand_rejects_interpreter_plus_arbitrary_script
+     */
+    public function test_get_composer_command_rejects_interpreter_plus_arbitrary_script(): void
+    {
+        foreach ([
+            '/usr/bin/php /tmp/evil.php',
+            '/usr/bin/python3 /tmp/evil.py',
+            '/usr/bin/php -rphpinfo();',
+            '/usr/bin/php /tmp/composer-evil.sh',
+        ] as $payload) {
+            $this->writeState(['composer_binary' => $payload]);
+
+            $this->assertSame(
+                'composer',
+                getComposerCommand(),
+                "인자 자리에 임의 스크립트/옵션이 통과함: {$payload}"
+            );
+        }
+    }
+
+    /**
+     * 정상 멀티 PHP 입력은 계속 두 토큰으로 실행된다 (비파괴).
+     *
+     * @scenario vector=getComposerCommand, payload_class=wrapper_script_name
+     *
+     * @effects getComposerCommand_keeps_multi_php_pair_support
+     */
+    public function test_get_composer_command_keeps_multi_php_pair_support(): void
+    {
+        $this->writeState(['composer_binary' => '/usr/local/bin/php-8.2-wrapper.sh /usr/local/bin/composer.phar']);
+
+        $cmd = getComposerCommand();
+
+        $this->assertStringContainsString('php-8.2-wrapper.sh', $cmd);
+        $this->assertStringContainsString('composer.phar', $cmd);
     }
 }

@@ -60,9 +60,15 @@
     "report_notification": "Report Notification",
     "report_notification_description": "Configure which administrators receive notifications and how notifications are sent when a report is submitted.",
     "report_permissions": "Report Management Permissions",
-    "report_permissions_description": "Assign roles that can view the report list and process reports (approve, reject, or blind). Admin notifications for new reports are sent based on the 'Process Reports Permission' role."
+    "report_permissions_description": "Assign roles that can view the report list and process reports (approve, reject, or blind). Admin notifications for new reports are sent based on the 'Process Reports Permission' role.",
+    "attachment_cleanup": "Attachment Cleanup",
+    "attachment_cleanup_description": "Decide when the files of deleted attachments are destroyed. Temporary attachments uploaded while writing but never saved are cleaned up daily regardless of this setting."
   },
   "fields": {
+    "attachment_purge_enabled": "Purge deleted attachments",
+    "attachment_purge_enabled_hint": "Off by default — the operator must turn it on for the daily automatic cleanup to run. When on, files and records of attachments deleted longer ago than the retention period are permanently removed. Cleanup commands run directly on the server are not affected by this setting.",
+    "attachment_purge_retention_days": "Deleted attachment retention (days)",
+    "attachment_purge_retention_days_hint": "Restoring a post from the trash also restores attachments within this period. Keep it aligned with your trash retention window. (1 ~ 3650 days)",
     "type": "Board Type",
     "secret_mode": "Secret Mode",
     "per_page": "Posts per Page (PC)",
@@ -78,7 +84,7 @@
     "max_content_length": "Maximum Content Length",
     "use_reply": "Enable Reply Posts",
     "max_reply_depth": "Max Reply Depth",
-    "max_reply_depth_hint": "Enter a value between 1 and 5",
+    "reply_delete_policy": "Reply Delete Policy",
     "use_comment": "Enable Comments",
     "comment_order": "Comment Sort Order",
     "min_comment_length": "Min Comment Length",
@@ -104,7 +110,7 @@
     "daily_report_limit_hint": "Max reports per user per day across all boards. 0 = no limit. (0\u2013100)",
     "rejection_limit_count": "Rejection Limit (count)",
     "rejection_limit_days": "Rejection Limit Period (days)",
-    "rejection_limit_hint": "Reporting will be blocked when rejections exceed the limit within this period. 0 count = no limit. (Count: 0\u201350, Period: 1\u2013365 days)",
+    "rejection_limit_hint": "Reporting is blocked once rejections within this period reach the limit. 0 count = no limit. (Count: 0\u201350, Period: 1\u2013365 days)",
     "report_cooldown_seconds": "Report Cooldown (sec)",
     "report_cooldown_seconds_hint": "Minimum interval between consecutive reports. 0 = no limit. (0\u20133600 sec)",
     "notify_author_on_report_action": "Report Action Notification",
@@ -124,12 +130,18 @@
         "mail": "Email",
         "database": "Site Notification"
     },
+    "report_notification_template_status_title": "Delivery Status by Channel",
+    "report_notification_template_status_active": "Active",
+    "report_notification_template_status_inactive": "Inactive",
+    "report_notification_template_status_empty": "No notification templates are linked.",
+    "report_notification_template_status_hint": "Per-channel delivery, templates and recipients are managed in the Notification Settings menu.",
+    "report_notification_go_to_settings": "Go to Notification Settings",
     "report_view_roles": "View Reports Permission",
     "report_view_roles_description": "Permission to view the report list and report details.",
     "report_manage_roles": "Process Reports Permission",
     "report_manage_roles_description": "Permission to approve, reject, or blind reports. Admin notifications on report submission are also sent to roles with this permission.",
-    "blocked_keywords": "Restricted Keywords",
-    "blocked_keywords_placeholder": "Type keyword and press Enter",
+    "blocked_keywords": "Blocked Keywords",
+    "blocked_keywords_placeholder": "Type a keyword and press Enter",
     "blocked_keywords_description": "List of keywords to block in posts and comments",
     "blocked_keywords_hint": "Posts or comments containing registered keywords will be blocked",
     "post_cooldown_seconds": "Post Cooldown (sec)",
@@ -151,26 +163,27 @@
       "show_view_count": "Display view count on post list and detail pages",
       "use_report": "Enable reporting of inappropriate posts and comments",
       "new_display_hours": "Duration to display [New] badge after posting (in hours)",
-      "per_page": "Number of posts to display per page on desktop",
-      "per_page_mobile": "Number of posts to display per page on mobile",
+      "per_page": "Number of posts to display per page on desktop ({{min}}–{{max}})",
+      "per_page_mobile": "Number of posts to display per page on mobile ({{min}}–{{max}})",
       "order_by": "Set the default sort criteria for the post list",
       "order_direction": "Set the default sort direction for the post list",
-      "min_title_length": "Set the minimum character count for post titles",
-      "max_title_length": "Set the maximum character count for post titles",
-      "min_content_length": "Set the minimum character count for post content",
-      "max_content_length": "Set the maximum character count for post content",
+      "min_title_length": "Set the minimum character count for post titles ({{min}}–{{max}})",
+      "max_title_length": "Set the maximum character count for post titles ({{min}}–{{max}})",
+      "min_content_length": "Set the minimum character count for post content ({{min}}–{{max}})",
+      "max_content_length": "Set the maximum character count for post content ({{min}}–{{max}})",
       "use_reply": "Must be ON to apply reply post feature to new boards.",
-      "max_reply_depth": "Set the maximum nesting depth for replies (1-5)",
+      "max_reply_depth": "Set the maximum nesting depth for replies ({{min}}–{{max}})",
+      "reply_delete_policy": "Set what happens when deleting a post that has replies",
       "blocked_keywords": "Posts or comments containing registered keywords will be blocked",
       "use_comment": "Must be ON to apply comment feature to new boards. Comment detail settings below will also apply.",
       "comment_order": "Set the default sort direction for comments",
-      "min_comment_length": "Set the minimum character count for comments",
-      "max_comment_length": "Set the maximum character count for comments",
-      "max_comment_depth": "Set the maximum nesting depth for nested comments. Setting to 0 disables the nested comment feature (0-10)",
+      "min_comment_length": "Set the minimum character count for comments ({{min}}–{{max}})",
+      "max_comment_length": "Set the maximum character count for comments ({{min}}–{{max}})",
+      "max_comment_depth": "Set the maximum nesting depth for nested comments. Setting to 0 disables the nested comment feature ({{min}}–{{max}})",
       "use_file_upload": "Must be ON to apply file attachment feature to new boards.",
-      "max_file_size": "Maximum file size for uploads (in MB)",
-      "max_file_count": "Maximum number of files per post",
-      "allowed_extensions": "Leave empty to allow all file extensions"
+      "max_file_size": "Maximum file size for uploads (in MB, {{min}}–{{max}})",
+      "max_file_count": "Maximum number of files per post ({{min}}–{{max}})",
+      "allowed_extensions": "Enter at least one allowed file extension"
     }
   },
   "options": {
@@ -191,6 +204,10 @@
       "disabled": "Disabled",
       "enabled": "Optional",
       "always": "Always Secret"
+    },
+    "reply_delete_policy": {
+      "block": "Block deletion",
+      "cascade": "Delete together"
     },
     "order_by": {
       "created_at": "Latest",
@@ -259,6 +276,7 @@
     "target_boards": "Target Boards",
     "apply_all": "All Boards",
     "apply_selected": "Selected Boards",
+    "select_boards_hint": "Search and select the boards to apply this to below.",
     "select_boards_placeholder": "Select boards",
     "apply_button": "Bulk Apply",
     "no_fields_selected": "No items selected.",
@@ -275,6 +293,7 @@
       "use_comment": "Enable Comments",
       "use_reply": "Enable Replies",
       "max_reply_depth": "Max Reply Depth",
+      "reply_delete_policy": "Reply Delete Policy",
       "max_comment_depth": "Max Comment Depth",
       "comment_order": "Comment Sort Order",
       "show_view_count": "Show View Count",
@@ -292,6 +311,7 @@
       "notify_admin_on_post": "Admin Notification",
       "notify_author": "Author Notification",
       "new_display_hours": "New Post Display Hours",
+      "blocked_keywords": "Blocked Keywords",
       "default_board_permissions": "Default Permissions",
       "manager": "Manage Board"
     }
@@ -313,7 +333,12 @@
     "select_boards_required": "Please select at least one board.",
     "save_and_apply_info": "Upon confirmation, all settings in the current tab will be saved, and only the checked items will be bulk applied to the selected boards.",
     "save_error": "Failed to save settings. Bulk apply has been cancelled.",
-    "permission_notice": "The selected permission items will replace the existing roles of each board with the current settings. However, the manager and step roles of each board are preserved as-is."
+    "permission_notice": "The selected permission items will replace the existing roles of each board with the current settings. However, the manager and step roles of each board are preserved as-is.",
+    "aborted_title": "Bulk Apply Failed",
+    "aborted_message": "An error occurred while updating permissions for {{board}}, so all changes have been cancelled.",
+    "aborted_message_suffix": ": an error occurred while updating its permissions, so all changes have been cancelled.",
+    "aborted_message_generic": "An error occurred during bulk apply, so all changes have been cancelled.",
+    "aborted_toast": "Bulk apply failed, so all changes have been cancelled."
   },
   "seo": {
     "meta_settings": {
@@ -402,6 +427,7 @@
     }
   },
   "identity": {
+    "policy_form_editor_label": "Add/edit identity policy",
     "intro_title": "Board Identity Verification Policies",
     "intro": "Manage policies declared by the board module and policies added by operators. Module default policies allow only enabled/grace adjustments; operator-defined policies can be freely edited or removed in core settings.",
     "purposes_section_title": "Identity Purposes Registered by This Module",

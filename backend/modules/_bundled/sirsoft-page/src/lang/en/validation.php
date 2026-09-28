@@ -59,6 +59,11 @@ return [
         'max' => 'The search query must not exceed :max characters.',
     ],
 
+    // user-friendly attribute names shown in validation errors
+    'attributes' => [
+        'search' => 'search query',
+    ],
+
     // search_field validation messages
     'search_field' => [
         'in' => 'The search field must be one of: all, title, slug.',
@@ -92,6 +97,7 @@ return [
             'file' => 'The file format is invalid.',
             'max' => 'The file size must not exceed :maxKB.',
             'mimes' => 'The file type is not allowed.',
+            'mimetypes' => 'The file type is not allowed.',
         ],
         'order' => [
             'required' => 'Order information is required.',

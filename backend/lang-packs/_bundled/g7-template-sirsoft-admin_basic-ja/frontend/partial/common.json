@@ -1,5 +1,6 @@
 {
   "all": "すべて",
+  "view_all": "すべて表示",
   "loading": "読み込み中...",
   "saving": "保存中...",
   "error": "エラーが発生しました。",
@@ -18,6 +19,7 @@
   "required": "必須",
   "cancel": "キャンセル",
   "delete": "削除",
+  "list": "リスト",
   "deleting": "削除中...",
   "processing": "処理中...",
   "confirm": "確認",
@@ -47,6 +49,8 @@
   "logout": "ログアウト",
   "expand_sidebar": "サイドバーを展開",
   "collapse_sidebar": "サイドバーを折りたたむ",
+  "expand": "展開",
+  "collapse": "折りたたむ",
   "module": "モジュール",
   "plugin": "プラグイン",
   "status_active": "有効化",
@@ -54,7 +58,7 @@
   "status_pending": "保留中",
   "status_error": "エラー",
   "template_preview": "{{vendor}}/{{name}}テンプレートプレビュー",
-  "update_available": "更新可能",
+  "update_available": "アップデート可能",
   "dependencies": "依存関係",
   "edit_layout": "レイアウトを編集",
   "add": "追加",
@@ -65,7 +69,7 @@
   "download_failed": "ダウンロードに失敗しました。",
   "retry": "再試行",
   "preview": "プレビュー",
-  "preview_off": "プレビューを閉じる",
+  "preview_off": "プレビューをオフ",
   "html_mode": "HTMLモード",
   "currency_unit": "円",
   "enter_value": "値を入力してください",
@@ -74,5 +78,8 @@
   "scope_type_role_desc": "同じロールのユーザーリソースのみ",
   "multilingual": {
     "add_language": "言語を追加"
-  }
+  },
+  "refresh": "更新",
+  "activate": "有効化",
+  "skip": "スキップ"
 }

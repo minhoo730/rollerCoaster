@@ -11,12 +11,7 @@ class MarketDataCache
     {
         sort($types);
 
-        return sprintf(
-            'market:ranking:%s:%d:%s',
-            $market,
-            $limit,
-            implode(',', $types)
-        );
+        return sprintf('market:ranking:%s:%d:%s', $market, $limit, implode(',', $types));
     }
 
     public function rankingUniverseKey(string $market): string

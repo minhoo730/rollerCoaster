@@ -32,7 +32,7 @@
             {
               "type": "basic",
               "name": "Icon",
-              "props": { "name": "shopping-bag", "className": "w-5 h-5 text-gray-700 dark:text-gray-300" }
+              "props": { "name": "shopping-bag", "className": "text-gray-700 dark:text-gray-300", "size": "md" }
             },
             {
               "type": "basic",
@@ -84,7 +84,7 @@
           "if": "{{order.data.abilities?.can_cancel === true}}",
           "props": {
             "type": "button",
-            "className": "flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer",
+            "className": "flex items-center gap-1.5 px-3 py-1.5 bg-red-600 dark:bg-red-500 hover:bg-red-700 dark:hover:bg-red-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer",
             "disabled": "{{(_local.selectedItemIds ?? []).length === 0}}"
           },
           "actions": [
@@ -182,9 +182,10 @@
                   },
                   "actions": [
                     {
+                      "comment": "audit:allow layout-list-context-navigate-merge-query 주문 항목 → 상품 상세 이동 — 주문 목록과 다른 클러스터(상품)로 나가는 이동이다.",
                       "type": "click",
                       "handler": "navigate",
-                      "params": { "path": "{{_global.shopBase}}/products/{{item.product_id}}" }
+                      "params": { "path": "{{_global.shopBase}}/products/{{item.product_snapshot?.product_code ?? item.product_id}}" }
                     }
                   ],
                   "children": [
@@ -221,9 +222,10 @@
                       },
                       "actions": [
                         {
+                          "comment": "audit:allow layout-list-context-navigate-merge-query 주문 항목 → 상품 상세 이동 — 주문 목록과 다른 클러스터(상품)로 나가는 이동이다.",
                           "type": "click",
                           "handler": "navigate",
-                          "params": { "path": "{{_global.shopBase}}/products/{{item.product_id}}" }
+                          "params": { "path": "{{_global.shopBase}}/products/{{item.product_snapshot?.product_code ?? item.product_id}}" }
                         }
                       ]
                     },
@@ -235,10 +237,26 @@
                       "text": "{{$localized(item.option_snapshot?.option_name)}}"
                     },
                     {
+                      "comment": "선택된 추가옵션 (스냅샷 — 옵션 라인 바로 아래)",
+                      "type": "basic",
+                      "name": "Div",
+                      "if": "{{item.additional_options?.length > 0}}",
+                      "props": { "className": "mt-0.5 space-y-0.5" },
+                      "iteration": { "source": "{{item.additional_options ?? []}}", "item_var": "addOpt" },
+                      "children": [
+                        {
+                          "type": "basic",
+                          "name": "P",
+                          "props": { "className": "text-xs text-gray-500 dark:text-gray-400" },
+                          "text": "{{addOpt.name}}{{(addOpt.custom_text ?? '') !== '' ? ' (' + addOpt.custom_text + ')' : ''}}{{(addOpt.price_adjustment ?? 0) > 0 ? ' (' + (addOpt.price_adjustment_formatted ?? ('+' + addOpt.price_adjustment.toLocaleString())) + ')' : ''}}"
+                        }
+                      ]
+                    },
+                    {
                       "type": "basic",
                       "name": "P",
                       "props": { "className": "text-sm text-gray-500 dark:text-gray-400 mt-0.5" },
-                      "text": "{{item.mc_unit_price?.[_global.preferredCurrency ?? 'KRW']?.formatted ?? item.unit_price_formatted ?? ''}} × {{item.quantity ?? 0}}$t:common.count_suffix"
+                      "text": "{{item.unit_price_formatted ?? ''}} × {{item.quantity ?? 0}}$t:common.count_suffix"
                     },
                     {
                       "comment": "모바일: 상태 뱃지 + 배송정보 (인라인)",
@@ -290,7 +308,7 @@
                           "if": "{{item.can_confirm === true}}",
                           "props": {
                             "type": "button",
-                            "className": "px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors cursor-pointer"
+                            "className": "px-3 py-1.5 bg-blue-600 dark:bg-blue-500 hover:bg-blue-700 dark:hover:bg-blue-600 text-white text-xs font-medium rounded-lg transition-colors cursor-pointer"
                           },
                           "text": "$t:mypage.order_detail.confirm_purchase",
                           "actions": [
@@ -330,7 +348,7 @@
                           "if": "{{item.can_write_review === true}}",
                           "props": {
                             "type": "button",
-                            "className": "px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors cursor-pointer"
+                            "className": "px-3 py-1.5 bg-blue-600 dark:bg-blue-500 hover:bg-blue-700 dark:hover:bg-blue-600 text-white text-xs font-medium rounded-lg transition-colors cursor-pointer"
                           },
                           "text": "$t:mypage.order_detail.write_review",
                           "actions": [
@@ -372,12 +390,31 @@
                             {
                               "type": "basic",
                               "name": "Icon",
-                              "props": { "name": "check", "className": "w-3 h-3" }
+                              "props": { "name": "check", "size": "xs" }
                             },
                             {
                               "type": "basic",
                               "name": "Span",
                               "text": "$t:mypage.order_detail.review_written"
+                            }
+                          ]
+                        },
+                        {
+                          "comment": "리뷰 작성 기간 만료 안내 (모바일) — 버튼이 사라진 이유 안내",
+                          "type": "basic",
+                          "name": "Span",
+                          "if": "{{item.review_deadline_passed === true}}",
+                          "props": { "className": "inline-flex items-center gap-1 px-2.5 py-1 text-gray-400 dark:text-gray-500 text-xs font-medium" },
+                          "children": [
+                            {
+                              "type": "basic",
+                              "name": "Icon",
+                              "props": { "name": "clock", "size": "xs" }
+                            },
+                            {
+                              "type": "basic",
+                              "name": "Span",
+                              "text": "$t:mypage.order_detail.review_deadline_passed"
                             }
                           ]
                         }
@@ -387,7 +424,7 @@
                       "comment": "적용 프로모션 목록 (쿠폰/할인코드)",
                       "type": "basic",
                       "name": "Div",
-                      "if": "{{(item.subtotal_discount_amount ?? 0) > 0}}",
+                      "if": "{{(item.subtotal_discount_amount_value ?? 0) > 0}}",
                       "props": { "className": "mt-1.5 space-y-1" },
                       "children": [
                         {
@@ -401,7 +438,7 @@
                             {
                               "type": "basic",
                               "name": "Icon",
-                              "props": { "name": "ticket", "className": "w-3.5 h-3.5 text-red-500 dark:text-red-400" }
+                              "props": { "name": "ticket", "className": "text-red-500 dark:text-red-400", "size": "xs" }
                             },
                             {
                               "type": "basic",
@@ -422,7 +459,7 @@
                             {
                               "type": "basic",
                               "name": "Icon",
-                              "props": { "name": "tag", "className": "w-3.5 h-3.5 text-orange-500 dark:text-orange-400" }
+                              "props": { "name": "tag", "className": "text-orange-500 dark:text-orange-400", "size": "xs" }
                             },
                             {
                               "type": "basic",
@@ -443,7 +480,7 @@
                             {
                               "type": "basic",
                               "name": "Icon",
-                              "props": { "name": "gift", "className": "w-3.5 h-3.5 text-purple-500 dark:text-purple-400" }
+                              "props": { "name": "gift", "className": "text-purple-500 dark:text-purple-400", "size": "xs" }
                             },
                             {
                               "type": "basic",
@@ -459,19 +496,19 @@
                       "comment": "적용 배송정책",
                       "type": "basic",
                       "name": "Div",
-                      "if": "{{(order.data.shipping_policy_applied_snapshot ?? []).find(sp => sp.product_option_id === item.product_option_id)}}",
+                      "if": "{{(order.data.shipping_policy_applied_snapshot?.items ?? []).find(sp => sp.product_option_id === item.product_option_id)}}",
                       "props": { "className": "mt-1.5 flex items-center gap-1.5" },
                       "children": [
                         {
                           "type": "basic",
                           "name": "Icon",
-                          "props": { "name": "truck", "className": "w-3.5 h-3.5 text-gray-400 dark:text-gray-500" }
+                          "props": { "name": "truck", "className": "text-gray-400 dark:text-gray-500", "size": "xs" }
                         },
                         {
                           "type": "basic",
                           "name": "Span",
                           "props": { "className": "text-xs text-gray-500 dark:text-gray-400" },
-                          "text": "{{(order.data.shipping_policy_applied_snapshot ?? []).find(sp => sp.product_option_id === item.product_option_id)?.policy?.policy_name ?? ''}}"
+                          "text": "{{(order.data.shipping_policy_applied_snapshot?.items ?? []).find(sp => sp.product_option_id === item.product_option_id)?.policy?.policy_name ?? ''}}"
                         },
                         {
                           "type": "basic",
@@ -483,15 +520,15 @@
                           "comment": "배송비가 있을 때",
                           "type": "basic",
                           "name": "Span",
-                          "if": "{{((order.data.shipping_policy_applied_snapshot ?? []).find(sp => sp.product_option_id === item.product_option_id)?.policy?.standalone_shipping_amount ?? 0) > 0}}",
+                          "if": "{{((order.data.shipping_policy_applied_snapshot?.items ?? []).find(sp => sp.product_option_id === item.product_option_id)?.policy?.standalone_shipping_amount ?? 0) > 0}}",
                           "props": { "className": "text-xs text-gray-500 dark:text-gray-400" },
-                          "text": "{{(order.data.shipping_policy_applied_snapshot ?? []).find(sp => sp.product_option_id === item.product_option_id)?.policy?.standalone_shipping_amount_formatted ?? ''}}"
+                          "text": "{{(order.data.shipping_policy_applied_snapshot?.items ?? []).find(sp => sp.product_option_id === item.product_option_id)?.policy?.standalone_shipping_amount_formatted ?? ''}}"
                         },
                         {
                           "comment": "무료배송일 때",
                           "type": "basic",
                           "name": "Span",
-                          "if": "{{((order.data.shipping_policy_applied_snapshot ?? []).find(sp => sp.product_option_id === item.product_option_id)?.policy?.standalone_shipping_amount ?? 0) === 0}}",
+                          "if": "{{((order.data.shipping_policy_applied_snapshot?.items ?? []).find(sp => sp.product_option_id === item.product_option_id)?.policy?.standalone_shipping_amount ?? 0) === 0}}",
                           "props": { "className": "text-xs text-green-600 dark:text-green-400 font-medium" },
                           "text": "$t:mypage.order_detail.free_shipping"
                         }
@@ -514,14 +551,14 @@
                       "comment": "금액 (할인 있을 때)",
                       "type": "basic",
                       "name": "Div",
-                      "if": "{{(item.subtotal_discount_amount ?? 0) > 0}}",
+                      "if": "{{(item.subtotal_discount_amount_value ?? 0) > 0}}",
                       "props": { "className": "text-right" },
                       "children": [
                         {
                           "type": "basic",
                           "name": "Span",
                           "props": { "className": "text-sm text-gray-400 dark:text-gray-500 line-through" },
-                          "text": "{{item.mc_subtotal_price?.[_global.preferredCurrency ?? 'KRW']?.formatted ?? item.subtotal_price_formatted ?? ''}}",
+                          "text": "{{item.subtotal_price_formatted ?? ''}}",
                           "responsive": {
                             "portable": {
                               "props": { "className": "text-xs text-gray-400 dark:text-gray-500 line-through" }
@@ -532,7 +569,7 @@
                           "type": "basic",
                           "name": "Span",
                           "props": { "className": "text-base font-bold text-gray-900 dark:text-white ml-1" },
-                          "text": "{{item.mc_final_amount?.[_global.preferredCurrency ?? 'KRW']?.formatted ?? ''}}",
+                          "text": "{{item.mc_final_amount?.[order.data.base_currency ?? _global.preferredCurrency ?? _global.defaultCurrency]?.formatted ?? item.subtotal_price_formatted ?? ''}}",
                           "responsive": {
                             "portable": {
                               "props": { "className": "text-sm font-bold text-gray-900 dark:text-white ml-1" }
@@ -545,9 +582,9 @@
                       "comment": "금액 (할인 없을 때)",
                       "type": "basic",
                       "name": "Span",
-                      "if": "{{(item.subtotal_discount_amount ?? 0) === 0}}",
+                      "if": "{{(item.subtotal_discount_amount_value ?? 0) === 0}}",
                       "props": { "className": "text-base font-bold text-gray-900 dark:text-white" },
-                      "text": "{{item.mc_subtotal_price?.[_global.preferredCurrency ?? 'KRW']?.formatted ?? item.subtotal_price_formatted ?? ''}}",
+                      "text": "{{item.subtotal_price_formatted ?? ''}}",
                       "responsive": {
                         "portable": {
                           "props": { "className": "text-sm font-bold text-gray-900 dark:text-white" }
@@ -560,7 +597,7 @@
                       "name": "Div",
                       "props": { "className": "flex flex-wrap gap-x-2 justify-end" },
                       "iteration": {
-                        "source": "{{Object.entries(item.mc_final_amount ?? item.mc_subtotal_price ?? {}).filter(([code]) => code !== (_global.preferredCurrency ?? 'KRW'))}}",
+                        "source": "{{Object.entries(item.mc_final_amount ?? item.mc_subtotal_price ?? {}).filter(([code]) => code !== (order.data.base_currency ?? _global.preferredCurrency ?? _global.defaultCurrency))}}",
                         "item_var": "currency"
                       },
                       "children": [
@@ -602,7 +639,7 @@
                         {
                           "type": "basic",
                           "name": "Icon",
-                          "props": { "name": "truck", "className": "w-3 h-3" }
+                          "props": { "name": "truck", "size": "xs" }
                         },
                         {
                           "type": "basic",
@@ -630,7 +667,7 @@
                       },
                       "props": {
                         "type": "button",
-                        "className": "px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors cursor-pointer"
+                        "className": "px-3 py-1.5 bg-blue-600 dark:bg-blue-500 hover:bg-blue-700 dark:hover:bg-blue-600 text-white text-xs font-medium rounded-lg transition-colors cursor-pointer"
                       },
                       "text": "$t:mypage.order_detail.confirm_purchase",
                       "actions": [
@@ -675,7 +712,7 @@
                       },
                       "props": {
                         "type": "button",
-                        "className": "px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors cursor-pointer"
+                        "className": "px-3 py-1.5 bg-blue-600 dark:bg-blue-500 hover:bg-blue-700 dark:hover:bg-blue-600 text-white text-xs font-medium rounded-lg transition-colors cursor-pointer"
                       },
                       "text": "$t:mypage.order_detail.write_review",
                       "actions": [
@@ -722,12 +759,36 @@
                         {
                           "type": "basic",
                           "name": "Icon",
-                          "props": { "name": "check", "className": "w-3 h-3" }
+                          "props": { "name": "check", "size": "xs" }
                         },
                         {
                           "type": "basic",
                           "name": "Span",
                           "text": "$t:mypage.order_detail.review_written"
+                        }
+                      ]
+                    },
+                    {
+                      "comment": "리뷰 작성 기간 만료 안내 (PC) — 버튼이 사라진 이유 안내",
+                      "type": "basic",
+                      "name": "Span",
+                      "if": "{{false}}",
+                      "responsive": {
+                        "desktop": {
+                          "if": "{{item.review_deadline_passed === true}}"
+                        }
+                      },
+                      "props": { "className": "inline-flex items-center gap-1 px-2.5 py-1 text-gray-400 dark:text-gray-500 text-xs font-medium" },
+                      "children": [
+                        {
+                          "type": "basic",
+                          "name": "Icon",
+                          "props": { "name": "clock", "size": "xs" }
+                        },
+                        {
+                          "type": "basic",
+                          "name": "Span",
+                          "text": "$t:mypage.order_detail.review_deadline_passed"
                         }
                       ]
                     }

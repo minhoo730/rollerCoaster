@@ -170,10 +170,17 @@ notification_definitions 레코드:
 
 알림 발송 리스너는 기본적으로 큐로 디스패치되며, 큐 워커는 별도 프로세스라 `Auth::user()`/`App::getLocale()`이 모두 리셋됩니다. 그러나 G7은 디스패치 시점의 컨텍스트를 자동 복원하므로 다음이 보장됩니다:
 
-- 발송 시점의 사용자 로케일이 자동 복원되어 다국어 메시지(메일 본문, 푸시 텍스트 등)가 원래 요청 언어로 정확히 발송
 - 알림 발송 로그(`NotificationLogListener`)의 행위자가 실제 트리거한 사용자로 정상 기록
 
 리스너 코드는 변경 불필요 — 평소처럼 `Auth::user()`, `__('...')` 호출하면 됩니다.
+
+#### 알림 언어는 수신자 기준
+
+알림 본문/제목의 렌더 언어는 요청자(트리거한 관리자/사용자)의 app locale 이 아니라 **수신자 본인 언어(`users.language`)** 로 결정됩니다. 관리자가 한국어 UI 에서 영어 사용자에게 주문 알림을 보내도, 그 알림은 수신자 언어로 렌더됩니다.
+
+- `User` 는 Laravel `HasLocalePreference` contract 를 구현하며, `preferredLocale()` 이 `users.language`(SSoT)를 반환합니다. 빈값/미지원 로케일이면 `config('app.locale')` 으로 폴백합니다 (요청자 locale 폴백 없음).
+- 비회원(`GuestNotifiable`)도 동일 contract 를 구현하며, 발송 트리거 시점에 저장된 로케일(예: 주문 시 `orderer_locale`)을 `guest_recipient.locale` 로 받아 `preferredLocale()` 이 반환합니다. 미저장 시 `app locale` 폴백.
+- 렌더 3지점(`GenericNotification::toMail`/`toArray`, `NotificationDispatcher::resolveRenderedContent`)은 `BaseNotification::resolveNotifiableLocale($notifiable)` 헬퍼로 수신자 선호 로케일을 우선 해석합니다. 알림 렌더에서 `$notifiable->locale` 을 직접 참조하지 않습니다 (해당 속성은 존재하지 않아 항상 폴백됨).
 
 > 자세한 동작은 [extension/hooks.md "사용자 컨텍스트 자동 복원"](../extension/hooks.md) 참조
 
@@ -190,10 +197,12 @@ notification_definitions 레코드:
 
 | type | 설명 | value | 예시 |
 |------|------|-------|------|
-| `trigger_user` | 이벤트 유발자 | - | 주문자, 가입자 |
+| `trigger_user` | 이벤트 유발자 (회원 User 또는 비회원 게스트) | - | 주문자, 가입자 |
 | `related_user` | 관련 사용자 | relation 키 | 문의 작성자 |
 | `role` | 역할 기반 | role identifier | admin, manager |
 | `specific_users` | 특정 사용자 | user UUID 배열 | ["uuid1", "uuid2"] |
+
+> `trigger_user` 는 회원/비회원을 동일 규칙으로 처리합니다. context 에 `trigger_user_id` 가 있으면 회원(User), 없고 표준 키 `guest_recipient` 가 있으면 비회원([비회원 발송](#비회원게스트-알림-발송) 참조)으로 해석됩니다.
 
 ### JSON 구조
 
@@ -285,9 +294,12 @@ return [
 | order_shipped | sirsoft-ecommerce.order.after_ship | mail, database |
 | order_completed | sirsoft-ecommerce.order.after_complete | mail, database |
 | order_cancelled | sirsoft-ecommerce.order.after_cancel | mail, database |
-| new_order_admin | sirsoft-ecommerce.order.after_create | mail, database |
+| order_pending_deposit | sirsoft-ecommerce.order.after_create | mail, database |
+| new_order_admin | sirsoft-ecommerce.order.after_admin_notify | mail, database |
 | inquiry_received | sirsoft-ecommerce.product_inquiry.after_create | mail, database |
 | inquiry_replied | sirsoft-ecommerce.product_inquiry.after_reply | mail, database |
+
+> `new_order_admin` 의 `order.after_admin_notify` 훅은 결제수단별로 발화 시점이 다르다. `OrderProcessingService` 가 무통장/비-PG/0원 주문은 주문 생성 시점에, 카드(PG) 주문은 결제완료(`completePayment`) 시점에 1회 발화한다. 카드 주문은 생성 시점이 `pending_order`(결제 전)라 그 시점 발송 시 결제 미완료/이탈 주문에 오발송된다. `order_pending_deposit` 는 무통장 한정으로 `EcommerceNotificationDataListener` 가 dbank 외 결제수단을 빈 결과로 게이팅한다.
 
 **발송 리스너**: `EcommerceNotificationListener` (방식 A — 직접 호출)
 
@@ -367,7 +379,7 @@ public function getNotificationDefinitions(): array
 
 ### 금지 사항
 
-- 모듈/플러그인 측에 별도 `*NotificationDefinitionSeeder.php` 파일을 두면 안 됩니다. 동일 데이터를 두 곳에서 유지하면 SSoT 가 깨지며, audit 룰 `notification-seeder-orphan` 이 차단합니다.
+- 모듈/플러그인 측에 별도 `*NotificationDefinitionSeeder.php` 파일을 두면 안 됩니다. 동일 데이터를 두 곳에서 유지하면 SSoT 가 깨지며, 정적 검사가 차단합니다.
 - 코어는 `database/seeders/NotificationDefinitionSeeder.php` 가 fresh install 진입점으로 유지되지만, 데이터 자체는 `config/core.php` 가 SSoT 입니다 (시더는 config 를 읽기만 함).
 
 ---
@@ -564,6 +576,116 @@ HookManager::addFilter(
 ```
 
 GenericNotification의 `__call()`이 `toFcm()` 호출을 `{hookPrefix}.notification.to_fcm` Filter 훅으로 위임합니다.
+
+---
+
+## 비회원(게스트) 알림 발송
+
+user_id 없는 비회원(주문자 이메일/이름만 보유)도 회원과 동일한 발송 경로로 알림(이메일)을 받습니다. 비회원을 위한 별도 발송 흐름을 만들지 않고, **1급 수신자 값 객체**로 승격하여 기존 파이프라인을 그대로 탑니다.
+
+### 핵심 구성
+
+| 구성 | 위치 | 역할 |
+|------|------|------|
+| `GuestNotifiable` | `app/Notifications/GuestNotifiable.php` | 비회원 1급 수신자. Laravel `Notifiable` 트레잇 + `HasLocalePreference` 구현 (User 와 동일 계약). email/name/locale 보유 |
+| `GuestRecipientInterface` | `app/Contracts/Notifications/GuestRecipientInterface.php` | 게스트 판별 코어 계약 (`isGuest()`). 게이트가 구체 타입(User) 검사 대신 이 계약 사용 |
+| 표준 context 키 `guest_recipient` | `{email, name, locale}` | resolver 의 `trigger_user` 규칙이 user_id 없을 때 이 키로 GuestNotifiable 생성 |
+
+### 수신자 해석 (NotificationRecipientResolver)
+
+`trigger_user` 규칙은 회원/비회원 분기 없이 동작합니다.
+
+```php
+// extract_data 필터에서 비회원 컨텍스트 제공
+'context' => [
+    'trigger_user_id' => null,                    // 비회원이므로 null
+    'guest_recipient' => [                         // 코어 표준 키
+        'email' => $ordererEmail,
+        'name' => $ordererName,
+        'locale' => $ordererLocale,               // 없으면 null → app locale 폴백
+    ],
+]
+```
+
+- `trigger_user_id` 가 있으면 User, 없고 `guest_recipient` 가 있으면 GuestNotifiable 을 수신자로 반환합니다.
+- 중복 제거 키는 네임스페이스 분리: 회원 `user:{id}` / 비회원 `guest:{이메일 해시}` — null-id 게스트가 하나로 뭉개지지 않습니다.
+- `exclude_trigger_user` 는 회원(user_id) 기준이라 게스트 수신자를 깨뜨리지 않습니다.
+
+### 채널 메타의 화면 표시 키 (hidden_tab · tab_channels · tab_label_key · hidden_template_editor)
+
+확장이 `core.notification.filter_available_channels` 훅으로 등록하는 채널 메타는 임의 필드를 보존해 프론트(`availableChannels` 데이터소스)까지 그대로 도달한다. 관리자 알림 설정 화면(코어 `admin_settings` · 게시판 `admin_board_settings` · 이커머스 `admin_ecommerce_settings`)은 다음 범용 키를 해석한다. 특정 확장 이름을 알지 못하며, 키가 없으면 종전과 동일하게 동작한다.
+
+| 키 | 타입 | 효과 |
+| --- | --- | --- |
+| `hidden_tab` | bool | 채널 서브탭만 숨긴다. 채널 토글 카드·발송 축은 그대로 |
+| `tab_channels` | string[] | 이 채널의 탭이 대표하는 채널 id 목록. 목록 중 하나라도 활성 저장이면 탭을 노출한다(여러 채널을 하나의 탭으로 묶을 때) |
+| `tab_label_key` | string | 탭 라벨용 프론트 lang 키(`$t` 해석). 카드 라벨(`name_key`)과 분리 |
+| `hidden_template_editor` | bool | 알림 템플릿 [편집] 모달에서 코어의 언어탭·제목·본문·클릭 URL·변수 안내·[미리보기]·코어 [저장]을 숨긴다. 그 채널의 본문 규격이 코어 템플릿과 달라 확장이 편집기와 저장을 대신할 때 선언한다. 수신자 규칙·[취소]는 남는다 |
+
+`hidden_template_editor` 를 선언한 확장은 편집 모달의 확장 지점 두 곳에 자기 UI 를 주입한다(3면 공통 이름 — extension_point 파일 1본으로 세 화면에 주입된다).
+
+| extension_point | 위치 | props |
+| --- | --- | --- |
+| `notification_template_form_sections` | 수신자 규칙 다음, 코어 언어탭 앞 | `definition` · `template` · `channel` · `modalId` · `stateKey`(면별 코어 모달 상태 키) · `saveEndpoint`(코어 채널 템플릿 PUT) · `refetchDataSourceId`(면별 알림 정의 목록) |
+| `notification_template_form_footer_actions` | [취소] 와 코어 [저장] 사이 | 위와 동일 |
+
+확장은 이 props 만으로 코어 저장 계약을 이행한다 — 코어 엔드포인트·상태 키를 리터럴로 적지 않는다. 코어 채널 템플릿의 수신자 규칙은 `_global?.[extensionPointProps.stateKey]?.recipients` 로 읽어 바뀐 경우에만 `saveEndpoint` 로 PUT 한다(매번 PUT 하면 코어가 행을 "사용자 수정" 으로 표시한다). 선례: `plugins/_bundled/sirsoft-message_bizppurio/resources/extensions/notification_template_form_*.json`. 행 하단 확장 지점 `notification_definition_row_footer`(props `definition` · `activeChannel`)는 상태 요약 같은 읽기 전용 UI 용이다.
+
+### 정의 타입 라벨의 공급처
+
+관리자 알림 설정 화면의 정의 목록 제목은 DB `name` 컬럼이 아니라 프론트 다국어 키
+`admin.settings.notification_definitions.types.{type}` 로 렌더된다. 이 키의 공급처는 정의 소유자를 따른다.
+
+| 정의 소유 | 라벨 위치 |
+| --- | --- |
+| 코어 (`config/core.php` `notification_definitions`) | admin 템플릿 `lang/partial/{ko,en}/admin.json` 의 `settings.notification_definitions.types` (ja 는 템플릿 언어팩) |
+| 모듈 | 각 모듈의 알림 설정 화면과 lang 이 담당 |
+
+키가 없으면 예외도 경고도 없이 원시 키 문자열이 화면 제목으로 그대로 노출된다. 코어 정의를
+추가하는 변경은 반드시 admin 템플릿 라벨(ko·en)과 템플릿 언어팩(ja)을 함께 추가해야 하며,
+코어 정의 전수 ↔ 템플릿 라벨 패리티는 정적 검사(테스트)가 자동 대조한다.
+
+## 채널 템플릿을 시드하는 확장의 [기본값 복원] 의무
+
+확장이 시딩 필터(`seed.notifications.translations` 등)로 자기 채널의 템플릿 행을 알림 정의에 끼워 넣으면, 같은 증강을
+`core.notification.filter_default_definitions` 에도 걸어야 한다. 관리자 화면의 [기본값 복원]은
+`NotificationTemplateService::getDefaultTemplateData()` 가 이 필터를 통과시킨 정의 배열에서 해당 채널의 template 을 찾아
+복원하므로, 시드 출처와 복원 출처가 같은 함수가 아니면 그 채널 행의 복원은 "기본 템플릿 데이터를 찾을 수 없습니다" 로 끝난다
+(시드는 되는데 복원만 안 되는 상태라 오류 로그도 남지 않는다). 모듈이 자기 정의를 이 필터에 보태는 priority(20) 뒤에서 돌아야
+모듈 정의도 증강된다. 선례: `plugins/_bundled/sirsoft-message_bizppurio/src/Listeners/SeedChannelTemplatesListener.php`.
+
+### 채널별 비회원 발송 허용 (allow_guest)
+
+채널이 비회원 발송을 허용하는지는 `config/notification.php` 채널 메타의 `allow_guest` 로 선언합니다.
+
+```php
+['id' => 'mail',     ..., 'allow_guest' => true ],   // 비회원 가능
+['id' => 'database', ..., 'allow_guest' => false],   // 비회원 불가 (사이트내 알림)
+```
+
+- **미선언 채널은 기본 차단(false)** — 비회원 개인정보(이메일 등)가 의도치 않게 새 프로바이더로 노출되는 것을 막는 opt-in 정책입니다. (확장 단위 채널 활성 `isChannelEnabledForExtension` 의 "미선언=활성" 과 반대 방향)
+- 모듈/플러그인이 `core.notification.filter_available_channels` 훅으로 추가하는 신규 채널(SMS·알림톡·앱푸시 등)도 동일하게 `allow_guest` 를 명시해야 비회원 발송이 허용됩니다.
+- `NotificationChannelService::isChannelGuestAllowed($channelId)` 가 단일 진입점이며, `core.notification.channel_guest_allowed` 필터 훅으로 동적 재정의 가능합니다.
+
+### 게이트 적용 지점
+
+`GenericNotification::via()` 의 게이트 체인에 게스트 게이트가 합류합니다 (회원은 무영향).
+
+```text
+via()
+  ├→ [게스트 게이트] notifiable 이 게스트 + 채널 allow_guest=false → 제외(skipped)
+  ├→ isChannelEnabledForExtension (확장 채널 토글)
+  └→ ChannelReadinessChecker (채널 설정 완료)
+```
+
+게스트 + database → 게이트 제외 → 발송 안 됨. database 가 차단되므로 `notifications` morph 테이블에 null-id 행이 생기지 않습니다.
+
+### 발송 로깅
+
+비회원 발송도 기존 `notification_logs` 에 정상 기록됩니다 (`NotificationDispatcher::buildContext`).
+
+- 게스트는 `recipient_user_id = null` + `recipient_identifier = 이메일` 로 기록됩니다. 게스트의 합성 키(`guest:...`)는 정수 FK 컬럼에 넣지 않습니다.
+- 관리자 발송 이력 조회(`GET /api/admin/notification-logs?search={이메일}`)에서 `recipient_identifier` LIKE 검색으로 비회원 발송을 찾을 수 있습니다 (전체 접근 권한 기준).
 
 ### 채널 메타데이터 다국어 규칙
 

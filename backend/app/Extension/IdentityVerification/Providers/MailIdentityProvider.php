@@ -29,6 +29,15 @@ use Illuminate\Support\Str;
  */
 class MailIdentityProvider implements IdentityVerificationInterface
 {
+    /** @var int 인증코드 최소 길이 */
+    public const MIN_CODE_LENGTH = 4;
+
+    /** @var int 인증코드 최대 길이 */
+    public const MAX_CODE_LENGTH = 10;
+
+    /** @var int 인증코드 기본 길이 (경계 위반 시 폴백) */
+    public const DEFAULT_CODE_LENGTH = 6;
+
     public const ID = 'g7:core.mail';
 
     /**
@@ -67,6 +76,18 @@ class MailIdentityProvider implements IdentityVerificationInterface
     public function getChannels(): array
     {
         return ['email'];
+    }
+
+    /**
+     * 채널 키 → 다국어 표시 라벨 맵을 반환합니다.
+     *
+     * @return array<string, string> 채널 키 → 라벨 맵
+     */
+    public function getChannelLabels(): array
+    {
+        return [
+            'email' => __('identity.channels.email'),
+        ];
     }
 
     /**
@@ -193,6 +214,7 @@ class MailIdentityProvider implements IdentityVerificationInterface
             renderHint: $renderHint,
             publicPayload: $publicPayload,
             metadata: [],
+            maxAttempts: $maxAttempts,
         );
     }
 
@@ -244,10 +266,16 @@ class MailIdentityProvider implements IdentityVerificationInterface
         ]);
 
         if ($storedHash === null || ! Hash::check($provided, $storedHash)) {
+            // 이번 오답으로 max_attempts 에 도달하면 잠금(Failed)으로 전환하고, 사용자에게
+            // 일반 오답 안내 대신 "최대 시도 초과 + 재요청" 안내(MAX_ATTEMPTS)를 반환한다.
+            // 프론트 모달은 도달 즉시 확인 버튼을 비활성화하므로 추가 시도를 기대할 수 없어,
+            // 막 소진된 이 응답에서 안내하지 않으면 max_attempts 문구가 사용자에게 영영 도달하지 못한다.
             if (($log->attempts + 1) >= $log->max_attempts) {
                 $this->logRepository->updateById($log->id, [
                     'status' => IdentityVerificationStatus::Failed->value,
                 ]);
+
+                return VerificationResult::failure($challengeId, self::ID, 'MAX_ATTEMPTS', 'identity.errors.max_attempts');
             }
 
             return VerificationResult::failure($challengeId, self::ID, 'INVALID_CODE', 'identity.errors.invalid_code');
@@ -295,7 +323,11 @@ class MailIdentityProvider implements IdentityVerificationInterface
             'code_length' => [
                 'label' => __('identity.providers.mail.settings.code_length'),
                 'type' => 'integer',
-                'default' => 6,
+                'default' => self::DEFAULT_CODE_LENGTH,
+                // 경계는 스키마가 선언한다 — 서비스가 자체 상수로 조용히 클램프하면
+                // 관리자가 설정한 값이 화면 안내와 다르게 동작한다.
+                'min' => self::MIN_CODE_LENGTH,
+                'max' => self::MAX_CODE_LENGTH,
                 'help' => __('identity.providers.mail.settings.code_length_help'),
             ],
             'from_address' => [
@@ -326,9 +358,30 @@ class MailIdentityProvider implements IdentityVerificationInterface
         return $purpose === 'password_reset' ? 'link' : 'text_code';
     }
 
+    /**
+     * 지정 길이의 숫자 인증코드를 생성합니다.
+     *
+     * 경계를 벗어난 값은 조용히 클램프하지 않습니다 — 클램프는 관리자가 설정한 값과
+     * 실제 동작을 어긋나게 만듭니다. 다만 런타임 인증 흐름을 중단시키는 것은 위험하므로
+     * 예외 대신 경고 로그 + 스키마 기본값 폴백으로 처리합니다.
+     *
+     * @param  int  $length  요청 코드 길이
+     * @return string 생성된 숫자 코드
+     */
     protected function generateNumericCode(int $length): string
     {
-        $length = max(4, min(10, $length));
+        if ($length < self::MIN_CODE_LENGTH || $length > self::MAX_CODE_LENGTH) {
+            Log::warning('IDV 인증코드 길이가 허용 범위를 벗어나 기본값으로 대체됨', [
+                'provider_id' => self::ID,
+                'requested' => $length,
+                'min' => self::MIN_CODE_LENGTH,
+                'max' => self::MAX_CODE_LENGTH,
+                'applied' => self::DEFAULT_CODE_LENGTH,
+            ]);
+
+            $length = self::DEFAULT_CODE_LENGTH;
+        }
+
         $code = '';
         for ($i = 0; $i < $length; $i++) {
             $code .= (string) random_int(0, 9);
@@ -349,15 +402,9 @@ class MailIdentityProvider implements IdentityVerificationInterface
     /**
      * IDV 전용 메시지 디스패처를 통해 메일을 발송합니다.
      *
-     * @param  string  $email
-     * @param  string  $purpose
      * @param  string  $renderHint  text_code | link
-     * @param  string  $challengeId
-     * @param  string|null  $policyKey
      * @param  string|null  $code  text_code 흐름 시 평문 인증 코드
      * @param  string|null  $linkToken  link 흐름 시 서명 링크용 raw 토큰
-     * @param  int  $ttlMinutes
-     * @param  Carbon  $expiresAt
      * @return bool 발송 성공 여부
      */
     protected function dispatchMessage(
@@ -411,11 +458,6 @@ class MailIdentityProvider implements IdentityVerificationInterface
 
     /**
      * link 흐름용 서명 링크를 생성합니다.
-     *
-     * @param  string  $challengeId
-     * @param  string  $linkToken
-     * @param  Carbon  $expiresAt
-     * @return string
      */
     protected function buildSignedLink(string $challengeId, string $linkToken, Carbon $expiresAt): string
     {
@@ -433,9 +475,6 @@ class MailIdentityProvider implements IdentityVerificationInterface
 
     /**
      * purpose 라벨(다국어)을 현재 로케일 문자열로 해석합니다.
-     *
-     * @param  string  $purpose
-     * @return string
      */
     protected function resolvePurposeLabel(string $purpose): string
     {

@@ -2,10 +2,11 @@
 
 namespace App\Http\Requests\Admin\Identity;
 
+use App\Contracts\Repositories\IdentityMessageDefinitionRepositoryInterface;
+use App\Contracts\Repositories\IdentityPolicyRepositoryInterface;
 use App\Extension\HookManager;
 use App\Extension\IdentityVerification\IdentityVerificationManager;
 use App\Models\IdentityMessageDefinition;
-use App\Models\IdentityPolicy;
 use App\Rules\LocaleRequiredTranslatable;
 use App\Rules\TranslatableField;
 use Closure;
@@ -26,7 +27,7 @@ class StoreIdentityMessageDefinitionRequest extends FormRequest
     /**
      * 라우트 permission 미들웨어가 담당하므로 true 고정.
      *
-     * @return bool
+     * @return bool 항상 true (권한은 라우트 permission 미들웨어가 담당)
      */
     public function authorize(): bool
     {
@@ -36,7 +37,7 @@ class StoreIdentityMessageDefinitionRequest extends FormRequest
     /**
      * 검증 규칙을 반환합니다.
      *
-     * @return array
+     * @return array<string, mixed> 검증 규칙 배열
      */
     public function rules(): array
     {
@@ -64,15 +65,13 @@ class StoreIdentityMessageDefinitionRequest extends FormRequest
         ];
 
         return HookManager::applyFilters(
-            'core.identity.message_definition.filter_store_rules',
+            'core.identity.message_definition.store_validation_rules',
             $rules,
         );
     }
 
     /**
      * provider_id 가 등록된 IDV 프로바이더인지 확인하는 closure 룰.
-     *
-     * @return Closure
      */
     protected function providerExistsRule(): Closure
     {
@@ -90,8 +89,6 @@ class StoreIdentityMessageDefinitionRequest extends FormRequest
 
     /**
      * scope_value 가 source_type='admin' 인 IdentityPolicy.key 와 일치하는지 확인.
-     *
-     * @return Closure
      */
     protected function adminPolicyKeyRule(): Closure
     {
@@ -100,9 +97,9 @@ class StoreIdentityMessageDefinitionRequest extends FormRequest
                 return;
             }
 
-            $exists = IdentityPolicy::where('key', $value)
-                ->where('source_type', 'admin')
-                ->exists();
+            // Service-Repository 패턴: Model facade 직접 호출 금지 → Repository Interface 경유.
+            $exists = app(IdentityPolicyRepositoryInterface::class)
+                ->existsByKeyAndSourceType($value, 'admin');
 
             if (! $exists) {
                 $fail(__('validation.identity_message.scope_value_not_admin_policy'));
@@ -112,8 +109,6 @@ class StoreIdentityMessageDefinitionRequest extends FormRequest
 
     /**
      * (provider_id, scope_type, scope_value) 조합 중복 검사.
-     *
-     * @return Closure
      */
     protected function scopeUniqueRule(): Closure
     {
@@ -125,12 +120,11 @@ class StoreIdentityMessageDefinitionRequest extends FormRequest
                 return;
             }
 
-            $exists = IdentityMessageDefinition::where('provider_id', $providerId)
-                ->where('scope_type', $scopeType)
-                ->where('scope_value', $value)
-                ->exists();
+            // Service-Repository 패턴: Model facade 직접 호출 금지 → Repository Interface 경유.
+            $existing = app(IdentityMessageDefinitionRepositoryInterface::class)
+                ->findByScope($providerId, $scopeType, $value);
 
-            if ($exists) {
+            if ($existing !== null) {
                 $fail(__('validation.identity_message.definition_already_exists'));
             }
         };

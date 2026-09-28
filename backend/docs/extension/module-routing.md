@@ -7,8 +7,8 @@
 ## TL;DR (5초 요약)
 
 ```text
-1. URL prefix 자동: /api/admin/[vendor-module]/...
-2. name prefix 자동: api.[vendor-module]....
+1. URL prefix 자동: /api/modules/[vendor-module]/...
+2. name prefix 자동: api.modules.[vendor-module]....
 3. 활성화된 모듈만 라우트 등록됨
 4. 프론트엔드: routes/admin.json, routes/user.json으로 admin/user 분기
 5. 레거시 routes.json은 admin으로 폴백 (경고 로그 출력)
@@ -73,6 +73,8 @@ vendor-my-module → Modules\Vendor\My\Module
 |------|-----|
 | URL prefix | `modules/{module-name}` |
 | Name prefix | `web.modules.{module-name}.` |
+
+> 라우트 이름(`{web\|api}.modules.{module-name}.{name}`)은 확장 미들웨어 타게팅의 1급 키다. `Module::getMiddleware()` 의 `targets` 는 이 라우트명 패턴으로 미들웨어 부착 대상을 지정한다. 상세: [docs/backend/middleware.md "확장 미들웨어 선언 (self-gate)"](../backend/middleware.md#확장-미들웨어-선언-self-gate).
 
 ---
 

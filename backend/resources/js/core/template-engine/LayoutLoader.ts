@@ -16,6 +16,8 @@
 import type { ComponentRegistry } from './ComponentRegistry';
 import type { ErrorHandlingMap } from '../types/ErrorHandling';
 import { createLogger } from '../utils/Logger';
+import { fetchWithRetry } from './networkResilience';
+import { suffixed } from '../support/assetUrl';
 import { G7DevToolsCore } from '../devtools/G7DevToolsCore';
 import { getApiClient } from '../api/ApiClient';
 
@@ -716,8 +718,17 @@ export class LayoutLoader {
     }
 
     // 캐시 미스 - 새로운 로딩 Promise 생성 및 캐시에 저장
+    // 실패한 promise 를 캐시에 남기면 이후 모든 재요청이 그 rejection 을 그대로 재사용해
+    // 영구 실패가 된다(네트워크가 복구돼도 다시 시도할 기회가 없다). 실패 시 캐시에서 제거.
+    // @since engine-v1.53.0
     const loadPromise = this.fetchLayout(templateId, layoutPath);
     this.layoutCache.set(cacheKey, loadPromise);
+
+    loadPromise.catch(() => {
+      if (this.layoutCache.get(cacheKey) === loadPromise) {
+        this.layoutCache.delete(cacheKey);
+      }
+    });
 
     return loadPromise;
   }
@@ -734,14 +745,14 @@ export class LayoutLoader {
     try {
       // API 엔드포인트 구성 (캐시 버전 쿼리 파라미터 추가)
       // 시스템 레이아웃 분기: __preview__ 는 별도 API 엔드포인트 사용
-      let baseUrl: string;
+      const version = this.cacheVersion > 0 ? this.cacheVersion : null;
+      let apiUrl: string;
       if (layoutPath.startsWith('__preview__/')) {
         const token = layoutPath.replace('__preview__/', '');
-        baseUrl = `/api/layouts/preview/${token}.json`;
+        apiUrl = suffixed(`/api/layouts/preview/${token}`, 'json', version);
       } else {
-        baseUrl = `/api/layouts/${templateId}/${layoutPath}.json`;
+        apiUrl = suffixed(`/api/layouts/${templateId}/${layoutPath}`, 'json', version);
       }
-      const apiUrl = this.cacheVersion > 0 ? `${baseUrl}?v=${this.cacheVersion}` : baseUrl;
 
       logger.log('Fetching layout from API:', apiUrl);
 
@@ -756,7 +767,10 @@ export class LayoutLoader {
       }
 
       // API 호출 (인증 헤더 포함)
-      const response = await fetch(apiUrl, { headers });
+      // 네트워크 일시 실패(응답 없음)에만 재시도한다. 401 등 HTTP 응답은 그대로 넘어와
+      // 아래 상태코드 분기가 종전대로 동작한다 (두 재시도는 계층이 달라 중첩되지 않는다).
+      // @since engine-v1.53.0
+      const response = await fetchWithRetry(apiUrl, { init: { headers }, label: `layout: ${layoutPath}` });
 
       // JSON 파싱 (에러 응답도 JSON일 수 있으므로 먼저 파싱)
       let responseData: any;

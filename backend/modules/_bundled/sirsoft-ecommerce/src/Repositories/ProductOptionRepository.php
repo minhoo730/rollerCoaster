@@ -2,6 +2,8 @@
 
 namespace Modules\Sirsoft\Ecommerce\Repositories;
 
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Collection as SupportCollection;
 use Modules\Sirsoft\Ecommerce\Models\ProductOption;
 use Modules\Sirsoft\Ecommerce\Repositories\Contracts\ProductOptionRepositoryInterface;
 
@@ -33,9 +35,41 @@ class ProductOptionRepository implements ProductOptionRepositoryInterface
     /**
      * {@inheritDoc}
      */
-    public function getByProductId(int $productId): \Illuminate\Database\Eloquent\Collection
+    public function findByIdWithProduct(int $id): ?ProductOption
+    {
+        return $this->model->with('product')->find($id);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function getByProductId(int $productId): Collection
     {
         return $this->model->where('product_id', $productId)->get();
+    }
+
+    /**
+     * 여러 상품의 옵션을 한 번에 조회해 상품별로 묶어 반환합니다.
+     *
+     * 항목마다 getByProductId 를 부르면 항목 수만큼 쿼리가 난다. 체크아웃처럼 여러
+     * 항목을 한꺼번에 다루는 경로는 이 메서드로 한 번에 읽는다.
+     *
+     * @param  array<int, int>  $productIds  상품 ID 목록
+     * @return SupportCollection<int, Collection> 상품 ID ⇒ 옵션 컬렉션
+     */
+    public function getByProductIds(array $productIds): SupportCollection
+    {
+        $productIds = array_values(array_unique(array_filter($productIds)));
+
+        if (empty($productIds)) {
+            return new SupportCollection;
+        }
+
+        // groupBy 는 Support\Collection 을 돌려준다 (Eloquent\Collection 이 아니다).
+        return $this->model
+            ->whereIn('product_id', $productIds)
+            ->get()
+            ->groupBy('product_id');
     }
 
     /**
@@ -43,13 +77,13 @@ class ProductOptionRepository implements ProductOptionRepositoryInterface
      *
      * 옵션의 최종 판매가 = 상품 판매가 + price_adjustment
      *
-     * @param array $optionIds 옵션 ID 배열
-     * @param string $method 변경 방식 (increase, decrease, fixed)
-     * @param int $value 변경 값
-     * @param string $unit 단위 (won, percent) - percent는 현재 조정액 기준 비율
+     * @param  array  $optionIds  옵션 ID 배열
+     * @param  string  $method  변경 방식 (increase, decrease, fixed)
+     * @param  float  $value  변경 값 (소수 통화 대응)
+     * @param  string  $unit  단위 (won, percent) - percent는 현재 조정액 기준 비율
      * @return int 업데이트된 레코드 수
      */
-    public function bulkUpdatePrice(array $optionIds, string $method, int $value, string $unit): int
+    public function bulkUpdatePrice(array $optionIds, string $method, float $value, string $unit): int
     {
         if (empty($optionIds)) {
             return 0;
@@ -78,7 +112,8 @@ class ProductOptionRepository implements ProductOptionRepositoryInterface
                 $multiplier = $method === 'increase'
                     ? (1 + $value / 100)
                     : (1 - $value / 100);
-                $newValue = (int) floor($currentValue * $multiplier);
+                // 소수 통화 대응: 절사 대신 소수 2자리 반올림 보존
+                $newValue = round((float) $currentValue * $multiplier, 2);
             } else {
                 // 원 단위 계산
                 $newValue = $method === 'increase'
@@ -97,9 +132,9 @@ class ProductOptionRepository implements ProductOptionRepositoryInterface
     /**
      * 옵션 재고 일괄 변경
      *
-     * @param array $optionIds 옵션 ID 배열
-     * @param string $method 변경 방식 (increase, decrease, set)
-     * @param int $value 변경 값
+     * @param  array  $optionIds  옵션 ID 배열
+     * @param  string  $method  변경 방식 (increase, decrease, set)
+     * @param  int  $value  변경 값
      * @return int 업데이트된 레코드 수
      */
     public function bulkUpdateStock(array $optionIds, string $method, int $value): int
@@ -217,10 +252,10 @@ class ProductOptionRepository implements ProductOptionRepositoryInterface
     /**
      * {@inheritDoc}
      */
-    public function findByIds(array $optionIds): \Illuminate\Database\Eloquent\Collection
+    public function findByIds(array $optionIds): Collection
     {
         if (empty($optionIds)) {
-            return new \Illuminate\Database\Eloquent\Collection();
+            return new Collection;
         }
 
         return $this->model
@@ -231,10 +266,10 @@ class ProductOptionRepository implements ProductOptionRepositoryInterface
     /**
      * {@inheritDoc}
      */
-    public function findByIdsWithProduct(array $optionIds): \Illuminate\Database\Eloquent\Collection
+    public function findByIdsWithProduct(array $optionIds): Collection
     {
         if (empty($optionIds)) {
-            return new \Illuminate\Database\Eloquent\Collection();
+            return new Collection;
         }
 
         return $this->model
@@ -247,15 +282,33 @@ class ProductOptionRepository implements ProductOptionRepositoryInterface
      * ID 목록으로 옵션을 조회하고 ID 키 맵으로 반환합니다 (bulk activity log lookup).
      *
      * @param  array<int, int>  $ids  옵션 ID 목록
-     * @return \Illuminate\Database\Eloquent\Collection
+     * @return Collection ID 키로 매핑된 옵션 컬렉션
      */
-    public function findByIdsKeyed(array $ids): \Illuminate\Database\Eloquent\Collection
+    public function findByIdsKeyed(array $ids): Collection
     {
         if (empty($ids)) {
-            return new \Illuminate\Database\Eloquent\Collection();
+            return new Collection;
         }
 
         return $this->model->whereIn('id', $ids)->get()->keyBy('id');
+    }
+
+    /**
+     * ID 목록으로 옵션의 변경 전 스냅샷(ID 키 배열)을 반환합니다.
+     *
+     * 일괄 변경 전 활동 로그/after 훅 전달용 스냅샷 캡처에 사용합니다.
+     *
+     * @param  array<int, int>  $optionIds  옵션 ID 목록
+     * @return array<int, array> ID 를 키로 한 옵션 배열 맵
+     */
+    public function getSnapshotsByIds(array $optionIds): array
+    {
+        if (empty($optionIds)) {
+            return [];
+        }
+
+        return $this->model->whereIn('id', $optionIds)
+            ->get()->keyBy('id')->map->toArray()->all();
     }
 
     /**

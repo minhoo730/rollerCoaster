@@ -96,6 +96,102 @@ describe('ActionDispatcher', () => {
       expect(typeof boundProps.onKeyDown).toBe('function');
     });
 
+    // 회귀: `event` 로 적은 DOM 이벤트가 React prop 으로 정규화되지 않아 핸들러가 붙지 않던 문제.
+    // 규정은 액션 키를 `type` 또는 `event` 둘 다 허용한다고 명시하는데, `event` 는 값이 그대로
+    // prop 이름이 되어 `event: "click"` 이 `props.click` 을 만들었다. React 는 그런 prop 을 무시하므로
+    // 버튼이 예외·경고 없이 죽은 채로 렌더된다(관리자 주문상세 "발급 이력" 아코디언 실제 사례).
+    it('event 키로 적은 DOM 이벤트도 React prop 으로 정규화해야 함 (click → onClick)', () => {
+      const props = {
+        actions: [
+          {
+            event: 'click',
+            handler: 'setState',
+            params: { target: 'local', expanded: true },
+          },
+        ],
+      };
+
+      const boundProps = dispatcher.bindActionsToProps(props);
+
+      expect(typeof boundProps.onClick).toBe('function');
+      expect(boundProps.click).toBeUndefined();
+    });
+
+    it('event 키의 change/keydown 도 정규화해야 함', () => {
+      const changeProps = dispatcher.bindActionsToProps({
+        actions: [{ event: 'change', handler: 'setState', params: { target: 'local' } }],
+      });
+      expect(typeof changeProps.onChange).toBe('function');
+      expect(changeProps.change).toBeUndefined();
+
+      const keyProps = dispatcher.bindActionsToProps({
+        actions: [{ event: 'keydown', handler: 'navigate', params: { path: '/x' } }],
+      });
+      expect(typeof keyProps.onKeyDown).toBe('function');
+      expect(keyProps.keydown).toBeUndefined();
+    });
+
+    // 정규화는 알려진 DOM 이벤트 이름에만 적용된다. 이미 React prop 형태이거나
+    // 확장이 발행하는 네임스페이스 이벤트(`upload:*`, `notification.received` 등)는 그대로 둔다 —
+    // 여기에 `on` 접두사를 붙이면 기존 확장 이벤트가 통째로 끊긴다.
+    it('React prop 형태와 네임스페이스 커스텀 이벤트는 그대로 둬야 함', () => {
+      const sortProps = dispatcher.bindActionsToProps({
+        actions: [{ event: 'onSortEnd', handler: 'setState', params: { target: 'local' } }],
+      });
+      expect(typeof sortProps.onSortEnd).toBe('function');
+      expect(sortProps.onOnSortEnd).toBeUndefined();
+
+      const uploadProps = dispatcher.bindActionsToProps({
+        actions: [{ event: 'upload:board_attachments', handler: 'setState', params: { target: 'local' } }],
+      });
+      expect(typeof uploadProps['upload:board_attachments']).toBe('function');
+
+      const wsProps = dispatcher.bindActionsToProps({
+        actions: [{ event: 'notification.received', handler: 'setState', params: { target: 'local' } }],
+      });
+      expect(typeof wsProps['notification.received']).toBe('function');
+    });
+
+    // 회귀: `event` 로 적은 액션은 커스텀 컴포넌트 이벤트의 payload 를 잃었다.
+    // 합성 Select/MultilingualInput 등은 `preventDefault` 없는 `{ target: { name, value } }` 를 emit 하는데,
+    // `type` 경로는 이를 synthetic event 로 승격해 `$event.target.value` 를 살리는 반면
+    // `event` 경로는 빈 `Event('custom')` 로 갈아끼워 값이 사라졌다.
+    // 증상은 "핸들러는 실행되는데 저장되는 값만 비어 있음" 이라 콘솔·네트워크에 아무 흔적이 없다.
+    it('event 키 경로도 커스텀 컴포넌트 이벤트의 $event payload 를 보존해야 함', async () => {
+      const captured: any[] = [];
+      const componentContext = {
+        state: {},
+        setState: (u: any) => captured.push(JSON.parse(JSON.stringify(u))),
+      };
+      // preventDefault 가 없는 합성 컴포넌트 이벤트
+      const customComponentEvent = { target: { name: 'category', value: '기술문의' } };
+
+      const params = {
+        target: 'local',
+        form: { category: '{{$event.target.value}}' },
+      };
+
+      const viaEvent = dispatcher.bindActionsToProps(
+        { actions: [{ event: 'change', handler: 'setState', params }] },
+        {},
+        componentContext
+      );
+      const viaType = dispatcher.bindActionsToProps(
+        { actions: [{ type: 'change' as const, handler: 'setState', params }] },
+        {},
+        componentContext
+      );
+
+      viaEvent.onChange(customComponentEvent);
+      viaType.onChange(customComponentEvent);
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(captured).toHaveLength(2);
+      // 두 경로가 같은 결과여야 한다 (어느 키로 적었는지가 값 보존을 가르면 안 된다)
+      expect(captured[0].form).toEqual({ category: '기술문의' });
+      expect(captured[1].form).toEqual({ category: '기술문의' });
+    });
+
     it('동일한 이벤트 타입의 여러 액션을 그룹화해야 함', () => {
       const props = {
         actions: [
@@ -275,6 +371,110 @@ describe('ActionDispatcher', () => {
         boundProps.onKeyDown(escapeEvent);
 
         expect(mockSetState).toHaveBeenCalled();
+      });
+
+      // 공개#54 — IME(한글/일본어/중국어) 조합 중 Enter 글자누락/이중제출 방지
+      describe('IME 조합 가드 (공개#54)', () => {
+        /** KeyboardEvent 에 isComposing/keyCode 를 강제 주입한다 (생성자 옵션 미지원). */
+        const makeKeyEvent = (
+          key: string,
+          opts: { isComposing?: boolean; keyCode?: number } = {},
+        ): KeyboardEvent => {
+          const e = new KeyboardEvent('keydown', { key });
+          if (opts.isComposing !== undefined) {
+            Object.defineProperty(e, 'isComposing', { value: opts.isComposing, configurable: true });
+          }
+          if (opts.keyCode !== undefined) {
+            Object.defineProperty(e, 'keyCode', { value: opts.keyCode, configurable: true });
+          }
+          return e;
+        };
+
+        const enterFilterProps = {
+          actions: [
+            {
+              type: 'keydown' as const,
+              key: 'Enter',
+              handler: 'navigate',
+              params: { path: '/search' },
+            },
+          ],
+        };
+
+        it('T1: isComposing=true 인 Enter 는 key 필터 액션을 실행하지 않아야 함', () => {
+          const boundProps = dispatcher.bindActionsToProps(enterFilterProps, {}, { state: {}, setState: vi.fn() });
+          mockNavigate.mockClear();
+
+          boundProps.onKeyDown(makeKeyEvent('Enter', { isComposing: true }));
+
+          expect(mockNavigate).not.toHaveBeenCalled();
+        });
+
+        it('T2: keyCode=229 인 Enter(isComposing 미지원)도 실행하지 않아야 함', () => {
+          const boundProps = dispatcher.bindActionsToProps(enterFilterProps, {}, { state: {}, setState: vi.fn() });
+          mockNavigate.mockClear();
+
+          boundProps.onKeyDown(makeKeyEvent('Enter', { keyCode: 229 }));
+
+          expect(mockNavigate).not.toHaveBeenCalled();
+        });
+
+        it('T3: isComposing=false 인 일반 Enter 는 정상 실행되어야 함', () => {
+          const boundProps = dispatcher.bindActionsToProps(enterFilterProps, {}, { state: {}, setState: vi.fn() });
+          mockNavigate.mockClear();
+
+          boundProps.onKeyDown(makeKeyEvent('Enter', { isComposing: false }));
+
+          expect(mockNavigate).toHaveBeenCalledWith('/search', { replace: false });
+        });
+
+        it('T4: key 필터 없는 keydown 액션은 조합 중에도 실행되어야 함 (회귀 방지)', () => {
+          const mockSetState = vi.fn();
+          const props = {
+            actions: [
+              {
+                type: 'keydown' as const,
+                handler: 'setState',
+                params: { target: 'local', value: 'typed' },
+              },
+            ],
+          };
+          const boundProps = dispatcher.bindActionsToProps(props, {}, { state: {}, setState: mockSetState });
+
+          boundProps.onKeyDown(makeKeyEvent('x', { isComposing: true }));
+
+          expect(mockSetState).toHaveBeenCalled();
+        });
+
+        it('T5: isComposing=true 인 Escape 는 key 필터 액션을 실행하지 않아야 함', () => {
+          const mockSetState = vi.fn();
+          const props = {
+            actions: [
+              {
+                type: 'keydown' as const,
+                key: 'Escape',
+                handler: 'setState',
+                params: { target: 'local', isOpen: false },
+              },
+            ],
+          };
+          const boundProps = dispatcher.bindActionsToProps(props, {}, { state: {}, setState: mockSetState });
+
+          boundProps.onKeyDown(makeKeyEvent('Escape', { isComposing: true }));
+
+          expect(mockSetState).not.toHaveBeenCalled();
+        });
+
+        it('isImeComposing 헬퍼 분기: isComposing/keyCode/둘다 false/undefined', () => {
+          const helper = (dispatcher as unknown as {
+            isImeComposing: (e: { isComposing?: boolean; keyCode?: number }) => boolean;
+          }).isImeComposing.bind(dispatcher);
+
+          expect(helper({ isComposing: true })).toBe(true);
+          expect(helper({ keyCode: 229 })).toBe(true);
+          expect(helper({ isComposing: false, keyCode: 13 })).toBe(false);
+          expect(helper({})).toBe(false);
+        });
       });
 
       it('admin_user_list.json 시나리오: change와 keydown+Enter 조합', () => {
@@ -736,6 +936,60 @@ describe('ActionDispatcher', () => {
       await handler(mockEvent);
 
       expect(mockNavigate).toHaveBeenCalledWith('/admin/users?new_param=value', { replace: false });
+    });
+
+    it('query: {} 이면 현재 쿼리를 전부 유지해야 함', async () => {
+      const action: ActionDefinition = {
+        type: 'click',
+        handler: 'navigate',
+        params: { path: '/admin/users/7', mergeQuery: true, query: {} },
+      };
+
+      await dispatcher.createHandler(action)({
+        preventDefault: vi.fn(),
+        type: 'click',
+        target: null,
+      } as unknown as Event);
+
+      const navigatedPath = mockNavigate.mock.calls[0][0];
+      expect(navigatedPath).toContain('page=1');
+      expect(navigatedPath).toContain('filter=active');
+    });
+
+    // engine-v1.54.2: 이전에는 `if (params.query)` 게이트에 걸려 병합이 통째로 no-op 이 되고
+    // 쿼리가 전부 사라졌다. 작성자 관점에서 가장 자연스러운 형태가 정반대로 동작하던 함정.
+    it('query 키가 없어도 mergeQuery: true 면 현재 쿼리를 유지해야 함 (engine-v1.54.2)', async () => {
+      const action: ActionDefinition = {
+        type: 'click',
+        handler: 'navigate',
+        params: { path: '/admin/users/7', mergeQuery: true },
+      };
+
+      await dispatcher.createHandler(action)({
+        preventDefault: vi.fn(),
+        type: 'click',
+        target: null,
+      } as unknown as Event);
+
+      const navigatedPath = mockNavigate.mock.calls[0][0];
+      expect(navigatedPath).toContain('page=1');
+      expect(navigatedPath).toContain('filter=active');
+    });
+
+    it('mergeQuery: false 는 query 키가 없으면 쿼리를 붙이지 않는다 (기존 동작 유지)', async () => {
+      const action: ActionDefinition = {
+        type: 'click',
+        handler: 'navigate',
+        params: { path: '/admin/users/7', mergeQuery: false },
+      };
+
+      await dispatcher.createHandler(action)({
+        preventDefault: vi.fn(),
+        type: 'click',
+        target: null,
+      } as unknown as Event);
+
+      expect(mockNavigate).toHaveBeenCalledWith('/admin/users/7', { replace: false });
     });
   });
 
@@ -1224,6 +1478,92 @@ describe('ActionDispatcher', () => {
       expect(mockSetState).toHaveBeenCalledWith({
         selectedIds: [1, 2, 3],
       });
+    });
+
+    // engine-v1.50.4: 컴포넌트 setState(target:"_local")가 canonical source(_global._local)에도 동기화되어야 함.
+    // 배경: 검색(navigate replace:true) → updateQueryParams refetch → updateTemplateData 가
+    // currentDataContext._local 을 _global._local 로 되돌리는데, 사용자가 선택한 필터(target:"_local" setState)가
+    // _global._local 에 반영되지 않으면 검색 직후 필터가 init 기본값으로 풀린다(쿠폰/주문/배송정책 공통 결함).
+    // GLOBAL STATE UPDATER path 와 동일하게 COMPONENT path 도 globalStateUpdater 로 _global._local 을 동기화하되,
+    // render:false 로 호출하여 추가 React 렌더를 유발하지 않는다.
+    it('컴포넌트 컨텍스트의 setState(target:"local")가 _global._local을 render:false로 동기화해야 함 (검색 후 필터 보존 회귀)', () => {
+      const mockSetState = vi.fn();
+      const globalStateUpdater = vi.fn();
+      dispatcher.setGlobalStateUpdater(globalStateUpdater);
+
+      // 전역 pending 스냅샷 격리: 런타임에서는 렌더 후 useLayoutEffect 가 null 로 클리어하지만
+      // 단위 테스트에서는 이전 테스트 잔여값이 base 를 오염시키므로 명시적으로 비운다.
+      (window as any).__g7PendingLocalState = null;
+      (window as any).__g7ForcedLocalFields = undefined;
+
+      const componentContext = {
+        state: { filter: { targetType: 'all', issueStatus: 'all' } },
+        setState: mockSetState,
+      };
+
+      const props = {
+        actions: [
+          {
+            type: 'change' as const,
+            handler: 'setState',
+            params: {
+              target: 'local',
+              'filter.issueStatus': 'issuing',
+            },
+          },
+        ],
+      };
+
+      const boundProps = dispatcher.bindActionsToProps(props, {}, componentContext);
+      boundProps.onChange({ target: { value: 'issuing' } });
+
+      // 저장소 A: 컴포넌트 React 상태 (변경 필드만)
+      expect(mockSetState).toHaveBeenCalledWith({
+        filter: { issueStatus: 'issuing' },
+      });
+
+      // 저장소 B: _global._local 동기화 — render:false (추가 렌더 없음)
+      // 기존 필드(filter.targetType)는 base(context.state)에서 보존되어야 함
+      expect(globalStateUpdater).toHaveBeenCalledWith(
+        {
+          _local: expect.objectContaining({
+            filter: expect.objectContaining({
+              targetType: 'all',
+              issueStatus: 'issuing',
+            }),
+          }),
+        },
+        { render: false }
+      );
+    });
+
+    it('globalStateUpdater가 없으면 setState(target:"local")는 컴포넌트 상태만 갱신하고 조용히 넘어가야 함', () => {
+      // _global 동기화는 globalStateUpdater 유무에 가드되어 있어야 함 (모달/단독 렌더 안전)
+      const mockSetState = vi.fn();
+      // globalStateUpdater 설정하지 않음
+      (window as any).__g7PendingLocalState = null;
+      (window as any).__g7ForcedLocalFields = undefined;
+
+      const componentContext = {
+        state: { filter: { issueStatus: 'all' } },
+        setState: mockSetState,
+      };
+
+      const props = {
+        actions: [
+          {
+            type: 'change' as const,
+            handler: 'setState',
+            params: { target: 'local', 'filter.issueStatus': 'issuing' },
+          },
+        ],
+      };
+
+      const boundProps = dispatcher.bindActionsToProps(props, {}, componentContext);
+
+      // globalStateUpdater 미설정 상태에서도 에러 없이 컴포넌트 setState 가 호출되어야 함
+      expect(() => boundProps.onChange({ target: { value: 'issuing' } })).not.toThrow();
+      expect(mockSetState).toHaveBeenCalledWith({ filter: { issueStatus: 'issuing' } });
     });
 
     it('표준 DOM 이벤트와 커스텀 콜백 이벤트를 구분해야 함', () => {
@@ -4163,10 +4503,13 @@ describe('ActionDispatcher', () => {
 
       // Clear loaded scripts cache
       (ActionDispatcher as any).loadedScripts = new Set();
+      (ActionDispatcher as any).loadingScripts = new Map();
+      (window as any).G7Config = { trustedScriptHosts: [] };
     });
 
     afterEach(() => {
       vi.restoreAllMocks();
+      delete (window as any).G7Config;
     });
 
     it('should load external script and execute onLoad action', async () => {
@@ -4181,7 +4524,7 @@ describe('ActionDispatcher', () => {
         type: 'click',
         handler: 'loadScript',
         params: {
-          src: '//example.com/script.js',
+          src: '/js/vendor/script.js',
           id: 'test_script',
         },
         onLoad: onLoadAction,
@@ -4197,7 +4540,7 @@ describe('ActionDispatcher', () => {
 
       // Script should be created with correct attributes
       expect(appendedScripts.length).toBe(1);
-      expect(appendedScripts[0].src).toContain('example.com/script.js');
+      expect(appendedScripts[0].src).toContain('/js/vendor/script.js');
       expect(appendedScripts[0].id).toBe('test_script');
 
       // onLoad setState should be called
@@ -4216,7 +4559,7 @@ describe('ActionDispatcher', () => {
         type: 'click',
         handler: 'loadScript',
         params: {
-          src: '//example.com/already.js',
+          src: '/js/vendor/already.js',
           id: 'already_loaded',
         },
         onLoad: {
@@ -4258,6 +4601,161 @@ describe('ActionDispatcher', () => {
 
       vi.restoreAllMocks();
     });
+
+    describe('출처 게이트 (KVE-2026-1915 B-2 후속)', () => {
+      const dispatch = (params: Record<string, any>) =>
+        dispatcher.executeAction(
+          { type: 'click', handler: 'loadScript', params } as ActionDefinition,
+          {} as any
+        );
+
+      it('미신뢰 외부 src 는 실패로 끝나고 script 태그가 만들어지지 않는다', async () => {
+        const result = await dispatch({ src: 'https://cdn.evil.com/lodash.js', id: 'evil' });
+
+        expect(result.success).toBe(false);
+        expect((result.error as Error)?.message).toMatch(/Blocked untrusted script src/);
+        expect(appendedScripts.length).toBe(0);
+        expect((ActionDispatcher as any).loadedScripts.has('evil')).toBe(false);
+      });
+
+      it('authority 우회 형태(`/\\/evil.com/x.js`)도 차단된다', async () => {
+        const result = await dispatch({ src: '/\\/evil.com/x.js', id: 'bypass' });
+
+        expect(result.success).toBe(false);
+        expect((result.error as Error)?.message).toMatch(/Blocked untrusted script src/);
+        expect(appendedScripts.length).toBe(0);
+      });
+
+      it('미신뢰 src 는 onError 액션을 발화시킨다', async () => {
+        const mockSetState = vi.fn();
+        const action: ActionDefinition = {
+          type: 'click',
+          handler: 'loadScript',
+          params: { src: 'https://cdn.evil.com/x.js', id: 'evil2' },
+          onError: { type: 'click', handler: 'setState', params: { blocked: true } },
+        } as ActionDefinition;
+
+        const handler = dispatcher.createHandler(action, {}, { setState: mockSetState });
+        const mockEvent = {
+          preventDefault: vi.fn(),
+          stopPropagation: vi.fn(),
+          target: null,
+        } as unknown as Event;
+
+        await handler(mockEvent);
+
+        expect(mockSetState).toHaveBeenCalledWith(expect.objectContaining({ blocked: true }));
+        expect(appendedScripts.length).toBe(0);
+      });
+
+      it('G7Config.trustedScriptHosts 에 선언된 호스트는 통과한다', async () => {
+        (window as any).G7Config = { trustedScriptHosts: ['t1.daumcdn.net'] };
+
+        const result = await dispatch({ src: '//t1.daumcdn.net/postcode.v2.js', id: 'daum' });
+
+        expect(result.success).toBe(true);
+        expect(result.data).toBe(true);
+        expect(appendedScripts.length).toBe(1);
+      });
+
+      it('미신뢰 src 는 캐시에 이미 있어도 차단된다 (게이트가 캐시보다 앞)', async () => {
+        (ActionDispatcher as any).loadedScripts.add('cached_evil');
+
+        const result = await dispatch({ src: 'https://cdn.evil.com/x.js', id: 'cached_evil' });
+
+        expect(result.success).toBe(false);
+        expect((result.error as Error)?.message).toMatch(/Blocked untrusted script src/);
+      });
+    });
+
+    describe('동시 로드 Promise 공유', () => {
+      it('같은 id 동시 2건 → script 1개, 두 호출자 모두 onload 이후 완료', async () => {
+        const order: string[] = [];
+        const onLoadA = vi.fn(() => order.push('A'));
+        const onLoadB = vi.fn(() => order.push('B'));
+
+        // appendChild mock 이 10ms 뒤 onload 를 부른다 (beforeEach)
+        const p1 = dispatcher
+          .executeAction(
+            {
+              type: 'click',
+              handler: 'loadScript',
+              params: { src: '/js/shared.js', id: 'shared' },
+              onLoad: { type: 'click', handler: 'customA' },
+            } as ActionDefinition,
+            {} as any
+          );
+        const p2 = dispatcher
+          .executeAction(
+            {
+              type: 'click',
+              handler: 'loadScript',
+              params: { src: '/js/shared.js', id: 'shared' },
+              onLoad: { type: 'click', handler: 'customB' },
+            } as ActionDefinition,
+            {} as any
+          );
+
+        dispatcher.registerHandler('customA', async () => onLoadA());
+        dispatcher.registerHandler('customB', async () => onLoadB());
+
+        await Promise.all([p1, p2]);
+
+        // 태그는 1개만 만들어진다
+        expect(appendedScripts.length).toBe(1);
+        // 두 호출자 모두 자기 onLoad 를 실행한다
+        expect(onLoadA).toHaveBeenCalledTimes(1);
+        expect(onLoadB).toHaveBeenCalledTimes(1);
+        expect(order).toHaveLength(2);
+        // 완료 후 in-flight 는 정리된다
+        expect((ActionDispatcher as any).loadingScripts.size).toBe(0);
+        expect((ActionDispatcher as any).loadedScripts.has('shared')).toBe(true);
+      });
+    });
+
+    describe('동의 관리(gdpr) 차단 경계', () => {
+      it('data-gdpr-blocked-src 가 붙으면 append 없이 resolve(false)', async () => {
+        const mockSetState = vi.fn();
+
+        // src setter 를 가로채 차단 속성을 기록하는 preblocker 를 모사
+        vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+          const el = originalCreateElement(tagName);
+          if (tagName === 'script') {
+            const script = el as HTMLScriptElement;
+            Object.defineProperty(script, 'src', {
+              set(value: string) {
+                script.setAttribute('data-gdpr-blocked-src', value);
+              },
+              get() {
+                return '';
+              },
+              configurable: true,
+            });
+            appendedScripts.push(script);
+          }
+          return el;
+        });
+
+        const action: ActionDefinition = {
+          type: 'click',
+          handler: 'loadScript',
+          params: { src: '/js/analytics.js', id: 'gdpr_blocked' },
+          onLoad: { type: 'click', handler: 'setState', params: { loaded: true } },
+        } as ActionDefinition;
+
+        const result = await dispatcher.executeAction(action, {
+          setState: mockSetState,
+        } as any);
+
+        expect(result.success).toBe(true);
+        expect(result.data).toBe(false);
+        expect(document.head.appendChild).not.toHaveBeenCalled();
+        expect(mockSetState).not.toHaveBeenCalled();
+        // 동의 후 재디스패치가 정상 로드되도록 캐시에 기록하지 않는다
+        expect((ActionDispatcher as any).loadedScripts.has('gdpr_blocked')).toBe(false);
+        expect((ActionDispatcher as any).loadingScripts.has('gdpr_blocked')).toBe(false);
+      });
+    });
   });
 
   describe('callExternal handler', () => {
@@ -4293,6 +4791,131 @@ describe('ActionDispatcher', () => {
     afterEach(() => {
       delete (window as any).testLib;
       delete (window as any).G7Core;
+    });
+
+    describe('임의 코드 실행 seam 차단 (심층 방어)', () => {
+      const dispatch = (handler: string, params: Record<string, any>, context: any = {}) =>
+        dispatcher.executeAction(
+          { type: 'click', handler, params } as ActionDefinition,
+          context
+        );
+
+      it.each(['Function', 'eval', 'setTimeout', 'setInterval'])(
+        '%s 는 참조 동일성으로 거부된다',
+        async name => {
+          const result = await dispatch('callExternal', { constructor: name, args: {} });
+
+          expect(result.success).toBe(false);
+          expect((result.error as Error)?.message).toMatch(/Blocked constructor/);
+        }
+      );
+
+      it('별칭 전역도 참조 동일성으로 거부된다', async () => {
+        (window as any).__alias = (window as any).Function;
+
+        try {
+          const result = await dispatch('callExternal', { constructor: '__alias', args: {} });
+
+          expect(result.success).toBe(false);
+          expect((result.error as Error)?.message).toMatch(/Blocked constructor/);
+        } finally {
+          delete (window as any).__alias;
+        }
+      });
+
+      it('callExternalEmbed 도 같은 판정을 받는다', async () => {
+        const result = await dispatch('callExternalEmbed', {
+          constructor: 'Function',
+          args: {},
+          embedTarget: 'body',
+        });
+
+        expect(result.success).toBe(false);
+        expect((result.error as Error)?.message).toMatch(/Blocked constructor/);
+      });
+
+      it('프로토타입 체인 경로는 해석되지 않는다 (Object.constructor)', async () => {
+        const result = await dispatch('callExternal', {
+          constructor: 'Object.constructor',
+          args: {},
+        });
+
+        expect(result.success).toBe(false);
+        expect((result.error as Error)?.message).toMatch(/Constructor not found/);
+      });
+
+      it('정상 생성자는 그대로 호출된다 (과차단 없음)', async () => {
+        const result = await dispatch('callExternal', {
+          constructor: 'testLib.TestClass',
+          args: {},
+          method: 'open',
+        });
+
+        expect(result.success).toBe(true);
+      });
+    });
+
+    describe('callbackSetState 프로토타입 오염 차단', () => {
+      afterEach(() => {
+        delete (Object.prototype as any).polluted;
+      });
+
+      const runMapping = async (callbackSetState: any) => {
+        const mockSetState = vi.fn();
+
+        const action: ActionDefinition = {
+          type: 'click',
+          handler: 'callExternal',
+          params: {
+            constructor: 'testLib.TestClass',
+            args: { oncomplete: true },
+            callbackSetState,
+          },
+        } as ActionDefinition;
+
+        await dispatcher.executeAction(action, { setState: mockSetState, state: {} } as any);
+        await new Promise(resolve => setTimeout(resolve, 30));
+
+        return mockSetState;
+      };
+
+      it('프로토타입 체인 매핑 키는 상태에 도달하지 않는다', async () => {
+        // 레이아웃 JSON 은 JSON.parse 를 거치므로 `__proto__` 도 own property 가 된다
+        const mockSetState = await runMapping(
+          JSON.parse(
+            '{"__proto__": {"polluted": "result"}, "constructor": "result", "prototype": "result", "safe": "result"}'
+          )
+        );
+
+        expect(mockSetState).toHaveBeenCalled();
+        const payload = mockSetState.mock.calls[0][0] as Record<string, any>;
+
+        expect(Object.prototype.hasOwnProperty.call(payload, 'constructor')).toBe(false);
+        expect(Object.prototype.hasOwnProperty.call(payload, 'prototype')).toBe(false);
+        expect(Object.prototype.hasOwnProperty.call(payload, '__proto__')).toBe(false);
+        // 정상 키는 그대로 매핑된다 (과차단 없음)
+        expect(payload.safe).toBe('success');
+        expect((Object.prototype as any).polluted).toBeUndefined();
+      });
+
+      it('중첩 매핑의 프로토타입 체인 키도 건너뛴다', async () => {
+        const mockSetState = await runMapping(
+          JSON.parse('{"form": {"constructor": "result", "safe": "result"}}')
+        );
+
+        const payload = mockSetState.mock.calls[0][0] as Record<string, any>;
+
+        expect(Object.prototype.hasOwnProperty.call(payload.form, 'constructor')).toBe(false);
+        expect(payload.form.safe).toBe('success');
+      });
+
+      it('데이터 경로가 프로토타입 체인을 타면 undefined 로 해석된다', async () => {
+        const mockSetState = await runMapping({ leaked: 'constructor.name' });
+
+        const payload = mockSetState.mock.calls[0][0] as Record<string, any>;
+
+        expect(payload.leaked).toBeUndefined();
+      });
     });
 
     it('should call external constructor and method', async () => {
@@ -6827,6 +7450,24 @@ describe('ActionDispatcher', () => {
       // 새 파라미터 추가
       expect(calledPath).toContain('menu=settings');
       expect(calledPath).toContain('mode=edit');
+    });
+
+    // engine-v1.54.2: navigate 와 동일한 게이트 확장 — 한쪽만 고치면 두 핸들러의 동작이 갈린다.
+    it('query 키가 없어도 mergeQuery: true 면 현재 쿼리를 유지해야 함 (engine-v1.54.2)', async () => {
+      const action: ActionDefinition = {
+        type: 'click',
+        handler: 'replaceUrl',
+        params: { path: '/admin/menus', mergeQuery: true },
+      };
+
+      await dispatcher.createHandler(action)({
+        preventDefault: vi.fn(),
+        type: 'click',
+        target: null,
+      } as unknown as Event);
+
+      expect(replaceStateSpy).toHaveBeenCalled();
+      expect(replaceStateSpy.mock.calls[0][2] as string).toContain('existing=param');
     });
 
     it('query 없이 path만 전달해도 동작해야 함', async () => {

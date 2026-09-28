@@ -6,6 +6,7 @@
     "meta": {
         "seo": {
             "enabled": true,
+            "data_sources": ["popularPosts"],
             "page_type": "boards",
             "extensions": [
                 { "type": "module", "id": "sirsoft-board" }
@@ -24,6 +25,7 @@
     "data_sources": [
         {
             "id": "popularPosts",
+            "label_key": "$t:editor.data_source.popularPosts",
             "type": "api",
             "endpoint": "/api/modules/sirsoft-board/boards/popular",
             "method": "GET",

@@ -1,4 +1,9 @@
 {
+  "editor": {
+    "data_source": {
+      "settings": "Address Search Settings"
+    }
+  },
   "search_address": "Search Address",
   "postcode": {
     "search": "Search Address",
@@ -14,7 +19,8 @@
     "selected": "Address has been selected.",
     "error": {
       "load_failed": "Failed to load postcode service.",
-      "search_failed": "Address search failed."
+      "search_failed": "Address search failed.",
+      "sdk_unavailable": "Could not load address search. Please enter the address manually."
     }
   },
   "settings": {

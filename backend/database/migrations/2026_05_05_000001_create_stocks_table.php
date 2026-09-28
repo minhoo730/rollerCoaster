@@ -7,11 +7,12 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
+        if (Schema::hasTable('stocks')) {
+            return;
+        }
+
         Schema::create('stocks', function (Blueprint $table) {
             $table->id();
             $table->string('code', 6)->comment('국내주식 단축 종목코드');
@@ -31,15 +32,10 @@ return new class extends Migration
         });
 
         if (DB::getDriverName() === 'mysql') {
-            Schema::table('stocks', function (Blueprint $table) {
-                $table->comment('국내주식 종목 마스터');
-            });
+            Schema::table('stocks', fn (Blueprint $table) => $table->comment('국내주식 종목 마스터'));
         }
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('stocks');

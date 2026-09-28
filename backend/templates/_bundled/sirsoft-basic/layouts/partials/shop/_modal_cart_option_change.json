@@ -1,7 +1,8 @@
 {
   "meta": {
     "is_partial": true,
-    "description": "장바구니 상품 옵션 변경 모달"
+    "description": "장바구니 상품 옵션 변경 모달",
+    "editor_label": "$t:user.modal_label.shop.cart_option_change_modal"
   },
   "id": "cart_option_change_modal",
   "type": "composite",
@@ -104,7 +105,7 @@
                       "type": "basic",
                       "name": "P",
                       "props": { "className": "text-sm font-medium text-gray-900 dark:text-white" },
-                      "text": "{{$parent._local.optionModal.targetItem?.multi_currency_selling_price?.[_global.preferredCurrency ?? 'KRW']?.formatted ?? $parent._local.optionModal.targetItem?.unit_price_formatted}}"
+                      "text": "{{$parent._local.optionModal.targetItem?.multi_currency_selling_price?.[_global.preferredCurrency ?? _global.defaultCurrency]?.formatted ?? $parent._local.optionModal.targetItem?.unit_price_formatted}}"
                     },
                     {
                       "comment": "보조 통화들",
@@ -112,7 +113,7 @@
                       "name": "Div",
                       "props": { "className": "flex flex-wrap gap-x-2" },
                       "iteration": {
-                        "source": "{{Object.entries($parent._local.optionModal.targetItem?.multi_currency_selling_price ?? {}).filter(([code]) => code !== (_global.preferredCurrency ?? 'KRW'))}}",
+                        "source": "{{Object.entries($parent._local.optionModal.targetItem?.multi_currency_selling_price ?? {}).filter(([code]) => code !== (_global.preferredCurrency ?? _global.defaultCurrency))}}",
                         "item_var": "currency"
                       },
                       "children": [
@@ -171,7 +172,7 @@
                         "value": "{{$parent._local.selectedOptions?.[group.name_localized] ?? ''}}",
                         "placeholder": "$t:shop.select",
                         "disabled": "{{groupIndex > 0 && !$parent._local.selectedOptions?.[$parent._local.optionProduct?.option_groups[groupIndex - 1]?.name_localized]}}",
-                        "options": "{{(group.values_localized ?? group.values).map(v => ({ value: v, label: v }))}}"
+                        "options": "{{(group.values_localized ?? group.values ?? []).map(v => ({ value: v, label: v }))}}"
                       },
                       "actions": [
                         {
@@ -229,6 +230,111 @@
           ]
         },
         {
+          "comment": "=== 추가옵션 재선택 섹션 ===",
+          "type": "basic",
+          "name": "Div",
+          "if": "{{$parent._local.optionProduct?.additional_options?.length > 0}}",
+          "props": { "className": "space-y-3 mb-4" },
+          "children": [
+            {
+              "type": "basic",
+              "name": "Label",
+              "props": { "className": "block text-sm font-medium text-gray-700 dark:text-gray-300" },
+              "text": "$t:shop.additional_options"
+            },
+            {
+              "type": "basic",
+              "name": "Div",
+              "iteration": {
+                "source": "{{$parent._local.optionProduct?.additional_options ?? []}}",
+                "item_var": "addGroup"
+              },
+              "children": [
+                {
+                  "type": "basic",
+                  "name": "Div",
+                  "props": { "className": "mb-2" },
+                  "children": [
+                    {
+                      "type": "basic",
+                      "name": "Label",
+                      "props": { "className": "block text-sm text-gray-600 dark:text-gray-400 mb-1" },
+                      "children": [
+                        { "type": "basic", "name": "Span", "text": "{{addGroup.name}}" },
+                        {
+                          "type": "basic",
+                          "name": "Span",
+                          "if": "{{addGroup.is_required}}",
+                          "props": { "className": "text-red-500 dark:text-red-400 ml-0.5" },
+                          "text": "*"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "composite",
+                      "name": "Select",
+                      "props": {
+                        "data-testid": "modal-add-option-{{addGroup.id}}",
+                        "className": "w-full",
+                        "value": "{{$parent._local.additionalSelections?.[addGroup.id] ?? ''}}",
+                        "placeholder": "$t:shop.additional_option_placeholder",
+                        "options": "{{[{ value: '', label: $t('shop.additional_option_placeholder') }, ...(addGroup.values ?? []).map(v => ({ value: v.id, label: v.price_adjustment > 0 ? v.name + ' (' + (v.multi_currency_price_adjustment?.[_global.preferredCurrency ?? _global.defaultCurrency]?.formatted ?? v.price_adjustment_formatted ?? ('+' + v.price_adjustment.toLocaleString())) + ')' : v.name }))]}}"
+                      },
+                      "actions": [
+                        {
+                          "type": "change",
+                          "handler": "setState",
+                          "params": {
+                            "target": "$parent._local",
+                            "additionalSelections": "{{$event.target.value === '' ? Object.fromEntries(Object.entries($parent._local.additionalSelections ?? {}).filter(([k]) => Number(k) !== Number(addGroup.id))) : Object.assign({}, $parent._local.additionalSelections ?? {}, { [addGroup.id]: Number($event.target.value) })}}",
+                            "additionalCustomTexts": "{{Object.fromEntries(Object.entries($parent._local.additionalCustomTexts ?? {}).filter(([k]) => Number(k) !== Number(addGroup.id)))}}"
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "comment": "직접입력 칸 — 선택된 선택지가 allow_custom_text 일 때만 노출. 입력란임이 명확하도록 라벨 + 테두리/배경 스타일 적용",
+                      "type": "basic",
+                      "name": "Div",
+                      "if": "{{(addGroup.values ?? []).find(v => v.id === Number($parent._local.additionalSelections?.[addGroup.id]))?.allow_custom_text === true}}",
+                      "props": { "className": "mt-2" },
+                      "children": [
+                        {
+                          "type": "basic",
+                          "name": "Label",
+                          "props": { "className": "block text-xs text-gray-600 dark:text-gray-400 mb-1" },
+                          "text": "$t:shop.additional_option_custom_text_label"
+                        },
+                        {
+                          "type": "basic",
+                          "name": "Input",
+                          "props": {
+                            "type": "text",
+                            "className": "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500",
+                            "value": "{{$parent._local.additionalCustomTexts?.[addGroup.id] ?? ''}}",
+                            "placeholder": "$t:shop.additional_option_custom_text_placeholder",
+                            "maxLength": 255
+                          },
+                          "actions": [
+                            {
+                              "type": "input",
+                              "handler": "setState",
+                              "params": {
+                                "target": "$parent._local",
+                                "additionalCustomTexts": "{{$event.target.value.trim() === '' ? Object.fromEntries(Object.entries($parent._local.additionalCustomTexts ?? {}).filter(([k]) => Number(k) !== Number(addGroup.id))) : Object.assign({}, $parent._local.additionalCustomTexts ?? {}, { [addGroup.id]: $event.target.value })}}"
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
           "comment": "선택된 옵션 정보",
           "type": "basic",
           "name": "Div",
@@ -240,7 +346,7 @@
               "name": "Div",
               "props": { "className": "flex justify-between items-start" },
               "children": [
-                { "type": "basic", "name": "Span", "props": { "className": "text-sm text-gray-700 dark:text-gray-300" }, "text": "{{$parent._local.matchedOption.option_name_localized ?? $parent._local.matchedOption.option_name?.ko ?? ''}}" },
+                { "type": "basic", "name": "Span", "props": { "className": "text-sm text-gray-700 dark:text-gray-300" }, "text": "{{$parent._local.matchedOption?.option_name_localized ?? $parent._local.matchedOption?.option_name?.ko ?? ''}}" },
                 {
                   "type": "basic",
                   "name": "Div",
@@ -250,7 +356,7 @@
                       "type": "basic",
                       "name": "Div",
                       "props": { "className": "text-sm font-bold text-gray-900 dark:text-white" },
-                      "text": "{{$parent._local.matchedOption.multi_currency_selling_price?.[_global.preferredCurrency ?? 'KRW']?.formatted ?? $parent._local.matchedOption.selling_price_formatted}}"
+                      "text": "{{$parent._local.matchedOption?.multi_currency_selling_price?.[_global.preferredCurrency ?? _global.defaultCurrency]?.formatted ?? $parent._local.matchedOption?.selling_price_formatted ?? ''}}"
                     },
                     {
                       "comment": "보조 통화들",
@@ -258,7 +364,7 @@
                       "name": "Div",
                       "props": { "className": "flex flex-wrap gap-x-2 justify-end" },
                       "iteration": {
-                        "source": "{{Object.entries($parent._local.matchedOption.multi_currency_selling_price ?? {}).filter(([code]) => code !== (_global.preferredCurrency ?? 'KRW'))}}",
+                        "source": "{{Object.entries($parent._local.matchedOption?.multi_currency_selling_price ?? {}).filter(([code]) => code !== (_global.preferredCurrency ?? _global.defaultCurrency))}}",
                         "item_var": "currency"
                       },
                       "children": [
@@ -275,18 +381,29 @@
               ]
             },
             {
+              "comment": "추가옵션 추가금 합계 (선택된 추가금이 있을 때)",
               "type": "basic",
               "name": "Div",
-              "if": "{{$parent._local.matchedOption.stock_quantity <= 10}}",
-              "props": { "className": "{{$parent._local.matchedOption.stock_quantity <= 0 ? 'text-xs text-red-500 dark:text-red-400 mt-1 font-medium' : 'text-xs text-gray-500 dark:text-gray-400 mt-1'}}" },
-              "text": "{{$parent._local.matchedOption.stock_quantity <= 0 ? '$t:shop.cart.option_modal.out_of_stock' : '$t:shop.cart.option_modal.stock_count|count=' + $parent._local.matchedOption.stock_quantity}}"
+              "if": "{{($parent._local.optionProduct?.additional_options ?? []).reduce((sum, g) => sum + (((g.values ?? []).find(v => v.id === Number($parent._local.additionalSelections?.[g.id]))?.price_adjustment) ?? 0), 0) > 0}}",
+              "props": { "className": "flex justify-between items-center mt-2 pt-2 border-t border-blue-100 dark:border-blue-800 text-xs text-gray-600 dark:text-gray-300" },
+              "children": [
+                { "type": "basic", "name": "Span", "text": "$t:shop.additional_options_amount" },
+                { "comment": "추가금은 기본통화 기준 저장값이므로 서버가 준 표시통화 환산값을 우선 합산한다 (없으면 기본통화 값으로 폴백)", "type": "basic", "name": "Span", "text": "{{(() => { const code = _global.preferredCurrency ?? _global.defaultCurrency; const total = ($parent._local.optionProduct?.additional_options ?? []).reduce((sum, g) => { const v = (g.values ?? []).find(v => v.id === Number($parent._local.additionalSelections?.[g.id])); if (!v) return sum; return sum + (v.multi_currency_price_adjustment?.[code]?.price ?? v.price_adjustment ?? 0); }, 0); const cur = (_global.availableCurrencies ?? []).find(x => x.code === code) ?? (_global.availableCurrencies ?? []).find(x => x.is_default); const dp = cur?.decimal_places ?? 0; const n = total.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp }); const s = cur?.symbol ?? '₩'; return '+' + ((cur?.code === 'KRW' || s === '₩' || s === '원') ? (n + '원') : (s + n)); })()}}" }
+              ]
             },
             {
               "type": "basic",
               "name": "Div",
-              "if": "{{$parent._local.matchedOption.stock_quantity > 10}}",
+              "if": "{{$parent._local.matchedOption?.stock_quantity <= 10}}",
+              "props": { "className": "{{$parent._local.matchedOption?.stock_quantity <= 0 ? 'text-xs text-red-500 dark:text-red-400 mt-1 font-medium' : 'text-xs text-gray-500 dark:text-gray-400 mt-1'}}" },
+              "text": "{{$parent._local.matchedOption?.stock_quantity <= 0 ? '$t:shop.cart.option_modal.out_of_stock' : '$t:shop.cart.option_modal.stock_count|count=' + ($parent._local.matchedOption?.stock_quantity ?? 0)}}"
+            },
+            {
+              "type": "basic",
+              "name": "Div",
+              "if": "{{$parent._local.matchedOption?.stock_quantity > 10}}",
               "props": { "className": "text-xs text-gray-500 dark:text-gray-400 mt-1" },
-              "text": "$t:shop.cart.option_modal.stock_count|count={{$parent._local.matchedOption.stock_quantity}}"
+              "text": "$t:shop.cart.option_modal.stock_count|count={{$parent._local.matchedOption?.stock_quantity ?? 0}}"
             }
           ]
         },
@@ -385,6 +502,7 @@
           "name": "Button",
           "props": {
             "type": "button",
+            "data-testid": "modal-apply",
             "className": "flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-lg font-medium hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer",
             "disabled": "{{_global.isUpdatingOption || ($parent._local.optionProduct?.has_options && !$parent._local.matchedOption)}}"
           },
@@ -414,7 +532,8 @@
                     "method": "PUT",
                     "body": {
                       "product_option_id": "{{$parent._local.matchedOption?.id ?? $parent._local.optionModal.targetItem?.product_option_id}}",
-                      "quantity": "{{$parent._local.selectedQuantity ?? $parent._local.optionModal.targetItem?.quantity}}"
+                      "quantity": "{{$parent._local.selectedQuantity ?? $parent._local.optionModal.targetItem?.quantity}}",
+                      "additional_option_selections": "{{Object.entries($parent._local.additionalSelections ?? {}).filter(([, vid]) => vid != null).map(([gid, vid]) => ({ additional_option_id: Number(gid), value_id: Number(vid), custom_text: $parent._local.additionalCustomTexts?.[Number(gid)] }))}}"
                     },
                     "headers": { "X-Cart-Key": "{{_global.cartKey}}" }
                   },
@@ -431,7 +550,7 @@
                       "handler": "setState",
                       "params": {
                         "target": "$parent._local",
-                        "optionErrors": "{{$error.errors ?? { _general: $error.message }}}"
+                        "optionErrors": "{{error.errors ?? { _general: error.message }}}"
                       }
                     }
                   ]

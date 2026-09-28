@@ -12,6 +12,8 @@
 
 import React, { type ComponentType } from 'react';
 import { createLogger } from '../utils/Logger';
+import { suffixed, extStaticUrl } from '../support/assetUrl';
+import { fetchStaticFirst } from '../support/fetchStaticFirst';
 
 const logger = createLogger('ComponentRegistry');
 
@@ -124,6 +126,9 @@ export class ComponentRegistry {
   /** 컴포넌트 매니페스트 */
   private manifest: ComponentManifest | null = null;
 
+  /** 확장 캐시 버전 (0 = 무버전 URL — 편집기 경로) */
+  private cacheVersion = 0;
+
   /** 로딩 상태 */
   private loadingState: LoadingState = 'idle';
 
@@ -152,6 +157,23 @@ export class ComponentRegistry {
   }
 
   /**
+   * 격리 인스턴스 생성 — 싱글톤과 독립된 별도 ComponentRegistry.
+   *
+   * 레이아웃 편집기 캔버스 처럼 한 페이지에서 호스트 템플릿과
+   * 편집 대상 템플릿이 동시에 살아 있어야 하는 케이스용. 싱글톤을 점유 중인
+   * 호스트(`getInstance()`)의 등록 상태와 충돌하지 않도록, 격리 인스턴스는
+   * 정적 manifestCache 만 공유하고 registry/manifest/loadingState 는 자기
+   * 인스턴스 안에만 존재한다.
+   *
+   * `loadComponents()` 등 인스턴스 메서드는 싱글톤과 동일하게 사용 가능.
+   *
+   * @since engine-v1.50.0
+   */
+  public static createIsolatedInstance(): ComponentRegistry {
+    return new ComponentRegistry();
+  }
+
+  /**
    * 레지스트리 초기화 (테스트용)
    */
   public static resetInstance(): void {
@@ -163,8 +185,11 @@ export class ComponentRegistry {
    *
    * @param templateId 템플릿 식별자
    * @param templateType 템플릿 타입 (admin 또는 user)
+   * @param cacheVersion 확장 캐시 버전 — 0(기본)이면 무버전 URL(편집기 경로,
+   *   서버는 `?v` 생략 시 현재 버전 폴백 #588). 매니페스트 캐시 키에도 포함되어
+   *   버전 간 교차 오염을 막는다 (#122, @since engine-v1.61.0)
    */
-  public async loadComponents(templateId: string, templateType: string): Promise<void> {
+  public async loadComponents(templateId: string, templateType: string, cacheVersion: number = 0): Promise<void> {
     if (this.loadingState === 'loading') {
       throw new ComponentRegistryError(
         'Components are already being loaded',
@@ -180,6 +205,7 @@ export class ComponentRegistry {
     this.loadingState = 'loading';
     this.templateId = templateId;
     this.templateType = templateType;
+    this.cacheVersion = cacheVersion;
     this.error = null;
 
     try {
@@ -216,8 +242,8 @@ export class ComponentRegistry {
         );
       }
 
-      // 캐시 키 생성
-      const cacheKey = `${this.templateId}:${this.templateType}`;
+      // 캐시 키 생성 (버전 포함 — 확장 라이프사이클 후 stale 매니페스트 교차 오염 방지)
+      const cacheKey = `${this.templateId}:${this.templateType}:v${this.cacheVersion || 0}`;
 
       // 캐시 확인
       if (ComponentRegistry.manifestCache.has(cacheKey)) {
@@ -227,8 +253,22 @@ export class ComponentRegistry {
       }
 
       // 캐시 미스 - API에서 로드
-      const manifestUrl = `/api/templates/${this.templateId}/components.json`;
-      const response = await fetch(manifestUrl);
+      // 네트워크 일시 실패(응답 없음)에만 재시도. HTTP 에러는 아래 !ok 분기가 종전대로 처리.
+      // @since engine-v1.53.0
+      const manifestUrl = suffixed(
+        `/api/templates/${this.templateId}/components`,
+        'json',
+        this.cacheVersion > 0 ? this.cacheVersion : null,
+      );
+      // 정적 게시본(bake) 우선 (#122) — 편집기 경로(v0)는 legacy 직행 유지.
+      // miss 는 fetchStaticFirst 가 legacy 로 폴백하고, legacy 측이 fetchWithRetry 를 재사용한다.
+      const response = await fetchStaticFirst(
+        this.cacheVersion > 0
+          ? extStaticUrl(`templates/${this.templateId}/components.json`, this.cacheVersion)
+          : null,
+        manifestUrl,
+        { label: 'components.json' }
+      );
 
       if (!response.ok) {
         throw new ComponentRegistryError(

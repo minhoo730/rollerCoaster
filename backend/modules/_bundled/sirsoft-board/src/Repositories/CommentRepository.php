@@ -3,12 +3,20 @@
 namespace Modules\Sirsoft\Board\Repositories;
 
 use App\Helpers\PermissionHelper;
+use App\Repositories\Concerns\PaginatesWithDeferredJoin;
+use App\Support\Query\BoundedCount;
+use App\Support\Query\BoundedPage;
+use App\Support\Query\BoundedPaginator;
+use App\Support\Query\PaginationLimits;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use Modules\Sirsoft\Board\Enums\TriggerType;
 use Modules\Sirsoft\Board\Models\Board;
 use Modules\Sirsoft\Board\Models\Comment;
+use Modules\Sirsoft\Board\Models\Post;
 use Modules\Sirsoft\Board\Repositories\Contracts\CommentRepositoryInterface;
 use Modules\Sirsoft\Board\Traits\FormatsBoardDate;
 
@@ -20,6 +28,7 @@ use Modules\Sirsoft\Board\Traits\FormatsBoardDate;
 class CommentRepository implements CommentRepositoryInterface
 {
     use FormatsBoardDate;
+    use PaginatesWithDeferredJoin;
 
     /**
      * 특정 게시글의 댓글 목록을 조회합니다.
@@ -28,6 +37,8 @@ class CommentRepository implements CommentRepositoryInterface
      * @param  int  $postId  게시글 ID
      * @param  bool  $withTrashed  삭제된 댓글 포함 여부 (기본값: false)
      * @param  string  $orderDirection  정렬 방향 (ASC 또는 DESC, 기본값: DESC)
+     * @param  string|null  $scopePermission  권한 스코프 식별자 (Service에서 컨텍스트 기반 전달)
+     * @param  int|null  $boardId  게시판 ID (전달 시 Board 재조회 생략)
      * @return Collection 부모-자식 관계로 정렬된 댓글 컬렉션
      */
     public function getByPostId(string $slug, int $postId, bool $withTrashed = false, string $orderDirection = 'DESC', ?string $scopePermission = null, ?int $boardId = null): Collection
@@ -40,7 +51,9 @@ class CommentRepository implements CommentRepositoryInterface
 
         $query = Comment::query()
             ->where('board_id', $resolvedBoardId)
-            ->with(['user', 'user.avatarAttachment', 'parent'])
+            // parent 는 eager load 하지 않는다 — 부모 댓글도 같은 글의 댓글이라 이 결과셋에
+            // 이미 들어 있다. 관계로 다시 부르면 같은 집합을 한 번 더 가져온다.
+            ->with(['user', 'user.avatarAttachment'])
             ->where('post_id', $postId);
 
         // 권한 스코프 필터링 (Service에서 컨텍스트 기반으로 전달)
@@ -49,10 +62,35 @@ class CommentRepository implements CommentRepositoryInterface
 
         // 삭제된 댓글 포함 여부
         if ($withTrashed) {
+            // 토글 ON(관리자/매니저): 사용자 직접 삭제분 포함 전부 노출
             $query->withTrashed();
+        } else {
+            // 토글 OFF: 게시글 삭제로 함께 숨겨진(cascade) 댓글은 사용자가 지운 것이 아니므로
+            // 항상 노출한다 (살아있는 것 + cascade). 사용자 직접 삭제분(user 등)은 제외.
+            $query->withTrashed()
+                ->where(function ($q) {
+                    $q->whereNull('deleted_at')
+                        ->orWhere('trigger_type', TriggerType::Cascade->value);
+                });
         }
 
-        $comments = $query->orderBy('created_at', $orderDirection)->get();
+        // 한 글의 댓글 전량을 무제한으로 읽지 않는다. 상한을 넘으면 그 지점에서 끊고,
+        // 화면은 더 있다는 사실을 총 건수로 알 수 있다({@see self::countByPostId()}).
+        $commentCap = PaginationLimits::resultCap('board.comments');
+
+        $comments = $query
+            ->orderBy('created_at', $orderDirection)
+            ->orderBy('id', $orderDirection)
+            ->when($commentCap !== null, fn ($q) => $q->limit($commentCap))
+            ->get();
+
+        // 일반 조회(withTrashed=false)에서 부모가 삭제되어 빠진 경우,
+        // 살아있는 자식이 트리에서 통째로 누락된다.
+        // 살아있는 자식이 있는 삭제 부모만 tombstone 으로 복구해 트리를 유지한다.
+        // withTrashed=true(manager 토글 ON)는 이미 삭제 부모를 모두 포함하므로 건너뛴다.
+        if (! $withTrashed && $resolvedBoardId) {
+            $comments = $this->restoreTombstoneParents($comments, $resolvedBoardId, $postId);
+        }
 
         // 부모-자식 관계로 정렬 (부모 댓글 다음에 답글이 오도록)
         $sorted = $this->sortByParentChild($comments, $orderDirection);
@@ -61,6 +99,69 @@ class CommentRepository implements CommentRepositoryInterface
         $this->recalculateDescendantCounts($sorted);
 
         return $sorted;
+    }
+
+    /**
+     * 살아있는 자식이 있으나 부모가 삭제되어 결과셋에서 빠진 경우,
+     * 해당 삭제 부모를 tombstone 노드로 복구해 컬렉션에 추가합니다.
+     *
+     * 고아 부모 ID 를 모아 1회 IN 조회로 가져오며(N+1 회피), 복구 대상이 없으면
+     * 추가 쿼리 없이 원본 컬렉션을 그대로 반환합니다.
+     * 자식 없는 삭제 부모는 고아 자식이 존재하지 않으므로 자연히 제외됩니다.
+     *
+     * @param  Collection  $comments  현재 조회된(삭제 부모 제외) 댓글 컬렉션
+     * @param  int  $boardId  게시판 ID
+     * @param  int  $postId  게시글 ID
+     * @return Collection tombstone 부모가 보강된 댓글 컬렉션
+     */
+    private function restoreTombstoneParents(Collection $comments, int $boardId, int $postId): Collection
+    {
+        $presentIds = $comments->pluck('id')->all();
+
+        // 부모가 결과셋에 없는 자식(고아)의 parent_id 수집
+        $orphanParentIds = $comments
+            ->filter(fn (Comment $c) => $c->parent_id !== null && ! in_array($c->parent_id, $presentIds, true))
+            ->pluck('parent_id')
+            ->unique()
+            ->values()
+            ->all();
+
+        if (empty($orphanParentIds)) {
+            return $comments;
+        }
+
+        // 고아의 조상 체인을 따라 올라가며 누락된 삭제 부모를 모두 복구
+        // (다단계: 부모·자식이 연쇄 삭제되고 손자만 살아있는 경우 포함)
+        $restored = collect();
+        $knownIds = $presentIds;
+        $pendingIds = $orphanParentIds;
+
+        while (! empty($pendingIds)) {
+            $tombstones = Comment::query()
+                ->where('board_id', $boardId)
+                ->where('post_id', $postId)
+                ->withTrashed()
+                ->with(['user', 'user.avatarAttachment', 'parent'])
+                ->whereIn('id', $pendingIds)
+                ->get();
+
+            if ($tombstones->isEmpty()) {
+                break;
+            }
+
+            $restored = $restored->merge($tombstones);
+            $knownIds = array_merge($knownIds, $tombstones->pluck('id')->all());
+
+            // 복구된 tombstone 의 부모도 결과셋에 없으면 다음 라운드에서 복구
+            $pendingIds = $tombstones
+                ->filter(fn (Comment $c) => $c->parent_id !== null && ! in_array($c->parent_id, $knownIds, true))
+                ->pluck('parent_id')
+                ->unique()
+                ->values()
+                ->all();
+        }
+
+        return $comments->merge($restored);
     }
 
     /**
@@ -131,20 +232,186 @@ class CommentRepository implements CommentRepositoryInterface
     /**
      * 재귀적으로 모든 하위 자손 수를 계산합니다.
      *
+     * tombstone(삭제) 댓글은 트리 구조 유지를 위해 노드로는 남기지만,
+     * "답글 N" 집계 모수에서는 제외한다(확정 정책). 단, 삭제 댓글의
+     * 살아있는 하위 자손은 계속 카운트해 누락되지 않게 한다.
+     *
      * @param  Collection  $grouped  parent_id로 그룹화된 댓글 컬렉션
      * @param  int  $parentId  부모 댓글 ID
-     * @return int 전체 하위 자손 수
+     * @return int 전체 하위 자손 수 (tombstone 제외)
      */
     private function countDescendants(Collection $grouped, int $parentId): int
     {
         $children = $grouped->get($parentId, collect());
-        $count = $children->count();
+
+        // 삭제되지 않은 자식만 카운트 (tombstone 은 모수 제외)
+        $count = $children->filter(fn (Comment $child) => $child->deleted_at === null)->count();
 
         foreach ($children as $child) {
             $count += $this->countDescendants($grouped, $child->id);
         }
 
         return $count;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function paginateRootsByPostId(
+        string $slug,
+        int $postId,
+        int $perPage,
+        int $page = 1,
+        bool $withTrashed = false,
+        string $orderDirection = 'DESC',
+        ?string $scopePermission = null,
+        ?int $boardId = null
+    ): BoundedPage {
+        $resolvedBoardId = $boardId ?? Board::where('slug', $slug)->value('id');
+        $orderDirection = strtoupper($orderDirection) === 'ASC' ? 'asc' : 'desc';
+
+        // 원댓글(최상위)만 페이지네이션한다. 답글은 그 원댓글에 딸린 것이라 페이지 경계로
+        // 갈라 놓으면 트리가 끊긴다 — 이번 페이지 원댓글의 자손은 아래에서 통째로 읽는다.
+        $rootQuery = $this->buildVisibleCommentQuery($resolvedBoardId, $postId, $withTrashed, $slug, $scopePermission)
+            ->whereNull('parent_id')
+            ->with(['user', 'user.avatarAttachment'])
+            ->orderBy('created_at', $orderDirection)
+            // 전순서 보장 — created_at 은 초 단위라 동률에서 페이지 경계가 흔들린다
+            ->orderBy('id', $orderDirection);
+
+        $rootPage = BoundedPaginator::paginate(
+            $rootQuery,
+            perPage: $perPage,
+            page: $page,
+            resultCap: PaginationLimits::resultCap('board.comments'),
+        );
+
+        $rootIds = collect($rootPage->items())->pluck('id')->all();
+
+        if (empty($rootIds)) {
+            return $rootPage;
+        }
+
+        $descendants = $this->loadDescendantsOfRoots($resolvedBoardId, $postId, $rootIds, $withTrashed, $slug, $scopePermission);
+
+        $comments = collect($rootPage->items())->concat($descendants);
+
+        if (! $withTrashed && $resolvedBoardId) {
+            $comments = $this->restoreTombstoneParents($comments, $resolvedBoardId, $postId);
+        }
+
+        $sorted = $this->sortByParentChild($comments, $orderDirection);
+        $this->recalculateDescendantCounts($sorted);
+
+        $rootPage->setCollection($sorted);
+
+        return $rootPage;
+    }
+
+    /**
+     * 이번 페이지 원댓글들의 모든 자손 댓글을 깊이별로 읽습니다.
+     *
+     * 상한을 두어 답글이 많은 글에서도 한 페이지를 여는 비용이 고정됩니다.
+     *
+     * @param  int|null  $boardId  게시판 ID
+     * @param  int  $postId  게시글 ID
+     * @param  array<int, int>  $rootIds  이번 페이지 원댓글 ID
+     * @param  bool  $withTrashed  삭제 포함 여부
+     * @param  string  $slug  게시판 슬러그
+     * @param  string|null  $scopePermission  권한 스코프 식별자
+     * @return Collection 자손 댓글 컬렉션
+     */
+    private function loadDescendantsOfRoots(?int $boardId, int $postId, array $rootIds, bool $withTrashed, string $slug, ?string $scopePermission): Collection
+    {
+        $cap = PaginationLimits::resultCap('board.comments');
+        $collected = new Collection;
+        $currentLevel = $rootIds;
+        $seen = array_flip($rootIds);
+
+        while (! empty($currentLevel)) {
+            $remaining = $cap === null ? null : max(0, $cap - $collected->count());
+
+            if ($remaining === 0) {
+                break;
+            }
+
+            $level = $this->buildVisibleCommentQuery($boardId, $postId, $withTrashed, $slug, $scopePermission)
+                ->whereIn('parent_id', $currentLevel)
+                ->with(['user', 'user.avatarAttachment'])
+                ->orderBy('id', 'asc')
+                ->when($remaining !== null, fn ($q) => $q->limit($remaining))
+                ->get();
+
+            if ($level->isEmpty()) {
+                break;
+            }
+
+            $collected = $collected->concat($level);
+
+            // 방문 집합으로 유한 종료를 보장한다 (오염된 parent_id 가 순환을 만들어도 멈춘다)
+            $currentLevel = $level->pluck('id')
+                ->reject(fn ($id) => isset($seen[$id]))
+                ->each(fn ($id) => $seen[$id] = true)
+                ->all();
+        }
+
+        return $collected;
+    }
+
+    /**
+     * 노출 대상 댓글 쿼리를 구성합니다 (권한 스코프 + 삭제 표시 규칙 공통).
+     *
+     * @param  int|null  $boardId  게시판 ID
+     * @param  int  $postId  게시글 ID
+     * @param  bool  $withTrashed  삭제 포함 여부
+     * @param  string  $slug  게시판 슬러그
+     * @param  string|null  $scopePermission  권한 스코프 식별자
+     * @return Builder 구성된 쿼리
+     */
+    private function buildVisibleCommentQuery(?int $boardId, int $postId, bool $withTrashed, string $slug, ?string $scopePermission)
+    {
+        $query = Comment::query()
+            ->where('board_id', $boardId)
+            ->where('post_id', $postId);
+
+        PermissionHelper::applyPermissionScope($query, $scopePermission ?? "sirsoft-board.{$slug}.admin.comments.read");
+
+        if ($withTrashed) {
+            $query->withTrashed();
+        } else {
+            // 게시글 삭제로 함께 숨겨진(cascade) 댓글은 사용자가 지운 것이 아니므로 노출한다.
+            $query->withTrashed()
+                ->where(function ($q) {
+                    $q->whereNull('deleted_at')
+                        ->orWhere('trigger_type', TriggerType::Cascade->value);
+                });
+        }
+
+        return $query;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function countByPostId(string $slug, int $postId, bool $withTrashed = false, ?int $boardId = null): BoundedCount
+    {
+        $resolvedBoardId = $boardId ?? Board::where('slug', $slug)->value('id');
+
+        $query = Comment::query()
+            ->where('board_id', $resolvedBoardId)
+            ->where('post_id', $postId);
+
+        if ($withTrashed) {
+            $query->withTrashed();
+        } else {
+            $query->withTrashed()
+                ->where(function ($q) {
+                    $q->whereNull('deleted_at')
+                        ->orWhere('trigger_type', TriggerType::Cascade->value);
+                });
+        }
+
+        return BoundedPaginator::count($query, PaginationLimits::resultCap('board.comments'));
     }
 
     /**
@@ -162,16 +429,20 @@ class CommentRepository implements CommentRepositoryInterface
     /**
      * ID로 댓글을 조회합니다.
      *
+     * $postId 를 전달하면 해당 게시글에 속한 댓글만 조회합니다 (교차 게시글 접근 차단).
+     *
      * @param  string  $slug  게시판 슬러그
      * @param  int  $id  댓글 ID
+     * @param  int|null  $postId  상위 게시글 ID (null 이면 게시판 범위 전체)
      * @return Comment|null 댓글 또는 null
      */
-    public function find(string $slug, int $id): ?Comment
+    public function find(string $slug, int $id, ?int $postId = null): ?Comment
     {
         $board = Board::where('slug', $slug)->first();
 
         return Comment::query()
             ->where('board_id', $board?->id)
+            ->when($postId !== null, fn ($query) => $query->where('post_id', $postId))
             ->withTrashed()
             ->with(['user'])
             ->find($id);
@@ -180,18 +451,22 @@ class CommentRepository implements CommentRepositoryInterface
     /**
      * ID로 댓글을 조회하며, 없으면 예외를 발생시킵니다.
      *
+     * $postId 를 전달하면 해당 게시글에 속한 댓글만 조회합니다 (교차 게시글 접근 차단).
+     *
      * @param  string  $slug  게시판 슬러그
      * @param  int  $id  댓글 ID
+     * @param  int|null  $postId  상위 게시글 ID (null 이면 게시판 범위 전체)
      * @return Comment 댓글 모델
      *
      * @throws ModelNotFoundException
      */
-    public function findOrFail(string $slug, int $id): Comment
+    public function findOrFail(string $slug, int $id, ?int $postId = null): Comment
     {
         $board = Board::where('slug', $slug)->firstOrFail();
 
         return Comment::query()
             ->where('board_id', $board->id)
+            ->when($postId !== null, fn ($query) => $query->where('post_id', $postId))
             ->withTrashed()
             ->with(['user'])
             ->findOrFail($id);
@@ -255,6 +530,7 @@ class CommentRepository implements CommentRepositoryInterface
      * @param  int  $id  댓글 ID
      * @param  string  $status  변경할 상태 (published/blinded/deleted)
      * @param  array  $actionLog  작업 이력 데이터
+     * @param  string|null  $triggerType  트리거 유형 (admin/user/report 등, 지정 시 함께 갱신)
      * @return Comment 수정된 댓글 모델
      *
      * @throws ModelNotFoundException
@@ -353,6 +629,20 @@ class CommentRepository implements CommentRepositoryInterface
     }
 
     /**
+     * 게시판 ID 기준으로 댓글을 일괄 영구 삭제합니다.
+     *
+     * 게시판 영구 삭제(deleteBoard) 시 사용합니다. 소프트 삭제와 달리
+     * deleted_at 마킹이 아니라 레코드를 물리적으로 제거합니다.
+     *
+     * @param  int  $boardId  게시판 ID
+     * @return int 삭제된 댓글 수
+     */
+    public function forceDeleteByBoardId(int $boardId): int
+    {
+        return Comment::where('board_id', $boardId)->forceDelete();
+    }
+
+    /**
      * 게시판 ID 기준으로 댓글을 일괄 소프트 삭제합니다.
      *
      * @param  int  $boardId  게시판 ID
@@ -364,7 +654,12 @@ class CommentRepository implements CommentRepositoryInterface
     }
 
     /**
-     * 게시글 ID 기준으로 댓글을 일괄 소프트 삭제합니다.
+     * 게시글 ID 기준으로 살아있는 댓글을 cascade 로 일괄 소프트 삭제합니다.
+     *
+     * 게시글 삭제 연쇄로 지워졌음을 trigger_type='cascade' 로 마킹합니다.
+     * 이미 삭제된(trashed) 댓글은 Eloquent 기본 스코프가 제외하므로,
+     * 사용자가 먼저 지운 댓글(trigger_type='user')은 영향을 받지 않습니다.
+     * trigger_type 마킹과 deleted_at 을 단일 쿼리로 처리해 정합성을 보장합니다.
      *
      * @param  string  $slug  게시판 슬러그
      * @param  int  $postId  게시글 ID
@@ -376,7 +671,86 @@ class CommentRepository implements CommentRepositoryInterface
 
         return Comment::where('board_id', $board?->id)
             ->where('post_id', $postId)
-            ->delete();
+            ->update([
+                'trigger_type' => TriggerType::Cascade->value,
+                'deleted_at' => now(),
+            ]);
+    }
+
+    /**
+     * 게시글 ID 기준으로 cascade 로 지워진 댓글만 복원합니다.
+     *
+     * 게시글 복원 시, 게시글 삭제 연쇄로 지워진(trigger_type='cascade') 댓글만
+     * 되살립니다. 사용자가 직접 지운(trigger_type='user') 댓글은 trashed 로 유지됩니다.
+     *
+     * @param  string  $slug  게시판 슬러그
+     * @param  int  $postId  게시글 ID
+     * @return int 복원된 댓글 수
+     */
+    public function restoreCascadedByPostId(string $slug, int $postId): int
+    {
+        $board = Board::where('slug', $slug)->first();
+
+        return Comment::onlyTrashed()
+            ->where('board_id', $board?->id)
+            ->where('post_id', $postId)
+            ->where('trigger_type', TriggerType::Cascade->value)
+            ->update([
+                'deleted_at' => null,
+            ]);
+    }
+
+    /**
+     * 여러 게시글의 살아있는 댓글을 cascade 로 일괄 소프트 삭제합니다.
+     *
+     * 답글 트리 연쇄 삭제(softDeleteCascadeByParentId)로 지워지는 자손 게시글들의
+     * 댓글 정리용입니다. 단건 softDeleteByPostId 와 동일한 쿼리를 whereIn 으로 확장했습니다.
+     *
+     * @param  string  $slug  게시판 슬러그
+     * @param  array<int>  $postIds  게시글 ID 배열
+     * @return int 삭제된 댓글 수
+     */
+    public function softDeleteByPostIds(string $slug, array $postIds): int
+    {
+        if ($postIds === []) {
+            return 0;
+        }
+
+        $board = Board::where('slug', $slug)->first();
+
+        return Comment::where('board_id', $board?->id)
+            ->whereIn('post_id', $postIds)
+            ->update([
+                'trigger_type' => TriggerType::Cascade->value,
+                'deleted_at' => now(),
+            ]);
+    }
+
+    /**
+     * 여러 게시글의 cascade 로 지워진 댓글만 일괄 복원합니다.
+     *
+     * 답글 트리 연쇄 복원(restoreCascadedByParentId)으로 되살아난 자손 게시글들의
+     * 댓글 복원용입니다. 사용자가 직접 지운 댓글(trigger_type='user')은 유지됩니다.
+     *
+     * @param  string  $slug  게시판 슬러그
+     * @param  array<int>  $postIds  게시글 ID 배열
+     * @return int 복원된 댓글 수
+     */
+    public function restoreCascadedByPostIds(string $slug, array $postIds): int
+    {
+        if ($postIds === []) {
+            return 0;
+        }
+
+        $board = Board::where('slug', $slug)->first();
+
+        return Comment::onlyTrashed()
+            ->where('board_id', $board?->id)
+            ->whereIn('post_id', $postIds)
+            ->where('trigger_type', TriggerType::Cascade->value)
+            ->update([
+                'deleted_at' => null,
+            ]);
     }
 
     /**
@@ -400,20 +774,19 @@ class CommentRepository implements CommentRepositoryInterface
         $orderDirection = $sort === 'oldest' ? 'asc' : 'desc';
 
         // 비활성 게시판 제외 — JOIN 대신 whereNotIn으로 인덱스 활용
+        // audit:allow query-unbounded-get reason: 게시판은 운영자가 만든 수만큼만 존재한다 (글·댓글 수와 무관)
         $inactiveBoardIds = Board::where('is_active', false)->pluck('id')->all();
 
+        // 관계/정렬은 지연 조인이 담당한다 (inner 는 키 컬럼만 조회)
         $query = Comment::query()
-            ->select('board_comments.*')
             ->where('board_comments.user_id', $userId)
             // 삭제된 게시글 제외 — whereExists로 JOIN 대체
             ->whereExists(function ($q) {
                 $q->select(DB::raw(1))
-                    ->from('board_posts')
+                    ->from((new Post)->getTable())
                     ->whereColumn('board_posts.id', 'board_comments.post_id')
                     ->whereNull('board_posts.deleted_at');
-            })
-            ->with(['post.board'])
-            ->orderBy('board_comments.created_at', $orderDirection);
+            });
 
         // 비활성 게시판 제외
         if (! empty($inactiveBoardIds)) {
@@ -434,7 +807,25 @@ class CommentRepository implements CommentRepositoryInterface
             $query->where('board_comments.content', 'like', $keyword);
         }
 
-        $paginator = $query->paginate($perPage, ['*'], 'page', null, $cachedTotal);
+        // 캐시된 total 이 있으면 COUNT 를 건너뛴다. 검색/게시판 필터가 걸린 조회는 캐시를
+        // 쓰지 않으므로 이때는 trait 이 직접 COUNT 한다.
+        //
+        // 목록 컬럼은 아래 through() 가 실제로 읽는 것만 남긴다 (post_id 는 post 관계 FK).
+        // 넓은 컬럼인 content 는 화면에 표시하므로 유지하되, 지연 조인으로 읽는 행 수가
+        // 페이지 크기에 고정된다.
+        $paginator = $this->paginateWithDeferredJoin(
+            query: $query,
+            columns: [
+                'board_comments.id',
+                'board_comments.post_id',
+                'board_comments.content',
+                'board_comments.created_at',
+            ],
+            sort: [['column' => 'board_comments.created_at', 'direction' => $orderDirection]],
+            perPage: $perPage,
+            relations: ['post.board'],
+            total: $cachedTotal,
+        );
 
         // paginate 후 현재 페이지 항목에만 PHP 가공 적용
         $paginator->through(function (Comment $comment) {
@@ -468,5 +859,23 @@ class CommentRepository implements CommentRepositoryInterface
         Comment::where('id', $parentCommentId)->update(['replies_count' => $count]);
 
         return $count;
+    }
+
+    /**
+     * 특정 날짜에 작성된 전체 게시판의 댓글 수를 조회합니다 (대시보드 집계용).
+     *
+     * @param  string  $date  집계 기준 날짜 (Y-m-d)
+     * @return int 해당 날짜 작성 댓글 수
+     */
+    public function countCreatedOnDate(string $date): int
+    {
+        $start = CarbonImmutable::parse($date)->startOfDay();
+        $end = $start->addDay();
+
+        return Comment::query()
+            ->whereNull('deleted_at')
+            ->where('created_at', '>=', $start)
+            ->where('created_at', '<', $end)
+            ->count();
     }
 }

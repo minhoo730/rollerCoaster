@@ -6,7 +6,7 @@
   "meta": {
     "seo": {
       "enabled": true,
-      "data_sources": ["userProfile"],
+      "data_sources": ["userProfile", "userPosts"],
       "priority": 0.3,
       "changefreq": "weekly",
       "og": {
@@ -17,6 +17,7 @@
   "data_sources": [
     {
       "id": "userProfile",
+      "label_key": "$t:editor.data_source.userProfile",
       "type": "api",
       "endpoint": "/api/users/{{route.userId}}/profile",
       "method": "GET",
@@ -35,6 +36,7 @@
     },
     {
       "id": "userPosts",
+      "label_key": "$t:editor.data_source.userPosts",
       "type": "api",
       "endpoint": "/api/modules/sirsoft-board/users/{{route.userId}}/posts",
       "method": "GET",
@@ -205,7 +207,7 @@
                             "name": "Icon",
                             "props": {
                               "name": "file-circle-xmark",
-                              "size": "3x",
+                              "size": "2xl",
                               "className": "text-gray-300 dark:text-gray-600 mb-4"
                             }
                           },
@@ -470,7 +472,8 @@
                         "name": "Pagination",
                         "props": {
                           "currentPage": "{{userPosts.data?.current_page ?? 1}}",
-                          "totalPages": "{{userPosts.data?.last_page ?? 1}}"
+                          "totalPages": "{{userPosts.data?.last_page ?? null}}",
+                          "hasMorePages": "{{userPosts.data?.has_more_pages ?? false}}"
                         },
                         "actions": [
                           {

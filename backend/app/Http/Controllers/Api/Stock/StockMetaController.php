@@ -13,59 +13,53 @@ use Throwable;
 class StockMetaController extends Controller
 {
     public function __construct(
-        private KisStockMetaService $kisStockMetaService
+        private KisStockMetaService $kisStockMetaService,
     ) {}
 
     public function index(Request $request): JsonResponse
     {
-        $market = $request->query('market');
-        $venue = $request->query('venue');
-
         $query = Stock::query()->where('is_active', true);
 
-        if ($market) {
+        if ($market = $request->query('market')) {
             $query->where('market', $market);
         }
 
-        if ($venue) {
+        if ($venue = $request->query('venue')) {
             $query->where('venue', $venue);
         }
 
         return response()->json(
             $query->select('code', 'name', 'market', 'venue', 'sector', 'is_active')
-                  ->orderBy('name')
-                  ->limit(1000)
-                  ->get()
+                ->orderBy('name')
+                ->limit(1000)
+                ->get()
         );
     }
 
     public function search(Request $request): JsonResponse
     {
-        $q = $request->query('q');
-
-        if (!$q) {
+        $q = trim((string) $request->query('q'));
+        if ($q === '') {
             return response()->json([]);
         }
 
         return response()->json(
-            Stock::where('is_active', true)
-                ->where(function ($query) use ($q) {
-                    $query->where('name', 'like', "%{$q}%")
-                        ->orWhere('code', 'like', "%{$q}%");
-                })
+            Stock::query()
+                ->where('is_active', true)
+                ->where(fn ($query) => $query->where('name', 'like', "%{$q}%")->orWhere('code', 'like', "%{$q}%"))
                 ->limit(20)
                 ->get(['code', 'name', 'market', 'venue', 'sector'])
         );
     }
 
-    public function show($code): JsonResponse
+    public function show(string $code): JsonResponse
     {
-        $venue = request()->query('venue', 'krx');
-        $stock = Stock::where('code', $code)
-            ->where('venue', $venue)
+        $stock = Stock::query()
+            ->where('code', $code)
+            ->where('venue', request()->query('venue', 'krx'))
             ->first();
 
-        if (!$stock) {
+        if (! $stock) {
             return response()->json(['message' => 'Not found'], 404);
         }
 

@@ -4,6 +4,8 @@ namespace Modules\Sirsoft\Board\Http\Resources;
 
 use App\Http\Resources\BaseApiResource;
 use App\Models\Permission;
+use App\Models\Role;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Modules\Sirsoft\Board\Traits\ChecksBoardPermission;
@@ -54,6 +56,7 @@ class BoardResource extends BaseApiResource
             'use_comment' => $this->use_comment,
             'use_reply' => $this->use_reply,
             'max_reply_depth' => $this->max_reply_depth,
+            'reply_delete_policy' => $this->reply_delete_policy,
             'use_report' => $this->use_report,
             'comment_order' => $this->comment_order,
             'max_comment_depth' => $this->max_comment_depth,
@@ -67,27 +70,31 @@ class BoardResource extends BaseApiResource
             'max_comment_length' => $this->max_comment_length,
 
             // 키워드 필터링
-            'blocked_keywords' => $this->formatBlockedKeywords($isFormRequest),
+            'blocked_keywords' => $this->formatBlockedKeywords(),
 
             // 파일 업로드 설정
             'use_file_upload' => $this->use_file_upload,
             'max_file_size' => $this->max_file_size,
             'max_file_count' => $this->max_file_count,
-            'allowed_extensions' => $this->formatAllowedExtensions($isFormRequest),
+            'allowed_extensions' => $this->formatAllowedExtensions(),
+
+            // 관리자 메뉴 등록 여부 (폼 토글 초기값). 폼 요청 시에만 포함.
+            // 값은 Controller(getFormData)가 모델에 세팅한 is_in_admin_menu 속성에서 읽음.
+            'add_to_menu' => $isFormRequest ? (bool) ($this->is_in_admin_menu ?? false) : null,
 
             // 표시 설정
             'new_display_hours' => $this->new_display_hours ?? 24,
 
             // 게시판 관리 인원 (역할 기반, 역할별 1회 조회로 통합)
-            ...$this->getBoardRoleData("sirsoft-board.{$this->slug}"),
+            ...self::getBoardRoleData("sirsoft-board.{$this->slug}"),
 
             // 알림 설정
             'notify_author' => $this->notify_author,
             'notify_admin_on_post' => $this->notify_admin_on_post,
 
-            // 타임스탬프
-            'created_at' => $this->created_at?->format('Y-m-d H:i:s'),
-            'updated_at' => $this->updated_at?->format('Y-m-d H:i:s'),
+            // 타임스탬프 (UTC 저장 → 사용자 타임존 변환 출력)
+            'created_at' => $this->formatDateTimeStringForUser($this->created_at),
+            'updated_at' => $this->formatDateTimeStringForUser($this->updated_at),
 
             // 조건부 포함: 게시판 권한 설정 정보
             'permissions' => ($request->has('include_permissions') || $request->routeIs('*.show'))
@@ -137,6 +144,35 @@ class BoardResource extends BaseApiResource
     }
 
     /**
+     * 관리자 게시판 목록용 경량 배열로 변환합니다.
+     *
+     * 사용자 목록(`toListArray`)보다 표시 항목이 조금 더 많습니다 — 관리자 목록은 유형 뱃지·사용
+     * 여부·분류 개수를 함께 보여줍니다. 그렇다고 전체 표현(`toArray`)을 쓸 수는 없습니다.
+     * 전체 표현은 게시판마다 매니저/스텝 역할과 **그 역할에 속한 사용자 전원(uuid·이름·이메일)** 을
+     * 조회해 붙이는데, 목록 화면은 그 값을 쓰지 않으면서 행 수만큼 추가 쿼리와 개인정보를 싣게 됩니다.
+     * 역할 편집은 게시판 상세/설정 화면이 공급합니다.
+     *
+     * @param  Request|null  $request  HTTP 요청
+     * @return array<string, mixed> 관리자 목록용 배열
+     */
+    public function toAdminListArray(?Request $request = null): array
+    {
+        $request = $request ?? request();
+
+        return [
+            ...$this->toListArray($request),
+
+            'type' => $this->getValue('type'),
+            'is_active' => (bool) $this->getValue('is_active'),
+            'categories' => $this->getValue('categories') ?? [],
+
+            // 관리자 목록 화면은 「등록일」 컬럼을 그린다(admin_board_index.json). `toListArray` 에는
+            // 없는 값이라 여기서 명시적으로 싣는다 — 빠지면 예외도 오류도 없이 그 칸만 공란이 된다.
+            'created_at' => $this->formatDateTimeStringForUser($this->created_at),
+        ];
+    }
+
+    /**
      * 게시글 목록 API 응답에 포함할 게시판 정보를 반환합니다 (User용).
      *
      * PostCollection::withBoardInfo()에 전달할 데이터를 생성합니다.
@@ -146,6 +182,7 @@ class BoardResource extends BaseApiResource
     public function toBoardInfoForUser(): array
     {
         return [
+            'id' => $this->id,
             'slug' => $this->slug,
             'name' => $this->getLocalizedName(),
             'description' => $this->getLocalizedDescription(),
@@ -156,6 +193,7 @@ class BoardResource extends BaseApiResource
                 'use_file_upload' => $this->use_file_upload,
                 'use_comment' => $this->use_comment,
                 'use_reply' => $this->use_reply,
+                'reply_delete_policy' => $this->reply_delete_policy,
                 'use_report' => $this->use_report,
                 'secret_mode' => $this->secret_mode,
                 'show_view_count' => $this->show_view_count,
@@ -188,6 +226,7 @@ class BoardResource extends BaseApiResource
                 'use_file_upload' => $this->use_file_upload,
                 'use_comment' => $this->use_comment,
                 'use_reply' => $this->use_reply,
+                'reply_delete_policy' => $this->reply_delete_policy,
                 'use_report' => $this->use_report,
                 'secret_mode' => $this->secret_mode,
                 'per_page' => $this->per_page,
@@ -218,32 +257,27 @@ class BoardResource extends BaseApiResource
     // =========================================================================
 
     /**
-     * 차단 키워드를 포맷팅합니다.
+     * 차단 키워드를 배열로 반환합니다.
      *
-     * @param  bool  $isFormRequest  폼 요청 여부
-     * @return string|array 포맷팅된 차단 키워드
+     * 폼/조회 요청 모두 배열로 반환합니다. 폼은 TagInput, 조회는 목록 표시에서
+     * 동일하게 배열을 사용합니다 (categories 와 동일 패턴).
+     *
+     * @return array 차단 키워드 배열
      */
-    private function formatBlockedKeywords(bool $isFormRequest): string|array
+    private function formatBlockedKeywords(): array
     {
-        if ($isFormRequest && is_array($this->blocked_keywords)) {
-            return implode(', ', $this->blocked_keywords);
-        }
-
         return $this->blocked_keywords ?? [];
     }
 
     /**
-     * 허용 확장자를 포맷팅합니다.
+     * 허용 확장자를 배열로 반환합니다.
      *
-     * @param  bool  $isFormRequest  폼 요청 여부
-     * @return string|array 포맷팅된 허용 확장자
+     * 폼/조회 요청 모두 배열로 반환합니다 (TagInput 입력과 일관).
+     *
+     * @return array 허용 확장자 배열
      */
-    private function formatAllowedExtensions(bool $isFormRequest): string|array
+    private function formatAllowedExtensions(): array
     {
-        if ($isFormRequest && is_array($this->allowed_extensions)) {
-            return implode(', ', $this->allowed_extensions);
-        }
-
         return $this->allowed_extensions ?? [];
     }
 
@@ -259,10 +293,13 @@ class BoardResource extends BaseApiResource
      * 기존 getBoardRoleUsers() + getBoardRoleUserIds()가 역할별 2회씩 조회하던 것을
      * 역할별 1회 조회로 통합합니다.
      *
+     * 복제(BoardService::copyBoard) 경로와 공유하기 위해 public static 으로 노출한다.
+     * (copyBoard 가 동일 산출 구조를 재사용하도록 SSoT 통합)
+     *
      * @param  string  $rolePrefix  역할 접두사 (예: "sirsoft-board.free")
      * @return array board_managers, board_steps, board_manager_ids, board_step_ids
      */
-    private function getBoardRoleData(string $rolePrefix): array
+    public static function getBoardRoleData(string $rolePrefix): array
     {
         $result = [
             'board_managers' => [],
@@ -271,7 +308,7 @@ class BoardResource extends BaseApiResource
             'board_step_ids' => [],
         ];
 
-        $roles = \App\Models\Role::whereIn('identifier', [
+        $roles = Role::whereIn('identifier', [
             "{$rolePrefix}.manager",
             "{$rolePrefix}.step",
         ])->with('users')->get();
@@ -364,10 +401,10 @@ class BoardResource extends BaseApiResource
      */
     protected function getUserBoardAbilities(Request $request): array
     {
-        /** @var \App\Models\User|null $user */
+        /** @var User|null $user */
         $user = Auth::user();
         $slug = $this->getValue('slug');
-        $isAdminRoute = $this->isAdminRoute($request);
+        $isAdminRoute = $this->isAdminRequest($request);
 
         // 컨텍스트에 맞는 permissionMap 구성 (PostResource.resolveAbilities()와 동일 키)
         $permissionMap = $isAdminRoute
@@ -390,9 +427,11 @@ class BoardResource extends BaseApiResource
                 'can_upload' => "sirsoft-board.{$slug}.attachments.upload",
                 'can_download' => "sirsoft-board.{$slug}.attachments.download",
                 'can_manage' => "sirsoft-board.{$slug}.manager",
+                // 유저 화면에서 관리자 게시판 화면 진입 게이트 (Admin 타입 admin.manage 보유자만 true)
+                'can_access_admin' => "sirsoft-board.{$slug}.admin.manage",
             ];
 
-        // 8개 권한을 일괄 조회 (개별 Permission::where() 8회 → whereIn 1회)
+        // 권한 일괄 조회 (개별 Permission::where() → whereIn 1회)
         $identifiers = array_values($permissionMap);
         $permissions = Permission::whereIn('identifier', $identifiers)->get()->keyBy('identifier');
 
@@ -405,7 +444,7 @@ class BoardResource extends BaseApiResource
                 ->get()
                 ->pluck('permissions')
                 ->flatten()
-                ->map(fn ($p) => $p->identifier . '|' . ($p->type instanceof \BackedEnum ? $p->type->value : $p->type))
+                ->map(fn ($p) => $p->identifier.'|'.($p->type instanceof \BackedEnum ? $p->type->value : $p->type))
                 ->unique()
                 ->toArray();
 
@@ -416,7 +455,7 @@ class BoardResource extends BaseApiResource
                 }
 
                 $typeValue = $permission->type instanceof \BackedEnum ? $permission->type->value : $permission->type;
-                $result[$canKey] = in_array($permission->identifier . '|' . $typeValue, $userPermissions);
+                $result[$canKey] = in_array($permission->identifier.'|'.$typeValue, $userPermissions);
             }
         } else {
             foreach ($permissionMap as $canKey => $identifier) {
@@ -445,7 +484,7 @@ class BoardResource extends BaseApiResource
         static $guestRole = null;
 
         if ($guestRole === null) {
-            $guestRole = \App\Models\Role::where('identifier', 'guest')->first();
+            $guestRole = Role::where('identifier', 'guest')->first();
         }
 
         if (! $guestRole) {
@@ -453,24 +492,5 @@ class BoardResource extends BaseApiResource
         }
 
         return $guestRole->permissions()->where('permissions.id', $permission->id)->exists();
-    }
-
-    /**
-     * Admin 라우트 여부를 확인합니다.
-     *
-     * Controller 네임스페이스로 판단합니다.
-     *
-     * @param  Request  $request  HTTP 요청
-     * @return bool Admin 라우트 여부
-     */
-    private function isAdminRoute(Request $request): bool
-    {
-        $controller = $request->route()?->getController();
-
-        if (! $controller) {
-            return false;
-        }
-
-        return str_contains(get_class($controller), '\\Admin\\');
     }
 }

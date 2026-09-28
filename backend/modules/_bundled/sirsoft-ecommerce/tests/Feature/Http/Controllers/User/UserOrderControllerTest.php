@@ -2,21 +2,27 @@
 
 namespace Modules\Sirsoft\Ecommerce\Tests\Feature\Http\Controllers\User;
 
+use App\Extension\HookManager;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Modules\Sirsoft\Ecommerce\Enums\OrderStatusEnum;
 use Modules\Sirsoft\Ecommerce\Enums\PaymentMethodEnum;
 use Modules\Sirsoft\Ecommerce\Enums\PaymentStatusEnum;
-use Modules\Sirsoft\Ecommerce\Models\OrderPayment;
 use Modules\Sirsoft\Ecommerce\Enums\ProductDisplayStatus;
 use Modules\Sirsoft\Ecommerce\Enums\ProductSalesStatus;
+use Modules\Sirsoft\Ecommerce\Models\Cart;
 use Modules\Sirsoft\Ecommerce\Models\Order;
+use Modules\Sirsoft\Ecommerce\Models\OrderAddress;
 use Modules\Sirsoft\Ecommerce\Models\OrderOption;
+use Modules\Sirsoft\Ecommerce\Models\OrderPayment;
 use Modules\Sirsoft\Ecommerce\Models\Product;
 use Modules\Sirsoft\Ecommerce\Models\ProductOption;
 use Modules\Sirsoft\Ecommerce\Models\TempOrder;
-use Modules\Sirsoft\Ecommerce\Models\Cart;
 use Modules\Sirsoft\Ecommerce\Models\UserAddress;
 use Modules\Sirsoft\Ecommerce\Services\EcommerceSettingsService;
+use Modules\Sirsoft\Ecommerce\Services\GuestOrderAuthService;
+use Modules\Sirsoft\Ecommerce\Services\PaymentMethodResolver;
 use Modules\Sirsoft\Ecommerce\Tests\ModuleTestCase;
 
 /**
@@ -27,7 +33,9 @@ use Modules\Sirsoft\Ecommerce\Tests\ModuleTestCase;
 class UserOrderControllerTest extends ModuleTestCase
 {
     protected string $cartKey;
+
     protected Product $product;
+
     protected ProductOption $productOption;
 
     protected function setUp(): void
@@ -39,8 +47,8 @@ class UserOrderControllerTest extends ModuleTestCase
         // 테스트 상품 생성
         $this->product = Product::create([
             'name' => ['ko' => '테스트 상품', 'en' => 'Test Product'],
-            'product_code' => 'TEST-' . Str::random(8),
-            'sku' => 'SKU-' . Str::random(8),
+            'product_code' => 'TEST-'.Str::random(8),
+            'sku' => 'SKU-'.Str::random(8),
             'list_price' => 20000,
             'selling_price' => 15000,
             'currency_code' => 'KRW',
@@ -53,10 +61,10 @@ class UserOrderControllerTest extends ModuleTestCase
         // 테스트 상품 옵션 생성
         $this->productOption = ProductOption::create([
             'product_id' => $this->product->id,
-            'option_code' => 'OPT-' . Str::random(8),
+            'option_code' => 'OPT-'.Str::random(8),
             'option_values' => ['색상' => '검정', '사이즈' => 'M'],
             'option_name' => null,
-            'sku' => 'SKU-' . Str::random(8),
+            'sku' => 'SKU-'.Str::random(8),
             'price_adjustment' => 0,
             'stock_quantity' => 50,
             'safe_stock_quantity' => 5,
@@ -64,6 +72,33 @@ class UserOrderControllerTest extends ModuleTestCase
             'is_active' => true,
             'sort_order' => 1,
         ]);
+    }
+
+    /**
+     * 기본 PG 제공자를 설정하고, 그 제공자를 레지스트리에도 등록합니다.
+     *
+     * 설정만 바꾸면 카탈로그가 그 PG 를 "사라진 PG"(`_orphaned_pg`)로 판정해 해당 결제수단이
+     * 주문 불가가 되고 주문 생성이 422 로 막힙니다(#570 고아 카탈로그 차단). 실제 운영에서는
+     * PG 플러그인이 이 훅으로 자신을 등록하므로, 테스트도 같은 경로로 등록해야 합니다.
+     *
+     * @param  string  $providerId  PG 제공자 식별자
+     * @return void
+     */
+    protected function registerDefaultPgProvider(string $providerId): void
+    {
+        app(EcommerceSettingsService::class)->setSetting('order_settings.default_pg_provider', $providerId);
+
+        HookManager::addFilter(
+            'sirsoft-ecommerce.payment.registered_pg_providers',
+            fn (array $providers) => array_merge($providers, [[
+                'id' => $providerId,
+                'name' => $providerId,
+                'payment_handler' => 'sirsoft-pay_'.$providerId.'.requestPayment',
+            ]])
+        );
+
+        app(PaymentMethodResolver::class)->flushCache();
+        app(EcommerceSettingsService::class)->clearCache();
     }
 
     /**
@@ -273,9 +308,14 @@ class UserOrderControllerTest extends ModuleTestCase
     }
 
     /**
-     * 비로그인 사용자 주문 생성 실패 테스트
+     * 비로그인 사용자도 주문 생성 endpoint 진입 가능 (인증으로 막지 않음)
+     *
+     * POST user/orders 가 회원/비회원 공유 단일 endpoint(optional.sanctum)로 통합됨.
+     * 따라서 비로그인 요청은 401 로 차단되지 않고 검증 단계까지 진입한다. 본 테스트는
+     * 잘못된 body(루트 레벨 키, 비회원 필수값 누락)로 401 이 아닌 422(검증 실패)가 나는지 확인해
+     * 인증 차단이 아닌 검증 차단임을 보장한다.
      */
-    public function test_비로그인_사용자_주문_생성_실패(): void
+    public function test_비로그인_주문_생성은_인증이_아니라_검증으로_처리된다(): void
     {
         $response = $this->postJson(
             '/api/modules/sirsoft-ecommerce/user/orders',
@@ -295,7 +335,8 @@ class UserOrderControllerTest extends ModuleTestCase
             ['X-Cart-Key' => $this->cartKey]
         );
 
-        $response->assertStatus(401);
+        // 401(인증 차단) 이 아니라 422(검증 실패) — 비회원도 endpoint 에 진입함
+        $response->assertStatus(422);
     }
 
     // ========================================================================
@@ -339,6 +380,171 @@ class UserOrderControllerTest extends ModuleTestCase
             ])
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.pagination.total', 3);
+    }
+
+    /**
+     * 기본 목록은 대표 아이템 1건 + 전체 개수만 싣는다.
+     *
+     * 주문마다 아이템을 전부 싣는 것이 기본이면, 그 값을 그리지 않는 호출자(모바일 목록,
+     * 외부 연동)까지 한 페이지를 여는 것만으로 주문 수 × 아이템 수를 받는다. 전량이 필요한
+     * 화면은 `?with_items=1` 로 켠다.
+     *
+     * @scenario surface=my_page_list,option_profile=multiple
+     *
+     * @effects my_page_list_default_is_representative_only
+     */
+    public function test_기본_목록은_대표_아이템_1건과_개수만_싣는다(): void
+    {
+        $user = $this->createUser();
+        $this->actingAs($user);
+
+        $order = Order::factory()->forUser($user)->pendingPayment()->create();
+        OrderOption::factory()->count(3)->create(['order_id' => $order->id]);
+
+        $response = $this->getJson('/api/modules/sirsoft-ecommerce/user/orders');
+
+        $response->assertStatus(200);
+
+        $row = collect($response->json('data.data'))->firstWhere('id', $order->id);
+
+        $this->assertNotNull($row, '생성한 주문이 목록에 있어야 한다');
+        $this->assertIsArray($row['items'] ?? null, '대표 1건도 배열 형태로 실어야 화면 순회가 깨지지 않는다');
+        $this->assertCount(1, $row['items'], '기본은 대표 1건이다');
+        $this->assertSame(3, $row['item_count'], '"외 N건" 을 그리려면 전체 개수가 필요하다');
+    }
+
+    /**
+     * `?with_items=1` 은 전량이 필요한 화면(마이페이지 주문내역)을 위한 경로다.
+     *
+     * 화면(`partials/mypage/orders/_list.json`)이 `order.items` 를 순회하므로, 이 경로가
+     * 깨지면 주문마다 상품 한 줄만 남는다.
+     *
+     * @scenario surface=my_page_list,option_profile=multiple
+     *
+     * @effects my_page_list_enumerates_every_item_when_requested
+     */
+    public function test_with_items_1_이면_아이템을_전부_싣는다(): void
+    {
+        $user = $this->createUser();
+        $this->actingAs($user);
+
+        $order = Order::factory()->forUser($user)->pendingPayment()->create();
+        OrderOption::factory()->count(3)->create(['order_id' => $order->id]);
+
+        $response = $this->getJson('/api/modules/sirsoft-ecommerce/user/orders?with_items=1');
+
+        $response->assertStatus(200);
+
+        $row = collect($response->json('data.data'))->firstWhere('id', $order->id);
+
+        $this->assertNotNull($row);
+        $this->assertCount(3, $row['items'], 'with_items=1 이면 전량이다');
+        $this->assertSame(3, $row['item_count']);
+    }
+
+    /**
+     * 아이템 조회 쿼리 수가 주문 수에 비례하지 않는다.
+     *
+     * 대표 1건 축약이 관계 재조회로 구현되면 목록 한 페이지가 주문 수만큼 쿼리를 낸다 —
+     * 페이로드를 줄이려다 쿼리를 늘리는 맞바꿈이 된다.
+     *
+     * @scenario surface=my_page_list,option_profile=multiple
+     *
+     * @effects my_page_list_option_query_count_is_constant
+     */
+    public function test_아이템_조회_쿼리수가_주문수에_비례하지_않는다(): void
+    {
+        $user = $this->createUser();
+        $this->actingAs($user);
+
+        $makeOrder = function () use ($user) {
+            $order = Order::factory()->forUser($user)->pendingPayment()->create();
+            OrderOption::factory()->count(3)->create(['order_id' => $order->id]);
+        };
+
+        $makeOrder();
+
+        // 권한/설정 캐시를 채워 측정에서 제외
+        $this->getJson('/api/modules/sirsoft-ecommerce/user/orders');
+
+        $measure = function (): int {
+            $count = 0;
+            DB::listen(function ($query) use (&$count) {
+                if (str_contains($query->sql, 'ecommerce_order_options')) {
+                    $count++;
+                }
+            });
+
+            $this->getJson('/api/modules/sirsoft-ecommerce/user/orders')->assertStatus(200);
+
+            return $count;
+        };
+
+        $withOne = $measure();
+
+        for ($i = 0; $i < 4; $i++) {
+            $makeOrder();
+        }
+
+        $withFive = $measure();
+
+        $this->assertSame(
+            $withOne,
+            $withFive,
+            "주문 1건일 때 {$withOne}회, 5건일 때 {$withFive}회 — 행 수에 비례하면 N+1 이다"
+        );
+    }
+
+    /**
+     * 해석할 수 없는 with_items 값은 조용히 무시하지 않고 422 로 돌려준다.
+     *
+     * null 로 정규화하면 오타 파라미터가 "미지정" 으로 통과해 호출자가 잘못을 알 수 없다.
+     *
+     * @scenario surface=my_page_list,option_profile=multiple
+     *
+     * @effects my_page_list_rejects_unparseable_with_items
+     */
+    public function test_with_items_에_해석불가한_값이_오면_422(): void
+    {
+        $user = $this->createUser();
+        $this->actingAs($user);
+
+        $this->getJson('/api/modules/sirsoft-ecommerce/user/orders?with_items=maybe')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('with_items');
+    }
+
+    /**
+     * 현재 로케일 키가 없는 다국어(array) product_option_name 옵션이 포함된 주문도
+     * 500 없이 직렬화된다 (UserOrderListResource 의 reset(매직속성) 회귀).
+     */
+    public function test_주문_목록_array_옵션명_직렬화_오류없음(): void
+    {
+        app()->setLocale('en');
+        $user = $this->createUser();
+        $this->actingAs($user);
+
+        $order = Order::factory()->forUser($user)->pendingPayment()->create();
+        OrderOption::factory()->forOrder($order)->create([
+            'product_option_name' => ['ko' => '레드 / L'],
+        ]);
+
+        // 운영처럼 E_NOTICE("Indirect modification of overloaded property") 를 ErrorException 으로 승격
+        $previous = set_error_handler(function (int $severity, string $message, string $file, int $line): bool {
+            if (! (error_reporting() & $severity)) {
+                return false;
+            }
+            throw new \ErrorException($message, 0, $severity, $file, $line);
+        });
+
+        try {
+            $response = $this->getJson('/api/modules/sirsoft-ecommerce/user/orders');
+        } finally {
+            set_error_handler($previous);
+        }
+
+        $response->assertStatus(200);
+        $this->assertSame('레드 / L', $response->json('data.data.0.items.0.product_option_name'));
     }
 
     /**
@@ -619,14 +825,24 @@ class UserOrderControllerTest extends ModuleTestCase
     }
 
     /**
-     * 비로그인 사용자가 비회원 주문 결제 취소 기록 성공
+     * 비로그인 사용자가 유효한 게스트 조회 토큰으로 비회원 주문 결제 취소 기록 성공
+     *
+     * 주문번호만으로는 통과하지 않는다 — 보호된 게스트 경로와 동일하게
+     * X-Guest-Order-Token 이 필요하다 (토큰 부재 차단은 GuestCancelPaymentAuthTest).
      */
     public function test_비로그인_사용자_비회원_주문_결제_취소_기록_성공(): void
     {
+        $guestPassword = 'guest12';
+        $guestPhone = '010-1234-5678';
+
         // 비회원 주문 (user_id = null)
         $order = Order::factory()->create([
             'user_id' => null,
             'order_status' => OrderStatusEnum::PENDING_ORDER,
+            'guest_lookup_password_hash' => Hash::make($guestPassword),
+        ]);
+        OrderAddress::factory()->shipping()->forOrder($order)->create([
+            'orderer_phone' => $guestPhone,
         ]);
         OrderPayment::factory()->create([
             'order_id' => $order->id,
@@ -634,8 +850,13 @@ class UserOrderControllerTest extends ModuleTestCase
             'payment_method' => PaymentMethodEnum::CARD,
         ]);
 
+        $token = app(GuestOrderAuthService::class)
+            ->authenticate($order->order_number, $guestPhone, $guestPassword, '10.0.0.1')['token'];
+
         $response = $this->postJson(
-            "/api/modules/sirsoft-ecommerce/orders/{$order->order_number}/cancel-payment"
+            "/api/modules/sirsoft-ecommerce/orders/{$order->order_number}/cancel-payment",
+            [],
+            ['X-Guest-Order-Token' => $token]
         );
 
         $response->assertStatus(200)
@@ -716,7 +937,7 @@ class UserOrderControllerTest extends ModuleTestCase
         ], $overrides);
     }
 
-    public function test_비PG_체크ON_배송지_생성(): void
+    public function test_비_p_g_체크_o_n_배송지_생성(): void
     {
         $user = $this->createUser();
         $this->actingAs($user);
@@ -738,7 +959,7 @@ class UserOrderControllerTest extends ModuleTestCase
         ]);
     }
 
-    public function test_비PG_체크OFF_배송지_미생성(): void
+    public function test_비_p_g_체크_of_f_배송지_미생성(): void
     {
         $user = $this->createUser();
         $this->actingAs($user);
@@ -757,7 +978,7 @@ class UserOrderControllerTest extends ModuleTestCase
         ]);
     }
 
-    public function test_비PG_체크_미전달_배송지_미생성(): void
+    public function test_비_p_g_체크_미전달_배송지_미생성(): void
     {
         $user = $this->createUser();
         $this->actingAs($user);
@@ -776,10 +997,10 @@ class UserOrderControllerTest extends ModuleTestCase
         ]);
     }
 
-    public function test_PG_체크ON_order_meta에_플래그_저장(): void
+    public function test_p_g_체크_o_n_order_meta에_플래그_저장(): void
     {
         // PG 결제가 실제로 동작하도록 기본 PG 제공자 설정
-        app(EcommerceSettingsService::class)->setSetting('order_settings.default_pg_provider', 'tosspayments');
+        $this->registerDefaultPgProvider('tosspayments');
 
         $user = $this->createUser();
         $this->actingAs($user);
@@ -804,9 +1025,9 @@ class UserOrderControllerTest extends ModuleTestCase
         $this->assertArrayHasKey('shipping_info_for_save', $order->order_meta);
     }
 
-    public function test_PG_체크ON_UserAddress_미생성(): void
+    public function test_p_g_체크_o_n_user_address_미생성(): void
     {
-        app(EcommerceSettingsService::class)->setSetting('order_settings.default_pg_provider', 'tosspayments');
+        $this->registerDefaultPgProvider('tosspayments');
 
         $user = $this->createUser();
         $this->actingAs($user);
@@ -830,9 +1051,9 @@ class UserOrderControllerTest extends ModuleTestCase
         ]);
     }
 
-    public function test_PG_체크OFF_order_meta_미저장(): void
+    public function test_p_g_체크_of_f_order_meta_미저장(): void
     {
-        app(EcommerceSettingsService::class)->setSetting('order_settings.default_pg_provider', 'tosspayments');
+        $this->registerDefaultPgProvider('tosspayments');
 
         $user = $this->createUser();
         $this->actingAs($user);
@@ -912,9 +1133,8 @@ class UserOrderControllerTest extends ModuleTestCase
     /**
      * cart_id를 포함한 임시 주문 생성 헬퍼
      *
-     * @param int $userId 사용자 ID
-     * @param array $cartItems [['cart_id' => int, 'quantity' => int, 'product_id' => int, 'product_option_id' => int], ...]
-     * @return TempOrder
+     * @param  int  $userId  사용자 ID
+     * @param  array  $cartItems  [['cart_id' => int, 'quantity' => int, 'product_id' => int, 'product_option_id' => int], ...]
      */
     protected function createTempOrderWithCartIds(int $userId, array $cartItems): TempOrder
     {
@@ -1027,8 +1247,8 @@ class UserOrderControllerTest extends ModuleTestCase
         // 두 번째 상품/옵션 생성
         $product2 = Product::create([
             'name' => ['ko' => '테스트 상품2', 'en' => 'Test Product2'],
-            'product_code' => 'TEST-' . Str::random(8),
-            'sku' => 'SKU-' . Str::random(8),
+            'product_code' => 'TEST-'.Str::random(8),
+            'sku' => 'SKU-'.Str::random(8),
             'list_price' => 20000,
             'selling_price' => 15000,
             'currency_code' => 'KRW',
@@ -1039,9 +1259,9 @@ class UserOrderControllerTest extends ModuleTestCase
         ]);
         $option2 = ProductOption::create([
             'product_id' => $product2->id,
-            'option_code' => 'OPT-' . Str::random(8),
+            'option_code' => 'OPT-'.Str::random(8),
             'option_values' => ['색상' => '흰색'],
-            'sku' => 'SKU-' . Str::random(8),
+            'sku' => 'SKU-'.Str::random(8),
             'price_adjustment' => 0,
             'stock_quantity' => 50,
             'safe_stock_quantity' => 5,

@@ -58,6 +58,7 @@ return [
             'permissions_deleted' => ':count개 권한 삭제됨',
             'menus_deleted' => ':count개 메뉴 삭제됨',
             'layouts_deleted' => ':count개 레이아웃 삭제됨',
+            'custom_preserved' => '운영자 파일(:directory)을 :archive 에 보관했습니다.',
             'confirm_prompt' => '모듈 ":module"을(를) 삭제하시겠습니까?',
             'confirm_details' => [
                 'roles' => '- :count개의 역할이 삭제됩니다.',
@@ -104,6 +105,9 @@ return [
             'aborted' => '업데이트가 취소되었습니다.',
             'backup_restored' => '백업에서 이전 버전이 복원되었습니다.',
             'force_mode' => '강제 업데이트 모드: 버전 비교를 건너뛰고 재설치합니다.',
+            'layout_strategy' => '레이아웃 전략: :strategy',
+            'modified_extensions_warning' => '관리자가 편집한 레이아웃 확장 :count건이 덮어쓰기됩니다.',
+            'modified_extension_item' => '  - :target (출처: :source)',
         ],
     ],
 

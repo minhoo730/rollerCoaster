@@ -17,6 +17,26 @@ return [
         'updated' => 'Category has been updated.',
         'deleted' => 'Category has been deleted.',
         'has_products' => '(:count linked products)',
+        'fetch_success' => 'Category list retrieved successfully.',
+        'fetch_failed' => 'Failed to retrieve the category list.',
+        'status_changed' => 'Category status has been changed.',
+        'order_updated' => 'Category order has been changed.',
+    ],
+    'settings' => [
+        'fetch_success' => 'Settings retrieved successfully.',
+        'fetch_failed' => 'Failed to retrieve settings.',
+        'save_success' => 'Settings have been saved.',
+        'save_failed' => 'Failed to save settings.',
+        'save_error' => 'An error occurred while saving settings.',
+        'update_success' => 'Settings have been updated.',
+        'update_failed' => 'Failed to update settings.',
+        'update_error' => 'An error occurred while updating settings.',
+        'cache_clear_success' => 'Settings cache has been cleared.',
+        'cache_clear_error' => 'An error occurred while clearing the settings cache.',
+    ],
+    'payment' => [
+        'provider_not_found' => 'Payment method not found.',
+        'client_config_success' => 'Payment configuration retrieved successfully.',
     ],
     'products' => [
         'not_found' => 'Product not found.',
@@ -43,6 +63,8 @@ return [
         'code_generation_failed' => 'Failed to generate product code.',
         'logs_fetch_success' => 'Product activity logs retrieved successfully.',
         'logs_fetch_failed' => 'Failed to retrieve product activity logs.',
+        'options_fetch_success' => 'Product options retrieved successfully.',
+        'options_fetch_failed' => 'Failed to retrieve product options.',
     ],
     'presets' => [
         'created' => 'Search preset has been saved.',
@@ -50,6 +72,7 @@ return [
         'deleted' => 'Search preset has been deleted.',
         'name_exists' => 'A preset with the same name already exists.',
         'not_owner' => 'You do not have permission to modify this preset.',
+        'fetch_success' => 'Search preset list retrieved successfully.',
     ],
     'product_image' => [
         'not_found' => 'Product image not found.',
@@ -61,6 +84,12 @@ return [
         'thumbnail_set' => 'Thumbnail has been set.',
         'not_found' => 'Product image not found.',
     ],
+    'category_images' => [
+        'uploaded' => 'Image has been uploaded.',
+        'deleted' => 'Image has been deleted.',
+        'reordered' => 'Image order has been changed.',
+        'not_found' => 'Category image not found.',
+    ],
     'brands' => [
         'list_retrieved' => 'Brand list retrieved successfully.',
         'retrieved' => 'Brand information retrieved successfully.',
@@ -68,6 +97,7 @@ return [
         'created' => 'Brand has been created.',
         'updated' => 'Brand has been updated.',
         'deleted' => 'Brand has been deleted.',
+        'status_changed' => 'Brand status has been changed.',
         'has_products' => '(:count linked products)',
     ],
     'options' => [
@@ -78,6 +108,7 @@ return [
         'bulk_update_success' => ':count options have been updated.',
         'bulk_update_failed' => 'Option bulk update failed.',
         'has_order_history' => 'Options with order history cannot be deleted.',
+        'bulk_updated' => ':count option(s) have been updated.',
     ],
 
     // Order (singular) - User-facing order messages
@@ -122,6 +153,9 @@ return [
         'updated' => 'Coupon has been updated.',
         'deleted' => 'Coupon has been deleted.',
         'status_changed' => 'Issue status of :count coupons has been updated.',
+        'direct_issued' => 'Coupon issued to :issued member(s).',
+        'direct_issued_with_skip' => 'Coupon issued to :issued member(s). (:skipped excluded for not meeting issue conditions)',
+        'issue_cancelled' => 'Coupon issuance has been cancelled.',
         'issues_retrieved' => 'Coupon issue history retrieved successfully.',
         'has_issues' => '(:count issues)',
 
@@ -146,6 +180,8 @@ return [
         'bulk_shipping_updated' => 'Shipping information of :count orders has been updated.',
         'bulk_update_failed' => 'Bulk update failed.',
         'status_changed' => 'Order status has been changed to :status.',
+        'update_failed' => 'Failed to update the order.',
+        'delete_failed' => 'Failed to delete the order.',
         'shipping_registered' => 'Shipping information has been registered.',
         'export_success' => 'Excel file has been created.',
         'export_failed' => 'Failed to create Excel file.',
@@ -171,6 +207,19 @@ return [
         'cancel_failed' => 'Failed to cancel order.',
         'estimate_refund_success' => 'Refund estimate retrieved successfully.',
         'estimate_refund_failed' => 'Failed to calculate refund estimate.',
+        'guest_password_reset_success' => 'Guest lookup password has been reset.',
+        'guest_password_reset_failed' => 'Failed to reset guest lookup password.',
+        'guest_password_reset_not_guest' => 'Only guest orders can have their lookup password reset.',
+        'deposit_confirmed' => 'Deposit confirmed and the order has been marked as paid.',
+        'deposit_confirm_failed' => 'Failed to confirm the deposit.',
+        'deposit_amount_mismatch' => 'The deposit amount does not match the amount due.',
+        'deposit_not_dbank' => 'Only bank transfer (manual deposit) orders can be confirmed.',
+        'deposit_not_pending' => 'Only unpaid orders can have their deposit confirmed.',
+        'payment_name_summary' => ':name and :count more',
+        'deposit' => [
+            'amount' => 'Deposit amount',
+            'depositor_name' => 'Depositor name',
+        ],
     ],
 
     // Product Label Messages
@@ -203,7 +252,7 @@ return [
         'prefix' => [
             'KRW' => '₩',
             'JPY' => '¥',
-            'CNY' => '¥',
+            'CNY' => '元',
             'USD' => '$',
             'EUR' => '€',
         ],
@@ -227,6 +276,10 @@ return [
         'fetched' => 'Cart items retrieved successfully.',
         'fetch_failed' => 'Failed to retrieve cart items.',
         'add_failed' => 'Failed to add item to cart.',
+        'reorder_added' => 'Items from your past order have been added to the cart.',
+        'reorder_failed' => 'Reorder failed.',
+        'reorder_option_not_found' => 'Product option no longer exists.',
+        'unknown_product' => 'Unknown product',
         'update_failed' => 'Failed to update cart.',
         'delete_failed' => 'Failed to delete cart item.',
         'deleted_multiple' => ':deleted_count items have been removed.',
@@ -290,6 +343,7 @@ return [
         'not_downloadable' => 'This coupon is not available for download.',
         'quantity_exhausted' => 'Coupon quantity exhausted.',
         'issue_period_expired' => 'Coupon issue period has ended.',
+        'validity_not_configured' => 'This coupon cannot be issued because its validity period is not configured. Please contact the administrator.',
         // Coupon validation errors (DTO/ValidationError)
         'expired' => 'This coupon has expired.',
         'min_amount_not_met' => 'Minimum order amount not met.',
@@ -297,6 +351,7 @@ return [
         'invalid_target' => 'This coupon is not applicable to the selected products.',
         'already_used' => 'This coupon has already been used.',
         'not_found' => 'Coupon not found.',
+        'per_user_limit_exceeded' => 'You have exceeded the usage limit for this coupon.',
     ],
 
     // User Mileage Messages (마이페이지/체크아웃용)
@@ -305,6 +360,16 @@ return [
         'balance_fetch_failed' => 'Failed to retrieve mileage balance.',
         'max_usable_fetched' => 'Maximum usable mileage retrieved successfully.',
         'max_usable_fetch_failed' => 'Failed to retrieve usable mileage.',
+        'list_retrieved' => 'Mileage history retrieved successfully.',
+        'transaction_created' => 'Mileage transaction processed successfully.',
+        'transaction_updated' => 'Mileage transaction updated successfully.',
+        'expiry_extended' => 'Mileage expiry extended successfully.',
+        'linked_retrieved' => 'Linked transactions retrieved successfully.',
+        'not_found' => 'Mileage transaction not found.',
+        'validation_failed' => 'Failed to process mileage.',
+        'not_earning' => 'Only earning transactions can be edited.',
+        'expiry_not_editable' => 'Expiry cannot be changed for already-expired or fully-used earnings.',
+        'expiry_before_earned' => 'Expiry cannot be earlier than the earned date.',
     ],
 
     // Temporary Order Messages
@@ -326,6 +391,8 @@ return [
         'updated' => 'Product notice template has been updated.',
         'deleted' => 'Product notice template has been deleted.',
         'copied' => 'Product notice template has been copied.',
+        'activated' => 'Product notice template has been activated.',
+        'deactivated' => 'Product notice template has been deactivated.',
         'not_found' => 'Product notice template not found.',
     ],
 
@@ -349,6 +416,7 @@ return [
         'updated' => 'Shipping carrier has been updated.',
         'deleted' => 'Shipping carrier has been deleted.',
         'toggled' => 'Shipping carrier status has been changed.',
+        'status_changed' => 'Shipping carrier status has been changed.',
         'delete_failed_in_use' => 'Cannot delete a carrier in use by orders. We recommend deactivating it instead.',
         'type_domestic' => 'Domestic',
         'type_international' => 'International',
@@ -406,8 +474,10 @@ return [
         'toggled' => 'Shipping policy status has been changed.',
         'copied' => 'Shipping policy has been copied.',
         'bulk_deleted' => ':count shipping policies have been deleted.',
+        'active_list_retrieved' => 'Active shipping policy list retrieved successfully.',
         'bulk_toggled' => ':count shipping policies status have been changed.',
         'set_default_success' => 'Default shipping policy has been set.',
+        'api_test_done' => 'Calculation API test call completed.',
         'fee_summary' => [
             'free' => 'Free Shipping',
             'fixed' => 'Shipping: :fee',
@@ -418,6 +488,12 @@ return [
             'per_volume' => ':fee per :unit L',
             'per_volume_weight' => ':fee per :unit kg',
             'per_amount' => ':fee per :unit',
+            // Tier boundary units for range policies (derived from the charge policy, not stored data)
+            'range_unit' => [
+                'quantity' => ' items',
+                'weight' => ' kg',
+                'volume' => ' L',
+            ],
         ],
         'fee_details' => [
             'base_fee' => 'Shipping Fee',
@@ -1081,6 +1157,14 @@ return [
         'can_write_checked' => 'Review eligibility checked.',
         'can_write_check_failed' => 'Failed to check review eligibility.',
         'cannot_write' => 'Cannot write a review. (Reason: :reason)',
+        // 작성 불가 사유 라벨 — :reason 치환자에 원시 식별자 대신 번역문을 싣는다
+        'reasons' => [
+            'order_option_not_found' => 'order item not found',
+            'not_own_order' => 'not your order',
+            'not_confirmed' => 'purchase not confirmed yet',
+            'deadline_passed' => 'review period has ended',
+            'already_written' => 'review already written',
+        ],
         'forbidden' => 'You do not have permission.',
         'deleted' => 'Review has been deleted.',
         'delete_failed' => 'Failed to delete review.',
@@ -1126,26 +1210,29 @@ return [
 
     // Product 1:1 Inquiries
     'inquiries' => [
-        'fetch_success'         => 'Inquiry list retrieved successfully.',
-        'fetch_failed'          => 'Failed to retrieve inquiry list.',
-        'created'               => 'Your inquiry has been submitted.',
-        'create_failed'         => 'Failed to submit inquiry.',
-        'updated'               => 'Your inquiry has been updated.',
-        'update_failed'         => 'Failed to update inquiry.',
-        'deleted'               => 'Inquiry has been deleted.',
-        'delete_failed'         => 'Failed to delete inquiry.',
-        'not_found'             => 'Inquiry not found.',
-        'forbidden'             => 'You do not have permission for this inquiry.',
-        'board_not_configured'  => 'Inquiry board is not configured.',
-        'board_unavailable'     => 'Board module is unavailable. Please contact the administrator.',
-        'board_changed'         => 'The board configuration has changed and the post could not be found. Please contact the administrator.',
-        'reply_created'         => 'Reply has been submitted.',
-        'reply_failed'          => 'Failed to submit reply.',
-        'reply_updated'         => 'Reply has been updated.',
-        'reply_update_failed'   => 'Failed to update reply.',
-        'reply_deleted'         => 'Reply has been deleted.',
-        'reply_delete_failed'   => 'Failed to delete reply.',
-        'reply_not_found'       => 'Reply not found.',
+        'fetch_success' => 'Inquiry list retrieved successfully.',
+        'fetch_failed' => 'Failed to retrieve inquiry list.',
+        'created' => 'Your inquiry has been submitted.',
+        'create_failed' => 'Failed to submit inquiry.',
+        'updated' => 'Your inquiry has been updated.',
+        'update_failed' => 'Failed to update inquiry.',
+        'deleted' => 'Inquiry has been deleted.',
+        'delete_failed' => 'Failed to delete inquiry.',
+        'not_found' => 'Inquiry not found.',
+        'forbidden' => 'You do not have permission for this inquiry.',
+        'board_not_configured' => 'Inquiry board is not configured.',
+        'board_unavailable' => 'Board module is unavailable. Please contact the administrator.',
+        'board_changed' => 'The board configuration has changed and the post could not be found. Please contact the administrator.',
+        'reply_created' => 'Reply has been submitted.',
+        'reply_failed' => 'Failed to submit reply.',
+        'reply_already_exists' => 'A reply has already been registered. Please edit or delete the existing reply before submitting a new one.',
+        'reply_updated' => 'Reply has been updated.',
+        'reply_update_failed' => 'Failed to update reply.',
+        'reply_deleted' => 'Reply has been deleted.',
+        'reply_delete_failed' => 'Failed to delete reply.',
+        'reply_not_found' => 'Reply not found.',
+        // 서비스가 던진 사유를 그대로 덧붙여, 실패 원인을 서버 기록 없이도 알 수 있게 한다
+        'operation_failed_reason' => ':reason',
     ],
 
     // User addresses
@@ -1166,5 +1253,23 @@ return [
         'set_default_failed' => 'Failed to set default address.',
         'name_duplicate' => 'An address with the same name already exists. Do you want to overwrite it?',
         'auto_saved_label' => 'New Address',
+    ],
+
+    // Payment currency settings (A3)
+    'user_currency' => [
+        'fetched' => 'Payment currency retrieved.',
+        'updated' => 'Payment currency updated.',
+        'update_failed' => 'Failed to update payment currency.',
+    ],
+
+    'user_shipping_country' => [
+        'fetched' => 'Shipping country retrieved.',
+        'updated' => 'Shipping country updated.',
+        'update_failed' => 'Failed to update shipping country.',
+    ],
+
+    // Dashboard
+    'dashboard' => [
+        'fetch_success' => 'Dashboard data loaded.',
     ],
 ];

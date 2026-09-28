@@ -3,6 +3,9 @@
 namespace Modules\Sirsoft\Ecommerce\Tests\Unit\Services;
 
 use App\Models\User;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Modules\Sirsoft\Ecommerce\Database\Factories\ProductFactory;
 use Modules\Sirsoft\Ecommerce\Database\Factories\ProductOptionFactory;
 use Modules\Sirsoft\Ecommerce\DTO\CalculationInput;
@@ -14,7 +17,6 @@ use Modules\Sirsoft\Ecommerce\Enums\CouponIssueRecordStatus;
 use Modules\Sirsoft\Ecommerce\Enums\CouponTargetScope;
 use Modules\Sirsoft\Ecommerce\Enums\CouponTargetType;
 use Modules\Sirsoft\Ecommerce\Enums\ProductTaxStatus;
-
 use Modules\Sirsoft\Ecommerce\Models\Category;
 use Modules\Sirsoft\Ecommerce\Models\Coupon;
 use Modules\Sirsoft\Ecommerce\Models\CouponIssue;
@@ -57,7 +59,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
      */
     protected function setupTestCurrencySettings(): void
     {
-        $settingsPath = storage_path('app/modules/sirsoft-ecommerce/settings');
+        $settingsPath = storage_path('framework/testing/modules/sirsoft-ecommerce/settings');
         if (! is_dir($settingsPath)) {
             mkdir($settingsPath, 0755, true);
         }
@@ -81,14 +83,36 @@ class OrderCalculationServiceTest extends ModuleTestCase
             $settingsPath.'/language_currency.json',
             json_encode($settings, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)
         );
+
+        // 마일리지 기능 활성화 (기본 적립률 1% — 적립 계산 검증용).
+        // mileage.enabled=false 시 기본 적립률 적립이 0 이 되는 것은 정상 동작이므로,
+        // 적립 계산을 검증하는 테스트는 기능을 켠 상태를 전제로 한다.
+        file_put_contents(
+            $settingsPath.'/mileage.json',
+            json_encode([
+                'enabled' => true,
+                'default_earn_rate' => 1,
+                'earn_trigger' => 'confirmed',
+                'earn_delay_days' => 0,
+                'currency_rules' => [
+                    ['currency_code' => 'KRW', 'point_value' => 1, 'min_use_amount' => 0, 'use_unit' => 1, 'max_use_type' => 'percent', 'max_use_percent' => 100, 'max_use_value' => 0],
+                ],
+                'expiry_enabled' => true,
+                'expiry_days' => 365,
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)
+        );
     }
 
     protected function tearDown(): void
     {
         // 테스트 설정 파일 정리
-        $settingsFile = storage_path('app/modules/sirsoft-ecommerce/settings/language_currency.json');
+        $settingsFile = storage_path('framework/testing/modules/sirsoft-ecommerce/settings/language_currency.json');
         if (file_exists($settingsFile)) {
             unlink($settingsFile);
+        }
+        $mileageFile = storage_path('framework/testing/modules/sirsoft-ecommerce/settings/mileage.json');
+        if (file_exists($mileageFile)) {
+            unlink($mileageFile);
         }
 
         parent::tearDown();
@@ -125,7 +149,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     // ========================================
 
     /**
-     * 테스트 #1: 단일 옵션 소계 계산
+     * 테스트 1: 단일 옵션 소계 계산
      *
      * 입력: 옵션A: 10,000원 × 2개
      * 기대: subtotal = 20,000원
@@ -159,7 +183,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #2: 다중 옵션 소계 합산
+     * 테스트 2: 다중 옵션 소계 합산
      *
      * 입력: 옵션A: 10,000원 × 2개, 옵션B: 5,000원 × 3개
      * 기대: summary.subtotal = 35,000원
@@ -202,7 +226,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #3: 수량 0인 옵션 제외
+     * 테스트 3: 수량 0인 옵션 제외
      *
      * 입력: 옵션A: 10,000원 × 0개
      * 기대: 계산 대상에서 제외되어 빈 결과 반환
@@ -292,7 +316,6 @@ class OrderCalculationServiceTest extends ModuleTestCase
      * 테스트용 카테고리를 생성합니다.
      *
      * @param  string  $name  카테고리명
-     * @return Category
      */
     protected function createCategory(string $name = '테스트 카테고리'): Category
     {
@@ -311,7 +334,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #4: 전체상품 정액 할인
+     * 테스트 4: 전체상품 정액 할인
      *
      * 입력: 쿠폰: all, fixed 1,000원
      * 기대: 각 옵션에 금액 비율로 할인 적용
@@ -356,7 +379,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #5: 전체상품 정률 할인
+     * 테스트 5: 전체상품 정률 할인
      *
      * 입력: 쿠폰: all, rate 10%
      * 기대: 각 옵션에 10% 할인 적용
@@ -403,7 +426,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #6: 특정상품 정액 할인
+     * 테스트 6: 특정상품 정액 할인
      *
      * 입력: 쿠폰: products [1,2], fixed 2,000원
      * 기대: 상품1,2만 할인
@@ -458,7 +481,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #7: 특정상품 정률 할인
+     * 테스트 7: 특정상품 정률 할인
      *
      * 입력: 쿠폰: products [1], rate 15%
      * 기대: 상품1만 15% 할인
@@ -506,7 +529,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #8: 특정카테고리 할인
+     * 테스트 8: 특정카테고리 할인
      *
      * 입력: 쿠폰: categories [10], rate 20%
      * 기대: 카테고리10 상품만 20% 할인
@@ -560,7 +583,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #9: 할인 최대금액 제한
+     * 테스트 9: 할인 최대금액 제한
      *
      * 입력: 쿠폰: rate 50%, max_discount 5,000원
      * 기대: 할인액 5,000원 초과 불가
@@ -616,7 +639,6 @@ class OrderCalculationServiceTest extends ModuleTestCase
      * @param  bool  $extraFeeMultiply  도서산간 추가배송비 수량비례 적용
      * @param  string  $countryCode  국가코드
      * @param  string  $currencyCode  통화코드
-     * @return ShippingPolicy
      */
     protected function createShippingPolicy(
         ChargePolicyEnum $chargePolicy = ChargePolicyEnum::FREE,
@@ -631,6 +653,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
         ?string $apiEndpoint = null,
         ?array $apiRequestFields = null,
         ?string $apiResponseFeeField = null,
+        ?array $apiConfig = null,
     ): ShippingPolicy {
         $policy = ShippingPolicy::create([
             'name' => ['ko' => '테스트 배송정책', 'en' => 'Test Shipping Policy'],
@@ -649,6 +672,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
             'api_endpoint' => $apiEndpoint,
             'api_request_fields' => $apiRequestFields,
             'api_response_fee_field' => $apiResponseFeeField,
+            'api_config' => $apiConfig,
             'extra_fee_enabled' => $extraFeeEnabled,
             'extra_fee_settings' => $extraFeeSettings,
             'extra_fee_multiply' => $extraFeeMultiply,
@@ -662,7 +686,6 @@ class OrderCalculationServiceTest extends ModuleTestCase
      * 테스트용 배송정책을 다국가 설정으로 생성합니다.
      *
      * @param  array  $countrySettingsData  국가별 설정 배열 [{country_code, charge_policy, base_fee, ...}, ...]
-     * @return ShippingPolicy
      */
     protected function createMultiCountryShippingPolicy(array $countrySettingsData): ShippingPolicy
     {
@@ -722,8 +745,8 @@ class OrderCalculationServiceTest extends ModuleTestCase
      *
      * @param  int  $price  상품 가격
      * @param  ShippingPolicy  $shippingPolicy  배송정책
-     * @param  float  $weight  무게 (kg)
-     * @param  float  $volume  부피 (cm³)
+     * @param  float  $weight  무게 (g — 상품 옵션의 저장 단위)
+     * @param  float  $volume  부피 (cm³ — 상품 옵션의 저장 단위)
      * @return array [Product, ProductOption]
      */
     protected function createProductWithDimensions(
@@ -751,7 +774,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #10: FREE 정책 - 무료 배송
+     * 테스트 10: FREE 정책 - 무료 배송
      *
      * 입력: FREE 정책
      * 기대: 배송비 0원
@@ -782,7 +805,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #11: FIXED 정책 - 고정 배송비
+     * 테스트 11: FIXED 정책 - 고정 배송비
      *
      * 입력: FIXED, base_fee: 3,000원
      * 기대: 배송비 3,000원
@@ -814,7 +837,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #12: CONDITIONAL_FREE 정책 - 무료배송 충족
+     * 테스트 12: CONDITIONAL_FREE 정책 - 무료배송 충족
      *
      * 입력: CONDITIONAL_FREE, base_fee: 3,000원, threshold: 50,000원, 그룹합계 60,000원
      * 기대: 배송비 0원
@@ -847,7 +870,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #13: CONDITIONAL_FREE 정책 - 무료배송 미충족
+     * 테스트 13: CONDITIONAL_FREE 정책 - 무료배송 미충족
      *
      * 입력: CONDITIONAL_FREE, base_fee: 3,000원, threshold: 50,000원, 그룹합계 30,000원
      * 기대: 배송비 3,000원
@@ -880,7 +903,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #14: RANGE_AMOUNT 정책 - 금액 구간별 배송비
+     * 테스트 14: RANGE_AMOUNT 정책 - 금액 구간별 배송비
      *
      * 입력: RANGE_AMOUNT, tiers: [~2만:5천, ~4만:4천, ~∞:3천], 그룹합계 35,000원
      * 기대: 배송비 4,000원
@@ -918,7 +941,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #15: RANGE_QUANTITY 정책 - 수량 구간별 배송비
+     * 테스트 15: RANGE_QUANTITY 정책 - 수량 구간별 배송비
      *
      * 입력: RANGE_QUANTITY, tiers: [~2개:5천, ~5개:4천, ~∞:3천], 총 수량 4개
      * 기대: 배송비 4,000원
@@ -956,7 +979,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #19: PER_QUANTITY 정책 - 수량당 배송비
+     * 테스트 19: PER_QUANTITY 정책 - 수량당 배송비
      *
      * 입력: PER_QUANTITY, base_fee: 2,000원, unit_value: 2개, 수량 5개
      * 기대: ceil(5/2) × 2,000 = 6,000원
@@ -989,26 +1012,26 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #16: RANGE_WEIGHT 정책 - 무게 구간별 배송비
+     * 테스트 16: RANGE_WEIGHT 정책 - 무게 구간별 배송비
      *
      * 입력: RANGE_WEIGHT, tiers: [~1kg:3천, ~3kg:5천, ~∞:8천], 무게 2.5kg
      * 기대: 배송비 5,000원
      */
     public function test_it_calculates_range_weight_shipping_policy(): void
     {
-        // Given: RANGE_WEIGHT 정책 (g 단위로 설정)
+        // Given: RANGE_WEIGHT 정책 (배송정책 구간은 kg 단위)
         $shippingPolicy = $this->createShippingPolicy(
             chargePolicy: ChargePolicyEnum::RANGE_WEIGHT,
             ranges: [
                 'tiers' => [
-                    ['min' => 0, 'max' => 1000, 'fee' => 3000],      // ~1kg
-                    ['min' => 1000, 'max' => 3000, 'fee' => 5000],   // ~3kg
-                    ['min' => 3000, 'max' => null, 'fee' => 8000],   // 3kg~
+                    ['min' => 0, 'max' => 1, 'fee' => 3000],      // ~1kg
+                    ['min' => 1, 'max' => 3, 'fee' => 5000],      // ~3kg
+                    ['min' => 3, 'max' => null, 'fee' => 8000],   // 3kg~
                 ],
             ]
         );
-        // 2.5kg = 2500g → ~3000g 구간 → 5000원
-        [$product, $option] = $this->createProductWithDimensions(20000, $shippingPolicy, 2.5, 1000);
+        // 상품 옵션 무게는 g 저장 → 2,500g = 2.5kg → ~3kg 구간 → 5,000원
+        [$product, $option] = $this->createProductWithDimensions(20000, $shippingPolicy, 2500, 1000);
 
         $input = new CalculationInput(
             items: [
@@ -1028,25 +1051,25 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #17: RANGE_VOLUME 정책 - 부피 구간별 배송비
+     * 테스트 17: RANGE_VOLUME 정책 - 부피 구간별 배송비
      *
-     * 입력: RANGE_VOLUME, tiers: [~5000cm³:3천, ~10000cm³:5천, ~∞:8천], 부피 7000cm³
+     * 입력: RANGE_VOLUME, tiers: [~5L:3천, ~10L:5천, ~∞:8천], 부피 7000cm³(=7L)
      * 기대: 배송비 5,000원
      */
     public function test_it_calculates_range_volume_shipping_policy(): void
     {
-        // Given: RANGE_VOLUME 정책
+        // Given: RANGE_VOLUME 정책 (배송정책 구간은 L 단위)
         $shippingPolicy = $this->createShippingPolicy(
             chargePolicy: ChargePolicyEnum::RANGE_VOLUME,
             ranges: [
                 'tiers' => [
-                    ['min' => 0, 'max' => 5000, 'fee' => 3000],
-                    ['min' => 5000, 'max' => 10000, 'fee' => 5000],
-                    ['min' => 10000, 'max' => null, 'fee' => 8000],
+                    ['min' => 0, 'max' => 5, 'fee' => 3000],
+                    ['min' => 5, 'max' => 10, 'fee' => 5000],
+                    ['min' => 10, 'max' => null, 'fee' => 8000],
                 ],
             ]
         );
-        [$product, $option] = $this->createProductWithDimensions(20000, $shippingPolicy, 1.0, 7000);
+        [$product, $option] = $this->createProductWithDimensions(20000, $shippingPolicy, 1000, 7000);
 
         $input = new CalculationInput(
             items: [
@@ -1061,12 +1084,12 @@ class OrderCalculationServiceTest extends ModuleTestCase
         // When
         $result = $this->service->calculate($input);
 
-        // Then: 7000cm³ → ~10000cm³ 구간 → 5,000원
+        // Then: 7000cm³ = 7L → ~10L 구간 → 5,000원
         $this->assertEquals(5000, $result->summary->totalShipping);
     }
 
     /**
-     * 테스트 #18: RANGE_VOLUME_WEIGHT 정책 - 부피무게 구간별 배송비
+     * 테스트 18: RANGE_VOLUME_WEIGHT 정책 - 부피무게 구간별 배송비
      *
      * 입력: RANGE_VOLUME_WEIGHT, divisor: 6000, tiers: [~2kg:3천, ~5kg:5천, ~∞:8천]
      * 부피 18000cm³ → 부피무게 3kg
@@ -1074,20 +1097,20 @@ class OrderCalculationServiceTest extends ModuleTestCase
      */
     public function test_it_calculates_range_volume_weight_shipping_policy(): void
     {
-        // Given: RANGE_VOLUME_WEIGHT 정책 (g 단위로 설정)
+        // Given: RANGE_VOLUME_WEIGHT 정책 (배송정책 구간은 kg 단위)
         $shippingPolicy = $this->createShippingPolicy(
             chargePolicy: ChargePolicyEnum::RANGE_VOLUME_WEIGHT,
             ranges: [
                 'volume_weight_divisor' => 6000,
                 'tiers' => [
-                    ['min' => 0, 'max' => 2000, 'fee' => 3000],      // ~2kg
-                    ['min' => 2000, 'max' => 5000, 'fee' => 5000],   // ~5kg
-                    ['min' => 5000, 'max' => null, 'fee' => 8000],   // 5kg~
+                    ['min' => 0, 'max' => 2, 'fee' => 3000],      // ~2kg
+                    ['min' => 2, 'max' => 5, 'fee' => 5000],      // ~5kg
+                    ['min' => 5, 'max' => null, 'fee' => 8000],   // 5kg~
                 ],
             ]
         );
-        // 부피 18000cm³ / 6000 = 부피무게 3kg = 3000g → ~5000g 구간 → 5000원
-        [$product, $option] = $this->createProductWithDimensions(20000, $shippingPolicy, 1.0, 18000);
+        // 실무게 1,000g(=1kg) vs 부피무게 18000cm³ / 6000 = 3kg → 3kg 채택 → ~5kg 구간 → 5,000원
+        [$product, $option] = $this->createProductWithDimensions(20000, $shippingPolicy, 1000, 18000);
 
         $input = new CalculationInput(
             items: [
@@ -1107,7 +1130,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #20: PER_WEIGHT 정책 - 무게당 배송비
+     * 테스트 20: PER_WEIGHT 정책 - 무게당 배송비
      *
      * 입력: PER_WEIGHT, base_fee: 1000원, unit_value: 0.5kg, 무게 2kg
      * 기대: ceil(2/0.5) × 1,000 = 4 × 1,000 = 4,000원
@@ -1120,7 +1143,8 @@ class OrderCalculationServiceTest extends ModuleTestCase
             baseFee: 1000,
             ranges: ['unit_value' => 0.5]
         );
-        [$product, $option] = $this->createProductWithDimensions(20000, $shippingPolicy, 2.0, 1000);
+        // 2,000g = 2kg
+        [$product, $option] = $this->createProductWithDimensions(20000, $shippingPolicy, 2000, 1000);
 
         $input = new CalculationInput(
             items: [
@@ -1140,20 +1164,20 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #21: PER_VOLUME 정책 - 부피당 배송비
+     * 테스트 21: PER_VOLUME 정책 - 부피당 배송비
      *
-     * 입력: PER_VOLUME, base_fee: 500원, unit_value: 1000cm³, 부피 3500cm³
-     * 기대: ceil(3500/1000) × 500 = 4 × 500 = 2,000원
+     * 입력: PER_VOLUME, base_fee: 500원, unit_value: 1L, 부피 3500cm³(=3.5L)
+     * 기대: ceil(3.5/1) × 500 = 4 × 500 = 2,000원
      */
     public function test_it_calculates_per_volume_shipping_policy(): void
     {
-        // Given: PER_VOLUME (1000cm³당 500원)
+        // Given: PER_VOLUME (1L당 500원 — 배송정책 단위값은 L)
         $shippingPolicy = $this->createShippingPolicy(
             chargePolicy: ChargePolicyEnum::PER_VOLUME,
             baseFee: 500,
-            ranges: ['unit_value' => 1000]
+            ranges: ['unit_value' => 1]
         );
-        [$product, $option] = $this->createProductWithDimensions(20000, $shippingPolicy, 1.0, 3500);
+        [$product, $option] = $this->createProductWithDimensions(20000, $shippingPolicy, 1000, 3500);
 
         $input = new CalculationInput(
             items: [
@@ -1168,12 +1192,12 @@ class OrderCalculationServiceTest extends ModuleTestCase
         // When
         $result = $this->service->calculate($input);
 
-        // Then: ceil(3500/1000) × 500 = 4 × 500 = 2,000원
+        // Then: ceil(3.5/1) × 500 = 4 × 500 = 2,000원
         $this->assertEquals(2000, $result->summary->totalShipping);
     }
 
     /**
-     * 테스트 #22: PER_VOLUME_WEIGHT 정책 - 부피무게당 배송비
+     * 테스트 22: PER_VOLUME_WEIGHT 정책 - 부피무게당 배송비
      *
      * 입력: PER_VOLUME_WEIGHT, base_fee: 2000원, divisor: 5000, unit_value: 1kg
      * 부피 12000cm³ → 부피무게 2.4kg
@@ -1187,8 +1211,8 @@ class OrderCalculationServiceTest extends ModuleTestCase
             baseFee: 2000,
             ranges: ['volume_weight_divisor' => 5000, 'unit_value' => 1]
         );
-        // 부피 12000cm³ / 5000 = 부피무게 2.4kg
-        [$product, $option] = $this->createProductWithDimensions(20000, $shippingPolicy, 1.0, 12000);
+        // 실무게 1,000g(=1kg) vs 부피 12000cm³ / 5000 = 부피무게 2.4kg → 2.4kg 채택
+        [$product, $option] = $this->createProductWithDimensions(20000, $shippingPolicy, 1000, 12000);
 
         $input = new CalculationInput(
             items: [
@@ -1208,7 +1232,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #23: PER_AMOUNT 정책 - 금액당 배송비
+     * 테스트 23: PER_AMOUNT 정책 - 금액당 배송비
      *
      * 입력: PER_AMOUNT, base_fee: 1000원, unit_value: 10000원, 금액 35000원
      * 기대: ceil(35000/10000) × 1,000 = 4 × 1,000 = 4,000원
@@ -1241,7 +1265,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #24: API 정책 배송비 계산 (api_endpoint 미설정)
+     * 테스트 24: API 정책 배송비 계산 (api_endpoint 미설정)
      *
      * api_endpoint 미설정 시 base_fee 반환
      */
@@ -1273,16 +1297,16 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #24-2: API 정책 배송비 계산 (Mock API 성공 응답)
+     * 테스트 24-2: API 정책 배송비 계산 (Mock API 성공 응답)
      *
      * 외부 API 호출을 Mock하여 배송비 계산 테스트
      */
     public function test_it_calculates_api_shipping_policy_with_mock_response(): void
     {
         // Given: Mock API 응답 설정 (와일드카드 패턴)
-        \Illuminate\Support\Facades\Http::preventStrayRequests();
-        \Illuminate\Support\Facades\Http::fake([
-            '*' => \Illuminate\Support\Facades\Http::response([
+        Http::preventStrayRequests();
+        Http::fake([
+            '*' => Http::response([
                 'shipping_fee' => 7500,
                 'message' => 'success',
             ], 200),
@@ -1312,21 +1336,21 @@ class OrderCalculationServiceTest extends ModuleTestCase
         $this->assertEquals(7500, $result->summary->totalShipping);
 
         // API 호출 확인
-        \Illuminate\Support\Facades\Http::assertSent(function ($request) {
+        Http::assertSent(function ($request) {
             return str_contains($request->url(), 'shipping-api.example.com');
         });
     }
 
     /**
-     * 테스트 #24-3: API 정책 배송비 계산 (API 실패 시 fallback)
+     * 테스트 24-3: API 정책 배송비 계산 (API 실패 시 fallback)
      *
      * API 호출 실패 시 base_fee로 fallback
      */
     public function test_it_falls_back_to_base_fee_when_api_fails(): void
     {
         // Given: Mock API 실패 응답
-        \Illuminate\Support\Facades\Http::fake([
-            'https://shipping-api.example.com/calculate' => \Illuminate\Support\Facades\Http::response([
+        Http::fake([
+            'https://shipping-api.example.com/calculate' => Http::response([
                 'error' => 'Service unavailable',
             ], 500),
         ]);
@@ -1356,16 +1380,16 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #24-4: API 정책 배송비 계산 (API 타임아웃 시 fallback)
+     * 테스트 24-4: API 정책 배송비 계산 (API 타임아웃 시 fallback)
      *
      * API 호출 타임아웃 시 base_fee로 fallback
      */
     public function test_it_falls_back_to_base_fee_when_api_timeout(): void
     {
         // Given: Mock API 타임아웃 (ConnectionException)
-        \Illuminate\Support\Facades\Http::fake([
+        Http::fake([
             'https://shipping-api.example.com/calculate' => function () {
-                throw new \Illuminate\Http\Client\ConnectionException('Connection timeout');
+                throw new ConnectionException('Connection timeout');
             },
         ]);
 
@@ -1398,7 +1422,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     // ========================================
 
     /**
-     * 테스트 #25: 2개 정책 그룹 (FIXED + CONDITIONAL_FREE 미충족)
+     * 테스트 25: 2개 정책 그룹 (FIXED + CONDITIONAL_FREE 미충족)
      *
      * 상품A,B: FIXED 3,000원 / 상품C: CONDITIONAL_FREE(미충족) 2,500원
      * 기대: 총 5,500원
@@ -1453,7 +1477,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #26: 3개 정책 그룹 (FREE + FIXED + PER_QUANTITY)
+     * 테스트 26: 3개 정책 그룹 (FREE + FIXED + PER_QUANTITY)
      *
      * 상품A: FREE / 상품B: FIXED 3,000원 / 상품C,D: PER_QUANTITY 2,000원×2
      * 기대: 총 7,000원 (0 + 3,000 + 4,000)
@@ -1516,7 +1540,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #27: 동일 정책 다른 설정 (CONDITIONAL_FREE)
+     * 테스트 27: 동일 정책 다른 설정 (CONDITIONAL_FREE)
      *
      * 상품A,B: CONDITIONAL_FREE(5만원 기준) / 상품C,D: CONDITIONAL_FREE(3만원 기준)
      * 각 그룹별 독립 계산
@@ -1578,7 +1602,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #28: RANGE + PER 혼합
+     * 테스트 28: RANGE + PER 혼합
      *
      * 상품A: RANGE_AMOUNT / 상품B: PER_QUANTITY / 상품C: RANGE_QUANTITY
      * 각 정책별 정확한 계산
@@ -1650,7 +1674,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #29: 무료+유료 혼합
+     * 테스트 29: 무료+유료 혼합
      *
      * 상품A,B: FREE / 상품C: FIXED 3,000원 / 상품D: CONDITIONAL_FREE(충족)
      * 기대: 총 3,000원
@@ -1713,7 +1737,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #30: 4개 이상 정책 그룹
+     * 테스트 30: 4개 이상 정책 그룹
      *
      * 5개 상품, 각각 다른 배송정책 → 모든 정책 독립 계산 및 합산
      */
@@ -1800,7 +1824,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     // ========================================
 
     /**
-     * 테스트 #31: 동일 정책 2개 옵션 안분
+     * 테스트 31: 동일 정책 2개 옵션 안분
      *
      * 정책A: 3,000원, 옵션 2개 (60,000원:40,000원 = 6:4 비율)
      * 기대: 옵션1: 1,800원, 옵션2: 1,200원
@@ -1847,7 +1871,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #32: 동일 정책 3개 옵션 안분
+     * 테스트 32: 동일 정책 3개 옵션 안분
      *
      * 정책A: 5,000원, 옵션 3개 (50,000원:30,000원:20,000원 = 5:3:2 비율)
      * 기대: 2,500 + 1,500 + 1,000 = 5,000원
@@ -1903,7 +1927,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #33: 다중 정책 각각 안분
+     * 테스트 33: 다중 정책 각각 안분
      *
      * 정책A: 3,000원 (옵션 2개), 정책B: 4,000원 (옵션 2개)
      * 각 정책 내 독립 안분
@@ -1975,7 +1999,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     // ========================================
 
     /**
-     * 테스트 #36-1: 도서산간 우편번호 매칭 시 추가배송비 부과
+     * 테스트 36-1: 도서산간 우편번호 매칭 시 추가배송비 부과
      *
      * 우편번호 63000 (제주도) → 추가배송비 3,000원
      */
@@ -2017,7 +2041,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #36-2: 일반 지역 우편번호는 추가배송비 없음
+     * 테스트 36-2: 일반 지역 우편번호는 추가배송비 없음
      *
      * 우편번호 06000 (서울) → 추가배송비 없음
      */
@@ -2058,7 +2082,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #36-3: 배송지 주소 없으면 추가배송비 없음
+     * 테스트 36-3: 배송지 주소 없으면 추가배송비 없음
      */
     public function test_it_does_not_apply_extra_fee_without_shipping_address(): void
     {
@@ -2093,7 +2117,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #36-4: 추가배송비 비활성화 시 적용 안 함
+     * 테스트 36-4: 추가배송비 비활성화 시 적용 안 함
      */
     public function test_it_does_not_apply_extra_fee_when_disabled(): void
     {
@@ -2130,7 +2154,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #36-5: extra_fee_multiply=true + PER_QUANTITY 시 수량만큼 중복 부과
+     * 테스트 36-5: extra_fee_multiply=true + PER_QUANTITY 시 수량만큼 중복 부과
      *
      * PER_QUANTITY(2개당 1,000원), 수량 5개, 제주도 추가 3,000원
      * 기본: ceil(5/2) × 1,000 = 3,000원
@@ -2174,7 +2198,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #36-6: extra_fee_multiply=false 시 1회만 부과
+     * 테스트 36-6: extra_fee_multiply=false 시 1회만 부과
      *
      * PER_QUANTITY(2개당 1,000원), 수량 5개, 제주도 추가 3,000원
      * 기본: ceil(5/2) × 1,000 = 3,000원
@@ -2218,7 +2242,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #36-7: FIXED 정책은 multiply와 무관하게 1회 부과
+     * 테스트 36-7: FIXED 정책은 multiply와 무관하게 1회 부과
      */
     public function test_it_applies_extra_fee_once_for_fixed_policy_even_with_multiply(): void
     {
@@ -2256,7 +2280,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #36-8: 다중 정책 그룹에서 각각 추가배송비 적용
+     * 테스트 36-8: 다중 정책 그룹에서 각각 추가배송비 적용
      */
     public function test_it_applies_extra_fee_to_each_policy_group(): void
     {
@@ -2311,7 +2335,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #36-9: 정확한 우편번호 매칭 (와일드카드 없음)
+     * 테스트 36-9: 정확한 우편번호 매칭 (와일드카드 없음)
      */
     public function test_it_matches_exact_zipcode(): void
     {
@@ -2369,7 +2393,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #36-4: 범위 패턴 매칭 (63000-63999)
+     * 테스트 36-4: 범위 패턴 매칭 (63000-63999)
      */
     public function test_it_matches_range_pattern_zipcode(): void
     {
@@ -2447,7 +2471,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #36-10: 첫 번째 매칭되는 패턴 적용
+     * 테스트 36-10: 첫 번째 매칭되는 패턴 적용
      */
     public function test_it_applies_first_matching_pattern(): void
     {
@@ -2489,7 +2513,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     // ========================================
 
     /**
-     * 테스트 #36-11a: CONDITIONAL_FREE 정책 + 도서산간
+     * 테스트 36-11a: CONDITIONAL_FREE 정책 + 도서산간
      *
      * 조건 미충족: 기본 5,000원 + 추가 3,000원 = 8,000원
      */
@@ -2528,7 +2552,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #36-11b: CONDITIONAL_FREE 정책 + 조건 충족 + 도서산간
+     * 테스트 36-11b: CONDITIONAL_FREE 정책 + 조건 충족 + 도서산간
      *
      * 조건 충족: 기본 0원 + 추가 3,000원 = 3,000원
      */
@@ -2567,7 +2591,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #36-11c: RANGE_AMOUNT 정책 + 도서산간
+     * 테스트 36-11c: RANGE_AMOUNT 정책 + 도서산간
      *
      * 30,000원 상품 → 구간 매칭 → 기본 5,000원 + 추가 3,000원
      */
@@ -2612,7 +2636,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #36-11d: RANGE_QUANTITY 정책 + 도서산간
+     * 테스트 36-11d: RANGE_QUANTITY 정책 + 도서산간
      *
      * 수량 3개 → 구간 매칭 → 기본 5,000원 + 추가 3,000원
      */
@@ -2657,9 +2681,9 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #36-11e: RANGE_WEIGHT 정책 + 도서산간
+     * 테스트 36-11e: RANGE_WEIGHT 정책 + 도서산간
      *
-     * 무게 2.5kg(2500g) → 구간 매칭 → 기본 5,000원 + 추가 3,000원
+     * 무게 2,500g(=2.5kg) → 구간 매칭 → 기본 5,000원 + 추가 3,000원
      */
     public function test_it_applies_extra_fee_with_range_weight(): void
     {
@@ -2668,9 +2692,9 @@ class OrderCalculationServiceTest extends ModuleTestCase
             ranges: [
                 'type' => 'weight',
                 'tiers' => [
-                    ['min' => 0, 'max' => 1000, 'fee' => 3000],
-                    ['min' => 1001, 'max' => 3000, 'fee' => 5000],
-                    ['min' => 3001, 'max' => null, 'fee' => 8000],
+                    ['min' => 0, 'max' => 1, 'fee' => 3000],
+                    ['min' => 1, 'max' => 3, 'fee' => 5000],
+                    ['min' => 3, 'max' => null, 'fee' => 8000],
                 ],
             ],
             extraFeeEnabled: true,
@@ -2678,7 +2702,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
                 ['zipcode' => '63000-63644', 'fee' => 3000],
             ]
         );
-        [$product, $option] = $this->createProductWithDimensions(10000, $policy, weight: 2.5, volume: 0);
+        [$product, $option] = $this->createProductWithDimensions(10000, $policy, weight: 2500, volume: 0);
 
         $shippingAddress = new ShippingAddress(zipcode: '63100');
 
@@ -2695,16 +2719,16 @@ class OrderCalculationServiceTest extends ModuleTestCase
 
         $result = $this->service->calculate($input);
 
-        // Then: 기본 5,000원 (1001~3000g 구간) + 추가 3,000원 = 8,000원
+        // Then: 기본 5,000원 (1~3kg 구간) + 추가 3,000원 = 8,000원
         $this->assertEquals(8000, $result->summary->totalShipping);
         $this->assertEquals(5000, $result->items[0]->appliedShippingPolicy->shippingAmount);
         $this->assertEquals(3000, $result->items[0]->appliedShippingPolicy->extraShippingAmount);
     }
 
     /**
-     * 테스트 #36-11f: RANGE_VOLUME 정책 + 도서산간 (이번 버그 시나리오)
+     * 테스트 36-11f: RANGE_VOLUME 정책 + 도서산간 (이번 버그 시나리오)
      *
-     * 부피 30cm³ → 구간 매칭 → 기본 5,000원 + 추가 3,000원
+     * 부피 30,000cm³ × 2개 = 60L → 구간 매칭 → 기본 10,000원 + 추가 3,000원
      */
     public function test_it_applies_extra_fee_with_range_volume(): void
     {
@@ -2714,8 +2738,8 @@ class OrderCalculationServiceTest extends ModuleTestCase
                 'type' => 'volume',
                 'tiers' => [
                     ['min' => 0, 'max' => 50, 'fee' => 5000],
-                    ['min' => 51, 'max' => 100, 'fee' => 10000],
-                    ['min' => 101, 'max' => null, 'fee' => 20000],
+                    ['min' => 50, 'max' => 100, 'fee' => 10000],
+                    ['min' => 100, 'max' => null, 'fee' => 20000],
                 ],
             ],
             extraFeeEnabled: true,
@@ -2723,7 +2747,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
                 ['zipcode' => '63000-63644', 'fee' => 3000],
             ]
         );
-        [$product, $option] = $this->createProductWithDimensions(27000, $policy, weight: 0.5, volume: 30);
+        [$product, $option] = $this->createProductWithDimensions(27000, $policy, weight: 500, volume: 30000);
 
         $shippingAddress = new ShippingAddress(zipcode: '63100');
 
@@ -2740,18 +2764,18 @@ class OrderCalculationServiceTest extends ModuleTestCase
 
         $result = $this->service->calculate($input);
 
-        // Then: 부피 60cm³(30×2) → 51~100 구간 → 기본 10,000원 + 추가 3,000원 = 13,000원
+        // Then: 부피 60,000cm³(30,000×2) = 60L → ~100L 구간 → 기본 10,000원 + 추가 3,000원 = 13,000원
         $this->assertEquals(13000, $result->summary->totalShipping);
         $this->assertEquals(10000, $result->items[0]->appliedShippingPolicy->shippingAmount);
         $this->assertEquals(3000, $result->items[0]->appliedShippingPolicy->extraShippingAmount);
     }
 
     /**
-     * 테스트 #36-11g: PER_WEIGHT 정책 + 도서산간 + multiply=true
+     * 테스트 36-11g: PER_WEIGHT 정책 + 도서산간 + multiply=true
      *
-     * 무게 1.5kg, 수량 4개, 단위 2개당 2,000원
-     * 기본: ceil(4/2)×2,000=4,000원
-     * 추가: multiply는 total_quantity/unit_value 기준 → ceil(4/2)×3,000=6,000원
+     * 무게 1,500g(=1.5kg) × 4개 = 6kg, 단위 2kg당 2,000원
+     * 기본: ceil(6/2)×2,000=6,000원
+     * 추가: multiply 는 기본 배송비와 같은 배송 단위 수(3) 기준 → 3×3,000=9,000원
      */
     public function test_it_applies_extra_fee_with_per_weight_multiply(): void
     {
@@ -2765,7 +2789,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
             ],
             extraFeeMultiply: true
         );
-        [$product, $option] = $this->createProductWithDimensions(10000, $policy, weight: 1.5, volume: 0);
+        [$product, $option] = $this->createProductWithDimensions(10000, $policy, weight: 1500, volume: 0);
 
         $shippingAddress = new ShippingAddress(zipcode: '63200');
 
@@ -2782,16 +2806,16 @@ class OrderCalculationServiceTest extends ModuleTestCase
 
         $result = $this->service->calculate($input);
 
-        // Then: 기본 ceil(6kg/2)×2,000=6,000원 + 추가 ceil(4/2)×3,000=6,000원 = 12,000원
-        $this->assertEquals(12000, $result->summary->totalShipping);
+        // Then: 기본 ceil(6kg/2kg)=3단위 × 2,000 = 6,000원 + 추가 3단위 × 3,000 = 9,000원 = 15,000원
+        $this->assertEquals(15000, $result->summary->totalShipping);
         $this->assertEquals(6000, $result->items[0]->appliedShippingPolicy->shippingAmount);
-        $this->assertEquals(6000, $result->items[0]->appliedShippingPolicy->extraShippingAmount);
+        $this->assertEquals(9000, $result->items[0]->appliedShippingPolicy->extraShippingAmount);
     }
 
     /**
-     * 테스트 #36-11h: PER_VOLUME 정책 + 도서산간
+     * 테스트 36-11h: PER_VOLUME 정책 + 도서산간
      *
-     * 부피 50cm³, 단위 20cm³당 1,500원, 추가배송비 3,000원(1회)
+     * 부피 50,000cm³(=50L), 단위 20L당 1,500원, 추가배송비 3,000원(1회)
      */
     public function test_it_applies_extra_fee_with_per_volume(): void
     {
@@ -2804,7 +2828,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
                 ['zipcode' => '63000-63644', 'fee' => 3000],
             ]
         );
-        [$product, $option] = $this->createProductWithDimensions(10000, $policy, weight: 0, volume: 50);
+        [$product, $option] = $this->createProductWithDimensions(10000, $policy, weight: 0, volume: 50000);
 
         $shippingAddress = new ShippingAddress(zipcode: '63500');
 
@@ -2821,14 +2845,14 @@ class OrderCalculationServiceTest extends ModuleTestCase
 
         $result = $this->service->calculate($input);
 
-        // Then: 기본 ceil(50/20)×1,500=4,500원 + 추가 3,000원(1회) = 7,500원
+        // Then: 기본 ceil(50L/20L)×1,500=4,500원 + 추가 3,000원(1회) = 7,500원
         $this->assertEquals(7500, $result->summary->totalShipping);
         $this->assertEquals(4500, $result->items[0]->appliedShippingPolicy->shippingAmount);
         $this->assertEquals(3000, $result->items[0]->appliedShippingPolicy->extraShippingAmount);
     }
 
     /**
-     * 테스트 #36-11i: PER_AMOUNT 정책 + 도서산간
+     * 테스트 36-11i: PER_AMOUNT 정책 + 도서산간
      *
      * 금액 30,000원, 단위 10,000원당 1,000원, 추가배송비 3,000원(1회)
      */
@@ -2867,7 +2891,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #36-11j: FREE 정책 + 도서산간
+     * 테스트 36-11j: FREE 정책 + 도서산간
      *
      * 기본 0원이지만 추가배송비 3,000원만 부과
      */
@@ -2908,7 +2932,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     // ========================================
 
     /**
-     * 테스트 #36-11: 배송비 쿠폰이 기본+추가배송비 모두 할인
+     * 테스트 36-11: 배송비 쿠폰이 기본+추가배송비 모두 할인
      *
      * 기본 3,000원 + 추가 3,000원 = 6,000원
      * 배송비 쿠폰 100% 할인 → 최종 0원
@@ -2957,7 +2981,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #36-12: 배송비 쿠폰 정액 할인이 추가배송비까지 적용
+     * 테스트 36-12: 배송비 쿠폰 정액 할인이 추가배송비까지 적용
      *
      * 기본 3,000원 + 추가 3,000원 = 6,000원
      * 배송비 쿠폰 4,000원 정액 할인 → 최종 2,000원
@@ -3006,7 +3030,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #36-13: 추가배송비 없을 때 배송비 쿠폰은 기본만 할인
+     * 테스트 36-13: 추가배송비 없을 때 배송비 쿠폰은 기본만 할인
      *
      * 기본 3,000원 (추가 없음)
      * 배송비 쿠폰 100% 할인 → 최종 0원
@@ -3055,7 +3079,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #36-14: 다중 정책 그룹에서 추가배송비+쿠폰 적용
+     * 테스트 36-14: 다중 정책 그룹에서 추가배송비+쿠폰 적용
      *
      * 정책A: 기본 3,000 + 추가 3,000 = 6,000원
      * 정책B: 기본 4,000 + 추가 5,000 = 9,000원
@@ -3369,7 +3393,6 @@ class OrderCalculationServiceTest extends ModuleTestCase
      * @param  CouponDiscountType  $discountType  할인 타입
      * @param  float  $discountValue  할인 값
      * @param  float|null  $maxDiscount  최대 할인금액
-     * @return CouponIssue
      */
     protected function createShippingCouponWithIssue(
         CouponDiscountType $discountType,
@@ -3387,6 +3410,9 @@ class OrderCalculationServiceTest extends ModuleTestCase
             'discount_value' => $discountValue,
             'max_discount' => $maxDiscount,
             'min_order_amount' => 0,
+            // 정상 조합(배송비쿠폰 + 다른 쿠폰 동시 적용) 검증용 헬퍼 — 중복 허용 명시.
+            // 미설정 시 DB 기본값 is_combinable=false 로 not_combinable 위반 → 할인 제외 회귀.
+            'is_combinable' => true,
             'started_at' => now()->subDay(),
             'ended_at' => now()->addDay(),
             'is_active' => true,
@@ -3402,7 +3428,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #34: 배송비 전액 할인 (쿠폰 할인액 > 배송비)
+     * 테스트 34: 배송비 전액 할인 (쿠폰 할인액 > 배송비)
      *
      * 쿠폰: shipping_fee, fixed 5,000원, 배송비 3,000원
      * 기대: 배송비 0원 (초과분 무시)
@@ -3443,7 +3469,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #35: 배송비 정률 할인
+     * 테스트 35: 배송비 정률 할인
      *
      * 쿠폰: shipping_fee, rate 50%, 배송비 4,000원
      * 기대: 배송비 할인 2,000원
@@ -3484,7 +3510,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #36: 배송비 부분 할인
+     * 테스트 36: 배송비 부분 할인
      *
      * 쿠폰: shipping_fee, fixed 1,000원, 배송비 3,000원
      * 기대: 배송비 할인 1,000원 (실 배송비 2,000원)
@@ -3534,7 +3560,6 @@ class OrderCalculationServiceTest extends ModuleTestCase
      * @param  CouponDiscountType  $discountType  할인 타입
      * @param  float  $discountValue  할인 값
      * @param  float|null  $maxDiscount  최대 할인금액
-     * @return CouponIssue
      */
     protected function createOrderCouponWithIssue(
         CouponDiscountType $discountType,
@@ -3552,6 +3577,10 @@ class OrderCalculationServiceTest extends ModuleTestCase
             'discount_value' => $discountValue,
             'max_discount' => $maxDiscount,
             'min_order_amount' => 0,
+            // 정상 조합(상품쿠폰 + 주문쿠폰 동시 적용) 검증용 헬퍼 — 중복 허용 명시.
+            // 미설정 시 DB 기본값 is_combinable=false 가 적용되어 not_combinable 위반으로
+            // 할인이 제외되는 회귀가 발생한다 (A15 소프트 제외/MP06).
+            'is_combinable' => true,
             'started_at' => now()->subDay(),
             'ended_at' => now()->addDay(),
             'is_active' => true,
@@ -3574,7 +3603,6 @@ class OrderCalculationServiceTest extends ModuleTestCase
      * @param  float  $discountValue  할인 값
      * @param  float|null  $maxDiscount  최대 할인금액
      * @param  array  $targetIds  대상 상품/카테고리 ID (선택)
-     * @return CouponIssue
      */
     protected function createProductCouponWithIssue(
         CouponTargetScope $targetScope,
@@ -3620,7 +3648,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #37: 주문금액 정액 할인 및 안분
+     * 테스트 37: 주문금액 정액 할인 및 안분
      *
      * 쿠폰: order_amount, fixed 5,000원
      * 주문금액 100,000원 (옵션1: 60,000, 옵션2: 40,000)
@@ -3666,7 +3694,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #38: 주문금액 정률 할인 및 안분
+     * 테스트 38: 주문금액 정률 할인 및 안분
      *
      * 쿠폰: order_amount, rate 10%
      * 주문금액 100,000원
@@ -3712,7 +3740,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #39: 주문할인 안분 정확성 (끝전 처리)
+     * 테스트 39: 주문할인 안분 정확성 (끝전 처리)
      *
      * 주문금액 100,000원, 할인 3,333원, 옵션 3개 (균등 분할 시 나누어 떨어지지 않음)
      * 기대: 끝전 처리로 합계 정확히 3,333원
@@ -3765,7 +3793,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #40: 할인 후 금액 > 0 보장 (음수 방지)
+     * 테스트 40: 할인 후 금액 > 0 보장 (음수 방지)
      *
      * 할인액이 상품가보다 클 때 최소 0원, 음수 방지
      */
@@ -3832,7 +3860,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #59: 과세 상품만 있는 경우
+     * 테스트 59: 과세 상품만 있는 경우
      *
      * 모든 상품 tax_status: taxable
      * 기대: taxFreeAmount = 0
@@ -3873,7 +3901,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #60: 면세 상품만 있는 경우
+     * 테스트 60: 면세 상품만 있는 경우
      *
      * 모든 상품 tax_status: tax_free
      * 기대: taxableAmount = 0
@@ -3914,7 +3942,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #61: 과세/면세 혼합 상품
+     * 테스트 61: 과세/면세 혼합 상품
      *
      * 과세 30,000원, 면세 20,000원
      * 기대: taxable: 30,000, taxFree: 20,000
@@ -3959,7 +3987,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     // ========================================
 
     /**
-     * 테스트 #62: 중복할인불가 쿠폰 단독 사용
+     * 테스트 62: 중복할인불가 쿠폰 단독 사용
      *
      * is_combinable: false 단독 사용 → 정상 적용
      */
@@ -4011,7 +4039,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #63: 중복할인불가 + 다른 쿠폰 → 검증 오류
+     * 테스트 63: 중복할인불가 + 다른 쿠폰 → 검증 오류
      *
      * is_combinable: false + 다른 쿠폰 → validationErrors 포함
      */
@@ -4087,7 +4115,92 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #64: 최소주문금액 충족 → 정상 적용
+     * 테스트 63b (A15/MP06): 슬롯 교차 중복불가 검증
+     *
+     * is_combinable=false 쿠폰(상품별 itemCoupons 슬롯) + is_combinable=true 쿠폰(주문 슬롯)을
+     * 서로 다른 슬롯에 적용하면 슬롯별 count=1 이라 기존 코드는 미검증(우회) → 2개 동시 적용.
+     * 전역 1회 검증으로 false 쿠폰을 not_combinable 차단해야 한다.
+     */
+    public function test_it_rejects_non_combinable_coupon_across_slots(): void
+    {
+        // Given
+        [$product, $option] = $this->createProductWithOption(50000);
+        $user = User::factory()->create();
+
+        // 상품별 슬롯에 들어갈 중복불가 쿠폰(itemCoupons)
+        $nonComboCoupon = Coupon::create([
+            'code' => 'NONCOMBO'.uniqid(),
+            'name' => ['ko' => '중복불가 쿠폰', 'en' => 'Non-combinable Coupon'],
+            'target_type' => CouponTargetType::PRODUCT_AMOUNT,
+            'target_scope' => CouponTargetScope::ALL,
+            'discount_type' => CouponDiscountType::FIXED,
+            'discount_value' => 3000,
+            'min_order_amount' => 0,
+            'is_combinable' => false,
+            'started_at' => now()->subDay(),
+            'ended_at' => now()->addDay(),
+            'is_active' => true,
+        ]);
+
+        // 주문 슬롯에 들어갈 일반 쿠폰(couponIssueIds)
+        $orderCoupon = Coupon::create([
+            'code' => 'ORDER'.uniqid(),
+            'name' => ['ko' => '주문 쿠폰', 'en' => 'Order Coupon'],
+            'target_type' => CouponTargetType::ORDER_AMOUNT,
+            'target_scope' => CouponTargetScope::ALL,
+            'discount_type' => CouponDiscountType::FIXED,
+            'discount_value' => 2000,
+            'min_order_amount' => 0,
+            'is_combinable' => true,
+            'started_at' => now()->subDay(),
+            'ended_at' => now()->addDay(),
+            'is_active' => true,
+        ]);
+
+        $itemIssue = CouponIssue::create([
+            'coupon_id' => $nonComboCoupon->id,
+            'user_id' => $user->id,
+            'status' => CouponIssueRecordStatus::AVAILABLE,
+            'issued_at' => now(),
+            'expires_at' => now()->addDay(),
+        ]);
+
+        $orderIssue = CouponIssue::create([
+            'coupon_id' => $orderCoupon->id,
+            'user_id' => $user->id,
+            'status' => CouponIssueRecordStatus::AVAILABLE,
+            'issued_at' => now(),
+            'expires_at' => now()->addDay(),
+        ]);
+
+        // itemCoupons(상품별 슬롯) + couponIssueIds(주문 슬롯) 교차 적용
+        $input = new CalculationInput(
+            items: [
+                new CalculationItem(
+                    productId: $product->id,
+                    productOptionId: $option->id,
+                    quantity: 1
+                ),
+            ],
+            couponIssueIds: [$orderIssue->id],
+            itemCoupons: [$option->id => [$itemIssue->id]],
+        );
+
+        // When
+        $result = $this->service->calculate($input);
+
+        // Then: 슬롯 교차여도 not_combinable 차단 (false 쿠폰 기준)
+        $this->assertNotEmpty($result->validationErrors);
+        $codes = array_map(fn ($e) => $e->code, $result->validationErrors);
+        $this->assertContains('not_combinable', $codes);
+
+        // 그리고 위반(중복불가) 쿠폰은 할인에서 자동 제외되어야 한다 (소프트 표면화 — A15/MP06).
+        // 에러만 담고 할인은 그대로 적용하면 "위반인데 할인은 먹는" 모순 상태가 된다.
+        $this->assertEquals(0, $result->summary->productCouponDiscount, '중복불가 위반 상품쿠폰은 할인 제외되어야 한다');
+    }
+
+    /**
+     * 테스트 64: 최소주문금액 충족 → 정상 적용
      *
      * min_order_amount: 30,000, 주문: 50,000 → 정상 적용
      */
@@ -4139,7 +4252,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #65: 최소주문금액 미달 → 검증 오류
+     * 테스트 65: 최소주문금액 미달 → 검증 오류
      *
      * min_order_amount: 50,000, 주문: 30,000 → validationErrors 포함
      */
@@ -4192,7 +4305,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #66: 특정상품 쿠폰 - 대상 상품 없음 → 검증 오류
+     * 테스트 66: 특정상품 쿠폰 - 대상 상품 없음 → 검증 오류
      *
      * products: [999], 장바구니에 없는 상품 → validationErrors 포함
      */
@@ -4249,7 +4362,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #67: 쿠폰 유효기간 만료 → 검증 오류
+     * 테스트 67: 쿠폰 유효기간 만료 → 검증 오류
      *
      * expires_at < now() → validationErrors 포함
      */
@@ -4306,7 +4419,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     // ====================================================================
 
     /**
-     * 테스트 #68: 할인 안분 후 합계 검증
+     * 테스트 68: 할인 안분 후 합계 검증
      *
      * 주문쿠폰 할인 10,000원을 3개 옵션에 안분 → 합계 = 10,000원
      */
@@ -4349,7 +4462,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #69: 안분 시 나머지 마지막 항목 합산
+     * 테스트 69: 안분 시 나머지 마지막 항목 합산
      *
      * 나누어떨어지지 않는 경우 마지막 항목에 나머지 합산
      */
@@ -4395,7 +4508,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #70: 마일리지 안분 로직 검증
+     * 테스트 70: 마일리지 안분 로직 검증
      *
      * 마일리지 사용금액이 각 아이템에 비율대로 안분됨
      */
@@ -4440,7 +4553,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     // ====================================================================
 
     /**
-     * 테스트 #71: 2개 상품 + 상품쿠폰 + 고정배송비
+     * 테스트 71: 2개 상품 + 상품쿠폰 + 고정배송비
      */
     public function test_complex_two_products_with_product_coupon_and_fixed_shipping(): void
     {
@@ -4480,7 +4593,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #72: 3개 상품 + 주문쿠폰 + 배송쿠폰
+     * 테스트 72: 3개 상품 + 주문쿠폰 + 배송쿠폰
      */
     public function test_complex_three_products_with_order_and_shipping_coupon(): void
     {
@@ -4527,7 +4640,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #73: 상품쿠폰 + 주문쿠폰 + 마일리지 조합
+     * 테스트 73: 상품쿠폰 + 주문쿠폰 + 마일리지 조합
      */
     public function test_complex_product_coupon_order_coupon_and_mileage(): void
     {
@@ -4574,7 +4687,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #74: 과세/면세 혼합 + 할인 적용
+     * 테스트 74: 과세/면세 혼합 + 할인 적용
      */
     public function test_complex_mixed_tax_status_with_discount(): void
     {
@@ -4615,7 +4728,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #75: 다중 배송정책 + 상품쿠폰 + 주문쿠폰
+     * 테스트 75: 다중 배송정책 + 상품쿠폰 + 주문쿠폰
      */
     public function test_complex_multiple_shipping_policies_with_coupons(): void
     {
@@ -4669,7 +4782,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #76: 수량 2개 이상 + 배송비 + 쿠폰
+     * 테스트 76: 수량 2개 이상 + 배송비 + 쿠폰
      */
     public function test_complex_multiple_quantity_with_shipping_and_coupon(): void
     {
@@ -4706,7 +4819,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #77: 전체 할인 시 0원 결제
+     * 테스트 77: 전체 할인 시 0원 결제
      */
     public function test_complex_full_discount_zero_payment(): void
     {
@@ -4742,7 +4855,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #78: 할인 + 마일리지로 0원 결제
+     * 테스트 78: 할인 + 마일리지로 0원 결제
      */
     public function test_complex_discount_and_mileage_zero_payment(): void
     {
@@ -4776,7 +4889,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #79: 복수 상품 동일 배송정책 그룹화
+     * 테스트 79: 복수 상품 동일 배송정책 그룹화
      */
     public function test_complex_same_shipping_policy_grouped(): void
     {
@@ -4809,7 +4922,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #80: 특정 상품 쿠폰 + 주문쿠폰 조합
+     * 테스트 80: 특정 상품 쿠폰 + 주문쿠폰 조합
      */
     public function test_complex_specific_product_coupon_with_order_coupon(): void
     {
@@ -4854,7 +4967,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #81: 정률쿠폰 최대할인 제한 + 주문쿠폰
+     * 테스트 81: 정률쿠폰 최대할인 제한 + 주문쿠폰
      */
     public function test_complex_rate_coupon_max_discount_with_order_coupon(): void
     {
@@ -4896,7 +5009,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #82: 마일리지 전액 사용 (결제금액 초과 요청)
+     * 테스트 82: 마일리지 전액 사용 (결제금액 초과 요청)
      */
     public function test_complex_mileage_exceeds_payment_amount(): void
     {
@@ -4920,7 +5033,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #83: 구간별 배송비 + 수량 조합
+     * 테스트 83: 구간별 배송비 + 수량 조합
      */
     public function test_complex_range_shipping_with_quantity(): void
     {
@@ -4958,7 +5071,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #84: 금액별 구간 배송비 + 쿠폰
+     * 테스트 84: 금액별 구간 배송비 + 쿠폰
      */
     public function test_complex_range_amount_shipping_with_coupon(): void
     {
@@ -5001,14 +5114,14 @@ class OrderCalculationServiceTest extends ModuleTestCase
         // Then
         $this->assertEquals(35000, $result->summary->subtotal);
         $this->assertEquals(5000, $result->summary->productCouponDiscount);
-        // 배송비 구간: 35000원 → 30001-50000 구간 → 3000원
-        $this->assertEquals(3000, $result->summary->totalShipping);
-        // finalAmount = 35000 - 5000 + 3000 = 33000
-        $this->assertEquals(33000, $result->summary->finalAmount);
+        // 배송비는 쿠폰 할인 후 금액 기준: 35,000 - 5,000 = 30,000원 → "~30,000원" 구간(상한 포함) → 5,000원
+        $this->assertEquals(5000, $result->summary->totalShipping);
+        // finalAmount = 35000 - 5000 + 5000 = 35000
+        $this->assertEquals(35000, $result->summary->finalAmount);
     }
 
     /**
-     * 테스트 #85: 전체 시나리오 - 상품쿠폰 + 주문쿠폰 + 배송쿠폰 + 마일리지
+     * 테스트 85: 전체 시나리오 - 상품쿠폰 + 주문쿠폰 + 배송쿠폰 + 마일리지
      */
     public function test_complex_full_scenario_all_discounts(): void
     {
@@ -5069,7 +5182,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #86: 적립금 계산 검증 (기본 1%)
+     * 테스트 86: 적립금 계산 검증 (기본 1%)
      */
     public function test_complex_points_earning_default_rate(): void
     {
@@ -5090,7 +5203,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #87: 다중 옵션 배송정책 별도 적용
+     * 테스트 87: 다중 옵션 배송정책 별도 적용
      */
     public function test_complex_multiple_options_separate_shipping_policies(): void
     {
@@ -5128,7 +5241,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     // ========================================
 
     /**
-     * 테스트 #84: 배송비가 상품가보다 높은 경우
+     * 테스트 84: 배송비가 상품가보다 높은 경우
      *
      * 시나리오: 상품 5,000원, 배송비 7,000원
      * 검증: 정상 계산 (음수 아님)
@@ -5162,7 +5275,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     // ========================================
 
     /**
-     * 테스트 #94: 마일리지 전액 사용
+     * 테스트 94: 마일리지 전액 사용
      *
      * 시나리오: 결제금액 50,000원, 마일리지 50,000원 사용
      * 검증: finalAmount = 0
@@ -5193,7 +5306,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     // ========================================
 
     /**
-     * 테스트 #100: 전체 옵션 취소 (빈 장바구니)
+     * 테스트 100: 전체 옵션 취소 (빈 장바구니)
      *
      * 시나리오: 모든 옵션 취소 후 재계산
      * 검증: 빈 결과, 0원 처리
@@ -5223,7 +5336,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     // ========================================
 
     /**
-     * 테스트 #101: 수량 증가 시 수량당 배송비 재계산
+     * 테스트 101: 수량 증가 시 수량당 배송비 재계산
      *
      * 시나리오: 수량 2개 → 5개로 변경 시 배송비 변화
      * 검증: 배송비가 수량에 비례하여 증가
@@ -5262,7 +5375,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #102: 수량 변경으로 조건부 무료배송 달성/미달
+     * 테스트 102: 수량 변경으로 조건부 무료배송 달성/미달
      *
      * 시나리오: 30,000원 이상 무료배송, 상품 10,000원
      *   - 수량 2개: 20,000원 < 30,000원 → 배송비 3,000원
@@ -5302,7 +5415,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #103: 다른 배송정책 상품 추가 시 그룹별 배송비 계산
+     * 테스트 103: 다른 배송정책 상품 추가 시 그룹별 배송비 계산
      *
      * 시나리오:
      *   - 상품A(무료배송)만: 배송비 0원
@@ -5351,7 +5464,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     // ========================================
 
     /**
-     * 테스트 #85: 전체 흐름 - 상품쿠폰 + 주문쿠폰 + 추가배송비 + 배송비쿠폰
+     * 테스트 85: 전체 흐름 - 상품쿠폰 + 주문쿠폰 + 추가배송비 + 배송비쿠폰
      *
      * 3개 상품, 도서산간 배송지, 모든 쿠폰 적용
      * 기본/추가 배송비 분리, 쿠폰 할인은 총액 기준
@@ -5424,7 +5537,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #86: 다중 정책 + 각각 다른 추가배송비
+     * 테스트 86: 다중 정책 + 각각 다른 추가배송비
      *
      * 정책A: 추가배송비 5,000원, 정책B: 추가배송비 3,000원, 정책C: 추가배송비 없음
      * 각 정책별 추가배송비 독립 계산
@@ -5488,7 +5601,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #87: per_* 정책 혼합 + multiply 설정 혼합
+     * 테스트 87: per_* 정책 혼합 + multiply 설정 혼합
      *
      * PER_QUANTITY(multiply=true) + FIXED(multiply=false)
      * 정책별 multiply 설정 독립 적용
@@ -5551,7 +5664,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #88: 무료배송 조건 충족 + 추가배송비
+     * 테스트 88: 무료배송 조건 충족 + 추가배송비
      *
      * 기본배송비 무료 조건 충족, 도서산간 지역
      * baseShippingTotal=0, extraShippingTotal > 0
@@ -5594,7 +5707,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #89: 배송지 변경으로 추가배송비 발생
+     * 테스트 89: 배송지 변경으로 추가배송비 발생
      *
      * 일반지역 → 도서산간 지역 변경
      * 추가배송비 동적 재계산
@@ -5646,7 +5759,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #90: 배송지 변경으로 추가배송비 제거
+     * 테스트 90: 배송지 변경으로 추가배송비 제거
      *
      * 도서산간 → 일반지역 변경
      * 추가배송비 0원으로 변경
@@ -5702,7 +5815,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     // ========================================
 
     /**
-     * 테스트 #95: 동일 상품에 2개 상품쿠폰 적용 (정액 + 정액)
+     * 테스트 95: 동일 상품에 2개 상품쿠폰 적용 (정액 + 정액)
      *
      * 시나리오: 상품 50,000원에 2개 정액 쿠폰 적용
      * - 쿠폰A: 1,000원 정액 할인
@@ -5751,7 +5864,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #96: 동일 상품에 2개 상품쿠폰 적용 (정률 + 정률)
+     * 테스트 96: 동일 상품에 2개 상품쿠폰 적용 (정률 + 정률)
      *
      * 시나리오: 상품 100,000원에 2개 정률 쿠폰 적용
      * - 쿠폰A: 5% 할인
@@ -5804,7 +5917,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #97: 동일 상품에 2개 상품쿠폰 적용 (정액 + 정률 혼합)
+     * 테스트 97: 동일 상품에 2개 상품쿠폰 적용 (정액 + 정률 혼합)
      *
      * 시나리오: 상품 50,000원에 정액 + 정률 쿠폰 적용
      * - 쿠폰A: 5,000원 정액 할인
@@ -5857,7 +5970,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #98: 다중 상품에 각각 다른 쿠폰 적용
+     * 테스트 98: 다중 상품에 각각 다른 쿠폰 적용
      *
      * 시나리오: 상품A, 상품B에 서로 다른 쿠폰 적용
      * - 상품A (30,000원): 쿠폰1 (전체 적용 1,000원)
@@ -5915,7 +6028,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #99: 수량 있는 상품에 2개 쿠폰 적용
+     * 테스트 99: 수량 있는 상품에 2개 쿠폰 적용
      *
      * 시나리오: 상품 10,000원 × 3개에 2개 쿠폰 적용
      *
@@ -5967,7 +6080,7 @@ class OrderCalculationServiceTest extends ModuleTestCase
     }
 
     /**
-     * 테스트 #100: 다중 쿠폰 할인 합계 (상품 금액 초과 시 계산 방식)
+     * 테스트 100: 다중 쿠폰 할인 합계 (상품 금액 초과 시 계산 방식)
      *
      * 시나리오: 상품 5,000원에 두 개의 큰 쿠폰 적용
      *
@@ -7785,5 +7898,487 @@ class OrderCalculationServiceTest extends ModuleTestCase
         // Then: 배송비 0원, 상품 금액은 정상
         $this->assertEquals(0, $result->summary->totalShipping);
         $this->assertEquals(30000, $result->summary->subtotal);
+    }
+
+    // ========================================
+    // Section 7.15: 구간 경계 · 단위 환산 회귀 (공개 #94)
+    //
+    // 계약 ① 구간 매칭 = 상한 포함 + 사다리(ladder). min 은 표시 전용이며 매칭에 쓰지 않는다.
+    // 계약 ② 단위 = 상품 옵션은 g/cm³ 저장, 배송정책 입력은 kg/L, 환산은 엔진 한 곳에서.
+    // 계약 ③ 무음 0원 금지 = 잔여 미매칭 경로는 0원을 유지하되 경고 로그를 남긴다.
+    // ========================================
+
+    /**
+     * 수량 구간의 상한은 포함이다 (공개 #94 본문 재현).
+     *
+     * 관리자 화면·요약 문자열이 "1~5개: 3,000 / 6개~: 5,000" 으로 약속한 대로
+     * 경계값 5 가 첫 구간에 매칭되어야 한다. 기존 반개(半開) 매칭에서는 5 가
+     * 어느 구간에도 걸리지 않아 무음 0원(무료배송)이 되었다.
+     */
+    public function test_it_matches_quantity_range_with_inclusive_upper_bound(): void
+    {
+        $shippingPolicy = $this->createShippingPolicy(
+            chargePolicy: ChargePolicyEnum::RANGE_QUANTITY,
+            ranges: [
+                'tiers' => [
+                    ['min' => 1, 'max' => 5, 'fee' => 3000],
+                    ['min' => 6, 'max' => null, 'fee' => 5000],
+                ],
+            ]
+        );
+        [$product, $option] = $this->createProductWithShippingPolicy(10000, $shippingPolicy);
+
+        $expectations = [1 => 3000, 4 => 3000, 5 => 3000, 6 => 5000, 100 => 5000];
+
+        foreach ($expectations as $quantity => $expectedFee) {
+            $result = $this->service->calculate(new CalculationInput(
+                items: [
+                    new CalculationItem(
+                        productId: $product->id,
+                        productOptionId: $option->id,
+                        quantity: $quantity
+                    ),
+                ]
+            ));
+
+            $this->assertEquals(
+                $expectedFee,
+                $result->summary->totalShipping,
+                "수량 {$quantity} 의 배송비가 기대와 다릅니다."
+            );
+        }
+    }
+
+    /**
+     * 반개(半開) 형태로 저장된 기존 데이터에서도 사다리 매칭이 정확해야 한다.
+     *
+     * 다음 구간의 min 이 현재 구간의 max 와 같은 형태(0~2 / 2~5 / 5~)에서
+     * 경계값 2.0kg 은 "~2kg" 구간에 속한다 (상한 포함).
+     */
+    public function test_it_matches_half_open_legacy_tiers_by_upper_bound(): void
+    {
+        $shippingPolicy = $this->createShippingPolicy(
+            chargePolicy: ChargePolicyEnum::RANGE_WEIGHT,
+            ranges: [
+                'tiers' => [
+                    ['min' => 0, 'max' => 2, 'fee' => 3000],
+                    ['min' => 2, 'max' => 5, 'fee' => 5000],
+                    ['min' => 5, 'max' => null, 'fee' => 8000],
+                ],
+            ]
+        );
+        // 2,000g = 2.0kg (경계값)
+        [$product, $option] = $this->createProductWithDimensions(20000, $shippingPolicy, 2000, 0);
+
+        $result = $this->service->calculate(new CalculationInput(
+            items: [
+                new CalculationItem(productId: $product->id, productOptionId: $option->id, quantity: 1),
+            ]
+        ));
+
+        $this->assertEquals(3000, $result->summary->totalShipping);
+    }
+
+    /**
+     * 소수 경계(2.5kg)를 가진 연속형 구간도 정확히 매칭되어야 한다.
+     */
+    public function test_it_matches_decimal_tier_boundary(): void
+    {
+        $shippingPolicy = $this->createShippingPolicy(
+            chargePolicy: ChargePolicyEnum::RANGE_WEIGHT,
+            ranges: [
+                'tiers' => [
+                    ['min' => 0, 'max' => 2.5, 'fee' => 3000],
+                    ['min' => 2.5, 'max' => null, 'fee' => 5000],
+                ],
+            ]
+        );
+        // 2,500g = 2.5kg (소수 경계값)
+        [$product, $option] = $this->createProductWithDimensions(20000, $shippingPolicy, 2500, 0);
+
+        $result = $this->service->calculate(new CalculationInput(
+            items: [
+                new CalculationItem(productId: $product->id, productOptionId: $option->id, quantity: 1),
+            ]
+        ));
+
+        $this->assertEquals(3000, $result->summary->totalShipping);
+    }
+
+    /**
+     * tiers 가 비어 있으면 0원을 유지하되 경고 로그를 남긴다 (계약 ③).
+     */
+    public function test_it_logs_warning_when_range_tiers_are_empty(): void
+    {
+        Log::spy();
+
+        $shippingPolicy = $this->createShippingPolicy(
+            chargePolicy: ChargePolicyEnum::RANGE_QUANTITY,
+            ranges: ['tiers' => []]
+        );
+        [$product, $option] = $this->createProductWithShippingPolicy(10000, $shippingPolicy);
+
+        $result = $this->service->calculate(new CalculationInput(
+            items: [
+                new CalculationItem(productId: $product->id, productOptionId: $option->id, quantity: 1),
+            ]
+        ));
+
+        $this->assertEquals(0, $result->summary->totalShipping);
+        Log::shouldHaveReceived('warning')
+            ->withArgs(fn ($message) => str_contains((string) $message, '구간별 배송비'))
+            ->atLeast()->once();
+    }
+
+    /**
+     * 배송정책이 삭제된 경우 0원을 유지하되 경고 로그를 남긴다 (계약 ③).
+     */
+    public function test_it_logs_warning_when_shipping_policy_is_missing(): void
+    {
+        $shippingPolicy = $this->createShippingPolicy(
+            chargePolicy: ChargePolicyEnum::FIXED,
+            baseFee: 3000
+        );
+        [$product, $option] = $this->createProductWithShippingPolicy(30000, $shippingPolicy);
+
+        $shippingPolicy->countrySettings()->delete();
+        $shippingPolicy->delete();
+
+        Log::spy();
+
+        $result = $this->service->calculate(new CalculationInput(
+            items: [
+                new CalculationItem(productId: $product->id, productOptionId: $option->id, quantity: 1),
+            ]
+        ));
+
+        $this->assertEquals(0, $result->summary->totalShipping);
+        Log::shouldHaveReceived('warning')
+            ->withArgs(fn ($message) => str_contains((string) $message, '배송정책'))
+            ->atLeast()->once();
+    }
+
+    /**
+     * 수신자 국가의 설정이 없으면 0원을 유지하되 경고 로그를 남긴다 (계약 ③).
+     */
+    public function test_it_logs_warning_when_country_setting_is_missing(): void
+    {
+        $shippingPolicy = $this->createShippingPolicy(
+            chargePolicy: ChargePolicyEnum::FIXED,
+            baseFee: 3000,
+            countryCode: 'KR'
+        );
+        [$product, $option] = $this->createProductWithShippingPolicy(30000, $shippingPolicy);
+
+        Log::spy();
+
+        $result = $this->service->calculate(new CalculationInput(
+            items: [
+                new CalculationItem(productId: $product->id, productOptionId: $option->id, quantity: 1),
+            ],
+            shippingAddress: new ShippingAddress(countryCode: 'US')
+        ));
+
+        $this->assertEquals(0, $result->summary->totalShipping);
+        Log::shouldHaveReceived('warning')
+            ->withArgs(fn ($message) => str_contains((string) $message, '국가별 배송 설정'))
+            ->atLeast()->once();
+    }
+
+    /**
+     * 무게 구간 정책은 상품의 g 값을 kg 으로 환산해 비교한다 (계약 ②).
+     *
+     * 500g 상품 → 0.5kg → "~2kg" 구간. 기존 코드는 ×1000 이중 변환으로
+     * 500,000 이 되어 최상위 구간에 오적중했다.
+     */
+    public function test_it_converts_grams_to_kilograms_for_range_weight(): void
+    {
+        $shippingPolicy = $this->createShippingPolicy(
+            chargePolicy: ChargePolicyEnum::RANGE_WEIGHT,
+            ranges: [
+                'tiers' => [
+                    ['min' => 0, 'max' => 2, 'fee' => 3000],
+                    ['min' => 2, 'max' => null, 'fee' => 7000],
+                ],
+            ]
+        );
+        [$product, $option] = $this->createProductWithDimensions(20000, $shippingPolicy, 500, 0);
+
+        $result = $this->service->calculate(new CalculationInput(
+            items: [
+                new CalculationItem(productId: $product->id, productOptionId: $option->id, quantity: 1),
+            ]
+        ));
+
+        $this->assertEquals(3000, $result->summary->totalShipping);
+    }
+
+    /**
+     * 부피 구간 정책은 상품의 cm³ 값을 L 로 환산해 비교한다 (계약 ②).
+     *
+     * 1,000cm³ = 1L → "~50L" 구간.
+     */
+    public function test_it_converts_cubic_centimeters_to_liters_for_range_volume(): void
+    {
+        $shippingPolicy = $this->createShippingPolicy(
+            chargePolicy: ChargePolicyEnum::RANGE_VOLUME,
+            ranges: [
+                'tiers' => [
+                    ['min' => 0, 'max' => 50, 'fee' => 5000],
+                    ['min' => 50, 'max' => null, 'fee' => 9000],
+                ],
+            ]
+        );
+        [$product, $option] = $this->createProductWithDimensions(20000, $shippingPolicy, 0, 1000);
+
+        $result = $this->service->calculate(new CalculationInput(
+            items: [
+                new CalculationItem(productId: $product->id, productOptionId: $option->id, quantity: 1),
+            ]
+        ));
+
+        $this->assertEquals(5000, $result->summary->totalShipping);
+    }
+
+    /**
+     * 무게당 정책은 kg 단위로 계산한다 (계약 ②).
+     *
+     * 500g = 0.5kg, 1kg당 1,000원 → ceil(0.5/1) × 1,000 = 1,000원.
+     * 기존 코드는 500 ÷ 1 = 500단위 → 500,000원이었다 (공개 #94 재현값).
+     */
+    public function test_it_charges_per_kilogram_for_per_weight_policy(): void
+    {
+        $shippingPolicy = $this->createShippingPolicy(
+            chargePolicy: ChargePolicyEnum::PER_WEIGHT,
+            baseFee: 1000,
+            ranges: ['unit_value' => 1]
+        );
+        [$product, $option] = $this->createProductWithDimensions(20000, $shippingPolicy, 500, 0);
+
+        $result = $this->service->calculate(new CalculationInput(
+            items: [
+                new CalculationItem(productId: $product->id, productOptionId: $option->id, quantity: 1),
+            ]
+        ));
+
+        $this->assertEquals(1000, $result->summary->totalShipping);
+    }
+
+    /**
+     * 부피당 정책은 L 단위로 계산한다 (계약 ②).
+     *
+     * 1,000cm³ = 1L, 10L당 2,000원 → ceil(1/10) × 2,000 = 2,000원.
+     */
+    public function test_it_charges_per_liter_for_per_volume_policy(): void
+    {
+        $shippingPolicy = $this->createShippingPolicy(
+            chargePolicy: ChargePolicyEnum::PER_VOLUME,
+            baseFee: 2000,
+            ranges: ['unit_value' => 10]
+        );
+        [$product, $option] = $this->createProductWithDimensions(20000, $shippingPolicy, 0, 1000);
+
+        $result = $this->service->calculate(new CalculationInput(
+            items: [
+                new CalculationItem(productId: $product->id, productOptionId: $option->id, quantity: 1),
+            ]
+        ));
+
+        $this->assertEquals(2000, $result->summary->totalShipping);
+    }
+
+    /**
+     * 부피무게 구간은 실무게(kg)와 부피무게(kg)를 같은 단위로 비교한다 (계약 ②).
+     *
+     * 500g(0.5kg) + 6,000cm³ ÷ 6,000 = 1kg → 부피무게 1kg 채택 → "~5kg" 구간.
+     */
+    public function test_it_compares_actual_and_volumetric_weight_in_kilograms(): void
+    {
+        $shippingPolicy = $this->createShippingPolicy(
+            chargePolicy: ChargePolicyEnum::RANGE_VOLUME_WEIGHT,
+            ranges: [
+                'volume_weight_divisor' => 6000,
+                'tiers' => [
+                    ['min' => 0, 'max' => 5, 'fee' => 3500],
+                    ['min' => 5, 'max' => null, 'fee' => 9000],
+                ],
+            ]
+        );
+        [$product, $option] = $this->createProductWithDimensions(20000, $shippingPolicy, 500, 6000);
+
+        $result = $this->service->calculate(new CalculationInput(
+            items: [
+                new CalculationItem(productId: $product->id, productOptionId: $option->id, quantity: 1),
+            ]
+        ));
+
+        $this->assertEquals(3500, $result->summary->totalShipping);
+    }
+
+    /**
+     * 소수 기본배송비는 절삭이 아니라 반올림한다 (검토 메모 12).
+     *
+     * base_fee 999.50 × 1단위 → 1,000원 (기존 (int) 절삭은 999원).
+     */
+    public function test_it_rounds_decimal_base_fee_instead_of_truncating(): void
+    {
+        $shippingPolicy = $this->createShippingPolicy(
+            chargePolicy: ChargePolicyEnum::PER_QUANTITY,
+            baseFee: 1000,
+            ranges: ['unit_value' => 1]
+        );
+        $shippingPolicy->countrySettings()->first()->update(['base_fee' => 999.5]);
+        [$product, $option] = $this->createProductWithShippingPolicy(10000, $shippingPolicy);
+
+        $result = $this->service->calculate(new CalculationInput(
+            items: [
+                new CalculationItem(productId: $product->id, productOptionId: $option->id, quantity: 1),
+            ]
+        ));
+
+        $this->assertEquals(1000, $result->summary->totalShipping);
+    }
+
+    /**
+     * 도서산간 중복 부과는 수량이 아니라 배송 단위 수를 기준으로 한다 (검토 메모 14).
+     *
+     * PER_WEIGHT 1kg당 2,000원, 500g 상품 3개 → 1.5kg → 단위 수 2 (수량 3이 아님).
+     * 기본 2 × 2,000 = 4,000원, 도서산간 2 × 3,000 = 6,000원.
+     */
+    public function test_it_multiplies_extra_fee_by_charge_units_not_quantity(): void
+    {
+        $shippingPolicy = $this->createShippingPolicy(
+            chargePolicy: ChargePolicyEnum::PER_WEIGHT,
+            baseFee: 2000,
+            ranges: ['unit_value' => 1],
+            extraFeeEnabled: true,
+            extraFeeSettings: [
+                ['zipcode' => '63*', 'fee' => 3000],
+            ],
+            extraFeeMultiply: true
+        );
+        [$product, $option] = $this->createProductWithDimensions(10000, $shippingPolicy, 500, 0);
+
+        $result = $this->service->calculate(new CalculationInput(
+            items: [
+                new CalculationItem(productId: $product->id, productOptionId: $option->id, quantity: 3),
+            ],
+            shippingAddress: new ShippingAddress(zipcode: '63123')
+        ));
+
+        $this->assertEquals(4000, $result->items[0]->appliedShippingPolicy->shippingAmount);
+        $this->assertEquals(6000, $result->items[0]->appliedShippingPolicy->extraShippingAmount);
+        $this->assertEquals(10000, $result->summary->totalShipping);
+    }
+
+    /**
+     * 저장된 단위값이 0 이어도 0 으로 나누지 않고 1 단위로 계산한다.
+     *
+     * 신규 저장은 FormRequest 의 min:0.01 이 막지만, 그 규칙이 생기기 전에 저장된 정책과
+     * 시더·업그레이드처럼 FormRequest 를 거치지 않는 경로는 0 을 그대로 들고 있을 수 있다.
+     * 이 값이 나눗셈에 닿으면 계산 전체가 DivisionByZeroError 로 죽는다.
+     *
+     * PER_WEIGHT base 2,000원 · unit_value 0 → 1 로 클램프 → 1.5kg → ceil(1.5/1)=2 → 4,000원.
+     */
+    public function test_it_clamps_zero_unit_value_instead_of_dividing_by_zero(): void
+    {
+        $shippingPolicy = $this->createShippingPolicy(
+            chargePolicy: ChargePolicyEnum::PER_WEIGHT,
+            baseFee: 2000,
+            ranges: ['unit_value' => 0]
+        );
+        [$product, $option] = $this->createProductWithDimensions(10000, $shippingPolicy, 1500, 0);
+
+        $result = $this->service->calculate(new CalculationInput(
+            items: [
+                new CalculationItem(productId: $product->id, productOptionId: $option->id, quantity: 1),
+            ]
+        ));
+
+        $this->assertEquals(4000, $result->summary->totalShipping);
+    }
+
+    /**
+     * 저장된 단위값이 음수여도 1 단위로 클램프한다.
+     *
+     * 음수는 나눗셈이 성립해 예외가 나지 않는 대신 단위 수가 음수가 되어, 배송비가 음수이거나
+     * 0 원으로 뒤집힌다 — 예외 없이 금액만 틀리는 무음 결함이라 0 과 함께 고정한다.
+     */
+    public function test_it_clamps_negative_unit_value_instead_of_inverting_the_fee(): void
+    {
+        $shippingPolicy = $this->createShippingPolicy(
+            chargePolicy: ChargePolicyEnum::PER_WEIGHT,
+            baseFee: 2000,
+            ranges: ['unit_value' => -1]
+        );
+        [$product, $option] = $this->createProductWithDimensions(10000, $shippingPolicy, 1500, 0);
+
+        $result = $this->service->calculate(new CalculationInput(
+            items: [
+                new CalculationItem(productId: $product->id, productOptionId: $option->id, quantity: 1),
+            ]
+        ));
+
+        $this->assertEquals(4000, $result->summary->totalShipping);
+    }
+
+    /**
+     * 도서산간 곱의 단위 수 계산도 같은 클램프를 적용한다.
+     *
+     * 단위 수는 기본 배송비와 도서산간 곱 두 곳에서 각각 나눗셈을 수행하므로, 한쪽만 막으면
+     * 도서산간을 켠 정책에서만 계산이 죽는다.
+     */
+    public function test_it_clamps_zero_unit_value_in_extra_fee_charge_units(): void
+    {
+        $shippingPolicy = $this->createShippingPolicy(
+            chargePolicy: ChargePolicyEnum::PER_WEIGHT,
+            baseFee: 2000,
+            ranges: ['unit_value' => 0],
+            extraFeeEnabled: true,
+            extraFeeSettings: [
+                ['zipcode' => '63*', 'fee' => 3000],
+            ],
+            extraFeeMultiply: true
+        );
+        [$product, $option] = $this->createProductWithDimensions(10000, $shippingPolicy, 1500, 0);
+
+        $result = $this->service->calculate(new CalculationInput(
+            items: [
+                new CalculationItem(productId: $product->id, productOptionId: $option->id, quantity: 1),
+            ],
+            shippingAddress: new ShippingAddress(zipcode: '63123')
+        ));
+
+        $this->assertEquals(4000, $result->items[0]->appliedShippingPolicy->shippingAmount);
+        $this->assertEquals(6000, $result->items[0]->appliedShippingPolicy->extraShippingAmount);
+    }
+
+    /**
+     * 외부 API 가 음수 배송비를 반환하면 기본 배송비로 폴백하고 경고를 남긴다 (검토 메모 11).
+     */
+    public function test_it_falls_back_to_base_fee_when_api_returns_negative_fee(): void
+    {
+        Http::fake([
+            'https://shipping-api.example.com/calculate' => Http::response(['shipping_fee' => -500], 200),
+        ]);
+        Log::spy();
+
+        $shippingPolicy = $this->createShippingPolicy(
+            chargePolicy: ChargePolicyEnum::API,
+            baseFee: 3000,
+            apiEndpoint: 'https://shipping-api.example.com/calculate'
+        );
+        [$product, $option] = $this->createProductWithShippingPolicy(30000, $shippingPolicy);
+
+        $result = $this->service->calculate(new CalculationInput(
+            items: [
+                new CalculationItem(productId: $product->id, productOptionId: $option->id, quantity: 1),
+            ]
+        ));
+
+        $this->assertEquals(3000, $result->summary->totalShipping);
+        Log::shouldHaveReceived('warning')
+            ->withArgs(fn ($message) => str_contains((string) $message, '음수'))
+            ->atLeast()->once();
     }
 }

@@ -15,7 +15,8 @@
     },
     "transition_overlay": {
         "wait_for": [
-            "modules"
+            "modules",
+            "auto_deactivated_banner"
         ]
     },
     "init_actions": [
@@ -32,6 +33,7 @@
     "data_sources": [
         {
             "id": "modules",
+            "label_key": "$t:editor.data_source.modules",
             "type": "api",
             "endpoint": "/api/admin/modules",
             "method": "GET",
@@ -47,15 +49,18 @@
             "fallback": {
                 "data": {
                     "data": [],
-                    "current_page": 1,
-                    "last_page": 1,
-                    "per_page": 12,
-                    "total": 0
+                    "pagination": {
+                        "current_page": 1,
+                        "last_page": 1,
+                        "per_page": 12,
+                        "total": 0
+                    }
                 }
             }
         },
         {
             "id": "auto_deactivated_banner",
+            "label_key": "$t:editor.data_source.auto_deactivated_banner",
             "type": "api",
             "endpoint": "/api/admin/extensions/auto-deactivated",
             "method": "GET",
@@ -80,7 +85,7 @@
                 "type": "basic",
                 "name": "Div",
                 "props": {
-                    "className": "p-4 sm:p-6 lg:p-8 bg-gray-50 dark:bg-gray-900"
+                    "className": "admin-page-content-responsive-fluid"
                 },
                 "children": [
                     {
@@ -93,11 +98,30 @@
                         },
                         "children": [
                             {
+                                "id": "refresh_button",
+                                "type": "composite",
+                                "name": "IconButton",
+                                "props": {
+                                    "iconName": "refresh",
+                                    "variant": "outline",
+                                    "size": "md"
+                                },
+                                "actions": [
+                                    {
+                                        "type": "click",
+                                        "handler": "refetchDataSource",
+                                        "params": {
+                                            "dataSourceId": "modules"
+                                        }
+                                    }
+                                ]
+                            },
+                            {
                                 "id": "check_updates_button",
                                 "type": "basic",
                                 "name": "Button",
                                 "props": {
-                                    "className": "flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
+                                    "className": "flex-center gap-2 px-4 h-10 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
                                     "disabled": "{{_global.isCheckingUpdates || modules?.data?.abilities?.can_install !== true}}",
                                     "type": "button"
                                 },
@@ -145,7 +169,7 @@
                                                         "handler": "toast",
                                                         "params": {
                                                             "type": "success",
-                                                            "message": "{{response.data?.update_count > 0 ? '$t:admin.modules.check_updates_success|count=' + response.data.update_count : '$t:admin.modules.check_updates_no_updates'}}"
+                                                            "message": "{{response.data?.updated_count > 0 ? '$t:admin.modules.check_updates_success|count=' + response.data.updated_count : '$t:admin.modules.check_updates_no_updates'}}"
                                                         }
                                                     }
                                                 ],
@@ -161,7 +185,7 @@
                                                         "handler": "toast",
                                                         "params": {
                                                             "type": "error",
-                                                            "message": "{{$error.message}}"
+                                                            "message": "{{error.message}}"
                                                         }
                                                     }
                                                 ]
@@ -201,7 +225,7 @@
                                 "type": "basic",
                                 "name": "Button",
                                 "props": {
-                                    "className": "flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
+                                    "className": "flex-center gap-2 px-4 h-10 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
                                     "disabled": "{{modules?.data?.abilities?.can_install !== true}}"
                                 },
                                 "responsive": {
@@ -224,7 +248,7 @@
                                         "name": "Icon",
                                         "props": {
                                             "name": "upload",
-                                            "className": "w-5 h-5"
+                                            "className": "text-xl"
                                         }
                                     },
                                     {
@@ -240,7 +264,7 @@
                                 "name": "Button",
                                 "if": "{{false}}",
                                 "props": {
-                                    "className": "flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors"
+                                    "className": "flex-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors"
                                 },
                                 "responsive": {
                                     "portable": {
@@ -255,7 +279,7 @@
                                         "name": "Icon",
                                         "props": {
                                             "name": "globe",
-                                            "className": "w-5 h-5"
+                                            "className": "text-xl"
                                         }
                                     },
                                     {
@@ -277,7 +301,7 @@
                         "responsive": {
                             "portable": {
                                 "props": {
-                                    "className": "flex items-center gap-2 -mt-4 mb-4"
+                                    "className": "flex-center gap-2 -mt-4 mb-4"
                                 }
                             }
                         },
@@ -287,7 +311,7 @@
                                 "type": "basic",
                                 "name": "Button",
                                 "props": {
-                                    "className": "flex-1 flex items-center justify-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
+                                    "className": "flex-center flex-1 justify-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
                                     "disabled": "{{modules?.data?.abilities?.can_install !== true}}"
                                 },
                                 "actions": [
@@ -303,7 +327,7 @@
                                         "name": "Icon",
                                         "props": {
                                             "name": "upload",
-                                            "className": "w-5 h-5"
+                                            "className": "text-xl"
                                         }
                                     },
                                     {
@@ -319,7 +343,7 @@
                                 "name": "Button",
                                 "if": "{{false}}",
                                 "props": {
-                                    "className": "flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors"
+                                    "className": "flex-center flex-1 justify-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-100 transition-colors"
                                 },
                                 "children": [
                                     {
@@ -327,7 +351,7 @@
                                         "name": "Icon",
                                         "props": {
                                             "name": "globe",
-                                            "className": "w-5 h-5"
+                                            "className": "text-xl"
                                         }
                                     },
                                     {
@@ -345,7 +369,7 @@
                         "name": "Div",
                         "if": "{{(auto_deactivated_banner?.data?.items?.modules?.length ?? 0) > 0}}",
                         "props": {
-                            "className": "mb-4 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg",
+                            "className": "alert-warning",
                             "role": "alert"
                         },
                         "children": [
@@ -353,7 +377,7 @@
                                 "type": "basic",
                                 "name": "Div",
                                 "props": {
-                                    "className": "flex items-start gap-3"
+                                    "className": "flex-start gap-3"
                                 },
                                 "children": [
                                     {
@@ -375,7 +399,7 @@
                                                 "type": "basic",
                                                 "name": "P",
                                                 "props": {
-                                                    "className": "text-sm font-medium text-amber-800 dark:text-amber-200 mb-2"
+                                                    "className": "text-sm font-medium text-warning-soft mb-2"
                                                 },
                                                 "text": "$t:extensions.banner.title"
                                             },
@@ -383,7 +407,7 @@
                                                 "type": "basic",
                                                 "name": "Div",
                                                 "props": {
-                                                    "className": "space-y-1"
+                                                    "className": "row-stack"
                                                 },
                                                 "children": [
                                                     {
@@ -394,7 +418,7 @@
                                                             "item_var": "banner_item"
                                                         },
                                                         "props": {
-                                                            "className": "flex items-center justify-between gap-2 text-sm text-amber-700 dark:text-amber-300"
+                                                            "className": "flex-between gap-2 text-warning-soft"
                                                         },
                                                         "children": [
                                                             {
@@ -410,7 +434,7 @@
                                                                 "name": "Button",
                                                                 "props": {
                                                                     "type": "button",
-                                                                    "className": "text-xs text-amber-700 dark:text-amber-300 hover:underline",
+                                                                    "className": "text-warning-soft hover:underline",
                                                                     "aria-label": "$t:extensions.banner.dismiss"
                                                                 },
                                                                 "actions": [
@@ -427,6 +451,15 @@
                                                                                 "handler": "refetchDataSource",
                                                                                 "params": {
                                                                                     "dataSourceId": "auto_deactivated_banner"
+                                                                                }
+                                                                            }
+                                                                        ],
+                                                                        "onError": [
+                                                                            {
+                                                                                "handler": "toast",
+                                                                                "params": {
+                                                                                    "type": "error",
+                                                                                    "message": "{{error.message}}"
                                                                                 }
                                                                             }
                                                                         ]
@@ -459,7 +492,7 @@
                                                         "name": "Button",
                                                         "props": {
                                                             "type": "button",
-                                                            "className": "inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium border border-amber-500 dark:border-amber-400 bg-white dark:bg-gray-800 text-amber-700 dark:text-amber-200 hover:bg-amber-50 dark:hover:bg-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500 dark:focus:ring-amber-400 focus:ring-offset-2 transition-colors cursor-pointer"
+                                                            "className": "inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium border border-amber-500 dark:border-amber-400 bg-white dark:bg-gray-800 text-warning-soft hover:bg-amber-50 dark:hover:bg-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500 dark:focus:ring-amber-400 focus:ring-offset-2 transition-colors cursor-pointer"
                                                         },
                                                         "actions": [
                                                             {
@@ -497,12 +530,12 @@
                         "type": "basic",
                         "name": "Div",
                         "props": {
-                            "className": "flex justify-end items-center gap-4 mb-6"
+                            "className": "flex-center justify-end gap-4 mb-6"
                         },
                         "responsive": {
                             "portable": {
                                 "props": {
-                                    "className": "mb-6 flex flex-col gap-3"
+                                    "className": "mb-6 row-stack"
                                 }
                             }
                         },
@@ -513,7 +546,7 @@
                                 "name": "Label",
                                 "if": "{{currentUser?.is_super === true}}",
                                 "props": {
-                                    "className": "flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer select-none"
+                                    "className": "flex-center gap-2 text-body cursor-pointer select-none"
                                 },
                                 "children": [
                                     {
@@ -522,7 +555,7 @@
                                         "props": {
                                             "type": "checkbox",
                                             "checked": "{{_local.showHidden === true}}",
-                                            "className": "w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 dark:text-blue-400 focus:ring-blue-500 dark:focus:ring-blue-400"
+                                            "className": "w-4 h-4 rounded text-blue-600 dark:text-blue-400 dark:focus:ring-blue-400"
                                         },
                                         "actions": [
                                             {
@@ -577,6 +610,7 @@
                                         "handler": "navigate",
                                         "params": {
                                             "path": "/admin/modules",
+                                            "mergeQuery": true,
                                             "query": {
                                                 "search": "{{_local.searchQuery || undefined}}",
                                                 "page": 1
@@ -592,7 +626,7 @@
                         "type": "basic",
                         "name": "Div",
                         "props": {
-                            "className": "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6"
+                            "className": "admin-card"
                         },
                         "children": [
                             {
@@ -608,8 +642,9 @@
                                     "pagination": true,
                                     "alwaysShowPagination": true,
                                     "serverSidePagination": true,
-                                    "serverCurrentPage": "{{modules?.data?.current_page ?? 1}}",
-                                    "serverTotalPages": "{{modules?.data?.last_page ?? 1}}",
+                                    "serverCurrentPage": "{{modules?.data?.pagination?.current_page ?? 1}}",
+                                    "serverTotalPages": "{{modules?.data?.pagination?.last_page ?? null}}",
+                                    "serverHasMorePages": "{{modules?.data?.pagination?.has_more_pages ?? false}}",
                                     "cardClassName": "border border-gray-200 dark:border-gray-700 rounded-lg p-4 relative",
                                     "cardColumns": [
                                         {
@@ -648,7 +683,7 @@
                                                             "responsive": {
                                                                 "portable": {
                                                                     "props": {
-                                                                        "className": "flex-1 min-w-0 flex flex-col gap-3"
+                                                                        "className": "flex-1 min-w-0 row-stack"
                                                                     }
                                                                 }
                                                             },
@@ -664,7 +699,7 @@
                                                                             "type": "basic",
                                                                             "name": "Div",
                                                                             "props": {
-                                                                                "className": "flex items-center gap-2 flex-wrap"
+                                                                                "className": "flex-center gap-2 flex-wrap"
                                                                             },
                                                                             "children": [
                                                                                 {
@@ -751,7 +786,7 @@
                                                                                     "name": "Span",
                                                                                     "if": "{{row.update_available && row.latest_version && row.status != 'updating' && row.status != 'uninstalled'}}",
                                                                                     "props": {
-                                                                                        "className": "text-xs text-gray-500 dark:text-gray-400"
+                                                                                        "className": "text-tertiary"
                                                                                     },
                                                                                     "text": "$t:defer:admin.modules.version_available|version={{row.latest_version ?? ''}}"
                                                                                 },
@@ -796,7 +831,7 @@
                                                                             "type": "basic",
                                                                             "name": "P",
                                                                             "props": {
-                                                                                "className": "mt-1 text-sm text-gray-600 dark:text-gray-400"
+                                                                                "className": "mt-1 text-label"
                                                                             },
                                                                             "text": "{{row.description}}"
                                                                         },
@@ -854,7 +889,7 @@
                                                                                                             "if": "{{dep.type === 'module'}}",
                                                                                                             "props": {
                                                                                                                 "name": "cube",
-                                                                                                                "className": "w-3.5 h-3.5 text-gray-500 dark:text-gray-400"
+                                                                                                                "className": "text-sm text-gray-500 dark:text-gray-400"
                                                                                                             }
                                                                                                         },
                                                                                                         {
@@ -863,7 +898,7 @@
                                                                                                             "if": "{{dep.type === 'plugin'}}",
                                                                                                             "props": {
                                                                                                                 "name": "puzzle-piece",
-                                                                                                                "className": "w-3.5 h-3.5 text-gray-500 dark:text-gray-400"
+                                                                                                                "className": "text-sm text-gray-500 dark:text-gray-400"
                                                                                                             }
                                                                                                         },
                                                                                                         {
@@ -908,7 +943,7 @@
                                                                             "name": "Button",
                                                                             "if": "{{row.status == 'uninstalled'}}",
                                                                             "props": {
-                                                                                "className": "flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-100 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
+                                                                                "className": "flex-center gap-2 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-100 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
                                                                                 "disabled": "{{row.abilities?.can_install !== true}}"
                                                                             },
                                                                             "responsive": {
@@ -943,7 +978,7 @@
                                                                                     "name": "Icon",
                                                                                     "props": {
                                                                                         "name": "download",
-                                                                                        "className": "w-4 h-4"
+                                                                                        "className": "text-base"
                                                                                     }
                                                                                 },
                                                                                 {
@@ -959,7 +994,7 @@
                                                                             "name": "Button",
                                                                             "if": "{{row.update_available && row.status != 'updating' && row.status != 'uninstalled'}}",
                                                                             "props": {
-                                                                                "className": "flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
+                                                                                "className": "flex-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
                                                                                 "type": "button",
                                                                                 "disabled": "{{row.abilities?.can_install !== true || row.is_compatible === false}}",
                                                                                 "title": "{{row.is_compatible === false ? '$t:defer:extensions.badges.incompatible_tooltip|required=' + (row.required_core_version ?? row.incompatible_required_version ?? '') + '|installed=' + (row.current_core_version ?? '') : ''}}",
@@ -978,7 +1013,9 @@
                                                                                                 "moduleLayoutStrategy": "overwrite",
                                                                                                 "hasModifiedModuleLayouts": false,
                                                                                                 "modifiedModuleLayoutsCount": 0,
-                                                                                                "modifiedModuleLayouts": []
+                                                                                                "modifiedModuleLayouts": [],
+                                                                                                "modifiedModuleLayoutsCheckFailed": false,
+                                                                                                "moduleRebuildSearchIndex": false
                                                                                             }
                                                                                         },
                                                                                         {
@@ -995,7 +1032,17 @@
                                                                                                         "target": "global",
                                                                                                         "hasModifiedModuleLayouts": "{{response.data?.has_modified_layouts ?? false}}",
                                                                                                         "modifiedModuleLayoutsCount": "{{response.data?.modified_count ?? 0}}",
-                                                                                                        "modifiedModuleLayouts": "{{response.data?.modified_layouts ?? []}}"
+                                                                                                        "modifiedModuleLayouts": "{{response.data?.modified_layouts ?? []}}",
+                                                                                                        "modifiedModuleLayoutsCheckFailed": false
+                                                                                                    }
+                                                                                                }
+                                                                                            ],
+                                                                                            "onError": [
+                                                                                                {
+                                                                                                    "handler": "setState",
+                                                                                                    "params": {
+                                                                                                        "target": "global",
+                                                                                                        "modifiedModuleLayoutsCheckFailed": true
                                                                                                     }
                                                                                                 }
                                                                                             ]
@@ -1051,7 +1098,7 @@
                                                                                     "name": "Icon",
                                                                                     "props": {
                                                                                         "name": "refresh",
-                                                                                        "className": "w-4 h-4"
+                                                                                        "className": "text-base"
                                                                                     }
                                                                                 },
                                                                                 {
@@ -1283,7 +1330,9 @@
                                                                                                 "manage_language_packs": {
                                                                                                     "handler": "navigate",
                                                                                                     "params": {
-                                                                                                        "path": "/admin/modules/{{row.identifier}}/language-packs"
+                                                                                                        "path": "/admin/modules/{{row.identifier}}/language-packs",
+                                                                                                        "mergeQuery": true,
+                                                                                                        "query": {}
                                                                                                     }
                                                                                                 },
                                                                                                 "uninstall": {
@@ -1295,7 +1344,8 @@
                                                                                                                 "target": "global",
                                                                                                                 "selectedModule": "{{row}}",
                                                                                                                 "deleteModuleData": false,
-                                                                                                                "moduleUninstallInfo": null
+                                                                                                                "moduleUninstallInfo": null,
+                                                                                                                "moduleUninstallBackups": null
                                                                                                             }
                                                                                                         },
                                                                                                         {
@@ -1357,13 +1407,13 @@
                                 "type": "basic",
                                 "name": "Div",
                                 "props": {
-                                    "className": "mt-4 text-sm text-gray-600 dark:text-gray-400 text-center"
+                                    "className": "mt-4 text-label text-center"
                                 },
                                 "children": [
                                     {
                                         "type": "basic",
                                         "name": "Span",
-                                        "text": "$t:admin.modules.pagination_info|total={{modules?.data?.total ?? 0}}|from={{((modules?.data?.current_page ?? 1) - 1) * (modules?.data?.per_page ?? 12) + 1}}|to={{Math.min((modules?.data?.current_page ?? 1) * (modules?.data?.per_page ?? 12), modules?.data?.total ?? 0)}}"
+                                        "text": "$t:admin.modules.pagination_info|total={{modules?.data?.pagination?.total ?? 0}}|from={{((modules?.data?.pagination?.current_page ?? 1) - 1) * (modules?.data?.pagination?.per_page ?? 12) + 1}}|to={{Math.min((modules?.data?.pagination?.current_page ?? 1) * (modules?.data?.pagination?.per_page ?? 12), modules?.data?.pagination?.total ?? 0)}}"
                                     }
                                 ]
                             }

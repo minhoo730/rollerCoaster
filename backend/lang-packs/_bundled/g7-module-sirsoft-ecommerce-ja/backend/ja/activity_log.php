@@ -1,8 +1,6 @@
 <?php
 
 return [
-    // アクションラベル（最後のセグメント基準）。
-    // ActivityLog::getActionLabelAttribute がモジュール origin のラベルをモジュール lang から優先的に解決します。
     'action' => [
         'add' => '追加',
         'bulk_create' => '一括作成',
@@ -41,8 +39,17 @@ return [
         'update_shipping_address' => '配送先変更',
         'upload' => 'アップロード',
         'use' => '使用',
+        'reset_guest_password' => '非会員照会 パスワード再設定',
+        'expire' => '失効',
+        'earn_cancel' => 'ポイント回収',
+        'admin_earn' => '管理者付与',
+        'admin_deduct' => '管理者減額',
+        'extend_expiry' => '有効期限延長',
+        'adjust' => 'ポイント加算の編集',
+        'direct_issue' => '直接発行',
+        'issue_cancel' => '発行キャンセル',
+        'change' => '変更',
     ],
-
     'description' => [
         'product_index' => '商品 目録 閲覧',
         'product_show' => '商品 詳細 閲覧 (ID: :product_id)',
@@ -62,7 +69,7 @@ return [
         'order_cancel' => '注文 全体 キャンセル (:order_number)',
         'order_partial_cancel' => '注文 部分 キャンセル (:order_number)',
         'order_coupon_restore' => '注文 キャンセル クーポン 復元 (:order_number)',
-        'order_mileage_restore' => '注文 キャンセル マイレージ 復元 (:order_number, :amount円)',
+        'order_mileage_restore' => '注文 キャンセル マイレージ 復元 (:order_number, :amount)',
         'order_bulk_update' => '注文 一括 変更 (:count件)',
         'order_bulk_status_update' => '注文 一括 ステータス 変更 (:count件)',
         'order_bulk_shipping_update' => '送り状番号 一括 入力 (:count件)',
@@ -156,11 +163,25 @@ return [
         'user_coupon_download' => 'クーポンダウンロード (:coupon_name)',
         'user_order_create' => '注文完了 (#:order_id)',
         'user_order_option_confirm' => '購入確認 (オプション #:option_id)',
-        'mileage_earn' => 'マイレージ積立 (:amount円)',
-        'mileage_use' => 'マイレージ使用 (:amount円)',
-        'mileage_restore' => 'マイレージ復元 (:amount円)',
+        'mileage_earn' => 'マイレージ積立 (:amount)',
+        'mileage_use' => 'マイレージ使用 (:amount)',
+        'mileage_restore' => 'マイレージ復元 (:amount)',
+        'order_reset_guest_password' => '非会員照会 パスワード再設定 (:order_number)',
+        'mileage_expire' => 'マイレージ失効 (:amount)',
+        'mileage_earn_cancel' => 'マイレージ回収 (:amount)',
+        'mileage_admin_earn' => '管理者マイレージ付与 (:amount)',
+        'mileage_admin_deduct' => '管理者マイレージ減額 (:amount)',
+        'mileage_extend_expiry' => 'マイレージ有効期限延長 (:days日)',
+        'mileage_adjust' => 'マイレージ加算の編集 (:amount)',
+        'product_notice_template_toggle_active' => '商品告示情報テンプレート有効化状態変更 (:template_name)',
+        'ecommerce_settings_update' => 'イーコマース設定保存 (:categories)',
+        'coupon_direct_issue' => 'クーポン直接発行 (:coupon_name → 会員 #:user_id)',
+        'coupon_issue_cancel' => 'クーポン発行キャンセル (:coupon_name → 会員 #:user_id)',
+        'user_currency_change' => '会員決済通貨変更',
+        'user_shipping_country_change' => '会員配送国変更',
     ],
     'fields' => [
+        'website' => 'ウェブサイト',
         'is_active' => '有効化否か',
         'is_default' => 'デフォルト',
         'sort_order' => '並べ替え順序',
@@ -231,5 +252,6 @@ return [
         'option_name' => 'オプション名',
         'sku' => 'SKU',
         'price_adjustment' => '価格調整',
+        'delivery_memo_label' => '配送メモラベル',
     ],
 ];

@@ -22,12 +22,9 @@ class RefreshStockRankingsCommand extends Command
 
         foreach ($markets as $market) {
             $result = $rankings->refresh($market, $limit, $types);
-
             $this->components->info(sprintf(
                 '랭킹 캐시 갱신 완료: market=%s source=%s asOf=%s',
-                $result['market'],
-                $result['source'],
-                $result['asOf']
+                $result['market'], $result['source'], $result['asOf']
             ));
         }
 

@@ -717,6 +717,41 @@
         }
       },
       {
+        "name": "UnifiedIcon",
+        "type": "basic",
+        "description": "통합 아이콘 컴포넌트 (Font Awesome, SVG, 이미지 지원)",
+        "path": "src/components/basic/UnifiedIcon.tsx",
+        "props": {
+          "icon": {
+            "type": "string",
+            "required": true,
+            "description": "아이콘 지정자 (fa:name | svg:path | img:path | name)"
+          },
+          "size": {
+            "type": "string",
+            "required": false,
+            "default": "md",
+            "description": "크기 (xs | sm | md | lg | xl)"
+          },
+          "className": {
+            "type": "string",
+            "required": false,
+            "default": "",
+            "description": "추가 CSS 클래스"
+          },
+          "color": {
+            "type": "string",
+            "required": false,
+            "description": "색상 (Tailwind 클래스)"
+          },
+          "ariaLabel": {
+            "type": "string",
+            "required": false,
+            "description": "접근성 레이블"
+          }
+        }
+      },
+      {
         "name": "Code",
         "type": "basic",
         "description": "HTML code element wrapper for inline code",
@@ -1147,7 +1182,7 @@
         "type": "composite",
         "description": "Data grid with sorting, filtering, and pagination",
         "path": "src/components/composite/DataGrid.tsx",
-        "skipBindingKeys": ["cellChildren", "expandChildren", "expandContext", "render", "subRowChildren", "subRowCondition"],
+        "skipBindingKeys": ["cellChildren", "expandChildren", "expandContext", "render", "subRowChildren", "subRowCondition", "footerCells", "footerCardChildren"],
         "props": {
           "columns": {
             "type": "array",
@@ -1200,17 +1235,17 @@
         "type": "composite",
         "description": "Card grid layout with automatic skeleton loading and pagination support",
         "path": "src/components/composite/CardGrid.tsx",
-        "skipBindingKeys": ["cardChildren"],
+        "skipBindingKeys": ["cardColumns"],
         "props": {
           "data": {
             "type": "array",
             "required": false,
             "description": "표시할 데이터 배열 (undefined일 경우 자동 스켈레톤 표시)"
           },
-          "cardChildren": {
+          "cardColumns": {
             "type": "array",
             "required": true,
-            "description": "카드 내용 정의 배열 (CardGridCellChild[])"
+            "description": "카드 내용 정의 배열 (CardGridColumn[] — 첫 항목의 cellChildren 을 카드 본문으로 사용)"
           },
           "columns": {
             "type": "number",
@@ -1264,10 +1299,15 @@
             "required": false,
             "description": "서버 사이드 페이지네이션 현재 페이지"
           },
+          "serverHasMorePages": {
+            "type": "boolean",
+            "required": false,
+            "description": "다음 페이지 존재 여부 — 총 건수를 상한까지만 센 목록에서 '다음' 이동을 열어 둔다"
+          },
           "serverTotalPages": {
             "type": "number",
             "required": false,
-            "description": "서버 사이드 페이지네이션 전체 페이지 수"
+            "description": "서버 사이드 페이지네이션 전체 페이지 수 (총 건수가 부정확하면 null)"
           },
           "alwaysShowPagination": {
             "type": "boolean",
@@ -1408,8 +1448,8 @@
           },
           "totalPages": {
             "type": "number",
-            "required": true,
-            "description": "전체 페이지 수"
+            "required": false,
+            "description": "전체 페이지 수. 총 건수를 정확히 세지 못한 목록은 null (페이지 번호 목록과 마지막 페이지 점프가 감춰지고 이전/다음만 남음)"
           },
           "onPageChange": {
             "type": "function",
@@ -1427,6 +1467,21 @@
             "required": false,
             "default": true,
             "description": "처음/마지막 버튼 표시 여부"
+          },
+          "showFirst": {
+            "type": "boolean",
+            "required": false,
+            "description": "처음 버튼 표시 여부 (미지정 시 showFirstLast 를 따름)"
+          },
+          "showLast": {
+            "type": "boolean",
+            "required": false,
+            "description": "마지막 버튼 표시 여부 (미지정 시 showFirstLast 를 따름). 총 건수가 부정확해 totalPages 가 null 이면 이 값과 무관하게 감춰짐"
+          },
+          "hasMorePages": {
+            "type": "boolean",
+            "required": false,
+            "description": "다음 페이지 존재 여부. 총 건수를 모르는 목록에서 '다음' 버튼 활성 여부를 이 값으로 판정"
           },
           "className": {
             "type": "string",
@@ -1687,13 +1742,13 @@
             "type": "string",
             "required": false,
             "default": "primary",
-            "description": "버튼 변형 (primary | secondary | danger | ghost)"
+            "description": "버튼 변형 (primary | secondary | danger | ghost | outline). outline 은 배경 없이 테두리만 있는 정사각 아이콘 버튼 (페이지 헤더 refresh 등)에 사용"
           },
           "size": {
             "type": "string",
             "required": false,
             "default": "md",
-            "description": "버튼 크기 (sm | md | lg)"
+            "description": "버튼 크기 (sm | md | lg). label 미지정 시 정사각 고정 크기 (sm=w-8 h-8, md=w-10 h-10, lg=w-12 h-12)"
           },
           "disabled": {
             "type": "boolean",
@@ -2213,6 +2268,40 @@
         }
       },
       {
+        "name": "SectionHeader",
+        "type": "composite",
+        "description": "Lightweight section header — title (좌측) + actions children (우측) 균형 배치. PageHeader 와 달리 페이지 단위가 아닌 카드/탭/폼 그룹 안의 섹션 머리 부분 표준화.",
+        "path": "src/components/composite/SectionHeader.tsx",
+        "props": {
+          "title": {
+            "type": "string",
+            "required": false,
+            "description": "섹션 제목"
+          },
+          "description": {
+            "type": "string",
+            "required": false,
+            "description": "섹션 보조 설명 (제목 아래 작은 회색 텍스트)"
+          },
+          "className": {
+            "type": "string",
+            "required": false,
+            "default": "",
+            "description": "사용자 정의 클래스 (mb-4 등 외부 간격 토큰 추가용)"
+          },
+          "style": {
+            "type": "CSSProperties",
+            "required": false,
+            "description": "인라인 스타일"
+          },
+          "children": {
+            "type": "ReactNode",
+            "required": false,
+            "description": "우측 액션 자식 (Button / IconButton 등)"
+          }
+        }
+      },
+      {
         "name": "TemplateCard",
         "type": "composite",
         "description": "Template card for template selection",
@@ -2518,6 +2607,95 @@
             "type": "CSSProperties",
             "required": false,
             "description": "인라인 스타일"
+          }
+        }
+      },
+      {
+        "name": "BarChart",
+        "type": "composite",
+        "description": "Chart.js 기반 바 차트 컴포넌트",
+        "path": "src/components/composite/BarChart.tsx",
+        "props": {
+          "labels": {
+            "type": "array",
+            "required": true,
+            "description": "X축 라벨 배열"
+          },
+          "datasets": {
+            "type": "array",
+            "required": true,
+            "description": "데이터셋 배열 [{ label, data, backgroundColor, borderRadius }]"
+          },
+          "height": {
+            "type": "number",
+            "required": false,
+            "default": 200,
+            "description": "차트 높이 (px)"
+          },
+          "showLegend": {
+            "type": "boolean",
+            "required": false,
+            "default": false,
+            "description": "범례 표시 여부"
+          },
+          "showGrid": {
+            "type": "boolean",
+            "required": false,
+            "default": false,
+            "description": "그리드 표시 여부"
+          },
+          "className": {
+            "type": "string",
+            "required": false,
+            "default": "",
+            "description": "추가 CSS 클래스"
+          }
+        }
+      },
+      {
+        "name": "DonutChart",
+        "type": "composite",
+        "description": "Chart.js 기반 도넛 차트 컴포넌트",
+        "path": "src/components/composite/DonutChart.tsx",
+        "props": {
+          "data": {
+            "type": "array",
+            "required": true,
+            "description": "데이터 배열 [{ name, value, color }]"
+          },
+          "centerLabel": {
+            "type": "string",
+            "required": false,
+            "description": "중앙 라벨 (예: April 2025)"
+          },
+          "centerValue": {
+            "type": "string",
+            "required": false,
+            "description": "중앙 값 (예: $14,582.94)"
+          },
+          "size": {
+            "type": "number",
+            "required": false,
+            "default": 200,
+            "description": "차트 크기 (px)"
+          },
+          "cutout": {
+            "type": "string",
+            "required": false,
+            "default": "70%",
+            "description": "도넛 두께 비율"
+          },
+          "showLegend": {
+            "type": "boolean",
+            "required": false,
+            "default": false,
+            "description": "범례 표시 여부"
+          },
+          "className": {
+            "type": "string",
+            "required": false,
+            "default": "",
+            "description": "추가 CSS 클래스"
           }
         }
       },
@@ -4609,7 +4787,11 @@
         "type": "composite",
         "description": "커스텀 항목 렌더링이 가능한 리치 셀렉트 컴포넌트",
         "path": "src/components/composite/RichSelect.tsx",
-        "skipBindingKeys": ["children", "selectedChildren", "__componentLayoutDefs"],
+        "skipBindingKeys": [
+          "children",
+          "selectedChildren",
+          "__componentLayoutDefs"
+        ],
         "props": {
           "options": {
             "type": "array",
@@ -4666,7 +4848,9 @@
         "type": "composite",
         "description": "Dropdown button with portal-based menu similar to ActionMenu",
         "path": "src/components/composite/DropdownButton.tsx",
-        "skipBindingKeys": ["children"],
+        "skipBindingKeys": [
+          "children"
+        ],
         "props": {
           "label": {
             "type": "string",

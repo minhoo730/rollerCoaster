@@ -17,6 +17,26 @@ return [
         'updated' => '카테고리가 수정되었습니다.',
         'deleted' => '카테고리가 삭제되었습니다.',
         'has_products' => '(연결된 상품 :count개)',
+        'fetch_success' => '카테고리 목록을 조회했습니다.',
+        'fetch_failed' => '카테고리 목록 조회에 실패했습니다.',
+        'status_changed' => '카테고리 상태가 변경되었습니다.',
+        'order_updated' => '카테고리 순서가 변경되었습니다.',
+    ],
+    'settings' => [
+        'fetch_success' => '설정을 조회했습니다.',
+        'fetch_failed' => '설정 조회에 실패했습니다.',
+        'save_success' => '설정이 저장되었습니다.',
+        'save_failed' => '설정 저장에 실패했습니다.',
+        'save_error' => '설정 저장 중 오류가 발생했습니다.',
+        'update_success' => '설정이 수정되었습니다.',
+        'update_failed' => '설정 수정에 실패했습니다.',
+        'update_error' => '설정 수정 중 오류가 발생했습니다.',
+        'cache_clear_success' => '설정 캐시가 삭제되었습니다.',
+        'cache_clear_error' => '설정 캐시 삭제 중 오류가 발생했습니다.',
+    ],
+    'payment' => [
+        'provider_not_found' => '결제 수단을 찾을 수 없습니다.',
+        'client_config_success' => '결제 설정을 조회했습니다.',
     ],
     'products' => [
         'not_found' => '상품을 찾을 수 없습니다.',
@@ -43,6 +63,8 @@ return [
         'code_generation_failed' => '상품코드 생성에 실패했습니다.',
         'logs_fetch_success' => '상품 처리 이력을 조회했습니다.',
         'logs_fetch_failed' => '상품 처리 이력 조회에 실패했습니다.',
+        'options_fetch_success' => '상품 옵션을 조회했습니다.',
+        'options_fetch_failed' => '상품 옵션 조회에 실패했습니다.',
     ],
     'presets' => [
         'created' => '검색 프리셋이 저장되었습니다.',
@@ -50,6 +72,7 @@ return [
         'deleted' => '검색 프리셋이 삭제되었습니다.',
         'name_exists' => '동일한 이름의 프리셋이 이미 존재합니다.',
         'not_owner' => '해당 프리셋을 수정할 권한이 없습니다.',
+        'fetch_success' => '검색 프리셋 목록을 조회했습니다.',
     ],
     'product_image' => [
         'not_found' => '상품 이미지를 찾을 수 없습니다.',
@@ -61,6 +84,12 @@ return [
         'thumbnail_set' => '대표 이미지가 설정되었습니다.',
         'not_found' => '상품 이미지를 찾을 수 없습니다.',
     ],
+    'category_images' => [
+        'uploaded' => '이미지가 업로드되었습니다.',
+        'deleted' => '이미지가 삭제되었습니다.',
+        'reordered' => '이미지 순서가 변경되었습니다.',
+        'not_found' => '카테고리 이미지를 찾을 수 없습니다.',
+    ],
     'brands' => [
         'list_retrieved' => '브랜드 목록을 조회했습니다.',
         'retrieved' => '브랜드 정보를 조회했습니다.',
@@ -68,6 +97,7 @@ return [
         'created' => '브랜드가 등록되었습니다.',
         'updated' => '브랜드가 수정되었습니다.',
         'deleted' => '브랜드가 삭제되었습니다.',
+        'status_changed' => '브랜드 상태가 변경되었습니다.',
         'has_products' => '(연결된 상품 :count개)',
     ],
     'options' => [
@@ -77,6 +107,7 @@ return [
         'bulk_stock_update_failed' => '옵션 재고 일괄 변경에 실패했습니다.',
         'bulk_update_success' => ':count개 옵션이 수정되었습니다.',
         'bulk_update_failed' => '옵션 일괄 업데이트에 실패했습니다.',
+        'bulk_updated' => ':count개 옵션이 수정되었습니다.',
         'has_order_history' => '주문 이력이 있는 옵션은 삭제할 수 없습니다.',
     ],
 
@@ -104,6 +135,9 @@ return [
         'updated' => '쿠폰이 수정되었습니다.',
         'deleted' => '쿠폰이 삭제되었습니다.',
         'status_changed' => ':count개 쿠폰의 발급상태가 변경되었습니다.',
+        'direct_issued' => ':issued명에게 쿠폰을 발급했습니다.',
+        'direct_issued_with_skip' => ':issued명에게 발급했습니다. (:skipped명은 발급 조건 미충족으로 제외)',
+        'issue_cancelled' => '쿠폰 발급이 취소되었습니다.',
         'issues_retrieved' => '쿠폰 발급 내역을 조회했습니다.',
         'has_issues' => '(발급된 쿠폰 :count건)',
 
@@ -149,6 +183,8 @@ return [
         'bulk_status_updated' => ':count개 주문의 상태가 변경되었습니다.',
         'bulk_shipping_updated' => ':count개 주문의 배송정보가 수정되었습니다.',
         'bulk_update_failed' => '일괄 처리에 실패했습니다.',
+        'update_failed' => '주문 수정에 실패했습니다.',
+        'delete_failed' => '주문 삭제에 실패했습니다.',
         'status_changed' => '주문 상태가 :status(으)로 변경되었습니다.',
         'shipping_registered' => '배송 정보가 등록되었습니다.',
         'export_success' => '엑셀 파일이 생성되었습니다.',
@@ -175,6 +211,19 @@ return [
         'cancel_failed' => '주문 취소에 실패했습니다.',
         'estimate_refund_success' => '환불 예상금액을 조회했습니다.',
         'estimate_refund_failed' => '환불 예상금액 조회에 실패했습니다.',
+        'guest_password_reset_success' => '비회원 조회 비밀번호가 재설정되었습니다.',
+        'guest_password_reset_failed' => '비회원 조회 비밀번호 재설정에 실패했습니다.',
+        'guest_password_reset_not_guest' => '비회원 주문만 조회 비밀번호를 재설정할 수 있습니다.',
+        'deposit_confirmed' => '입금이 확인되어 결제완료 처리되었습니다.',
+        'deposit_confirm_failed' => '입금확인 처리에 실패했습니다.',
+        'deposit_amount_mismatch' => '입금액이 결제예정금액과 일치하지 않습니다.',
+        'deposit_not_dbank' => '무통장입금 주문만 입금확인할 수 있습니다.',
+        'deposit_not_pending' => '미결제 상태의 주문만 입금확인할 수 있습니다.',
+        'payment_name_summary' => ':name 외 :count건',
+        'deposit' => [
+            'amount' => '입금액',
+            'depositor_name' => '입금자명',
+        ],
     ],
 
     // 상품 라벨 메시지
@@ -207,7 +256,7 @@ return [
         'prefix' => [
             'KRW' => '',
             'JPY' => '¥',
-            'CNY' => '¥',
+            'CNY' => '元',
             'USD' => '$',
             'EUR' => '€',
         ],
@@ -231,6 +280,10 @@ return [
         'fetched' => '장바구니 목록을 조회했습니다.',
         'fetch_failed' => '장바구니 조회에 실패했습니다.',
         'add_failed' => '장바구니에 상품을 담는데 실패했습니다.',
+        'reorder_added' => '과거 주문의 상품을 장바구니에 추가했습니다.',
+        'reorder_failed' => '재주문에 실패했습니다.',
+        'reorder_option_not_found' => '상품 옵션이 더 이상 존재하지 않습니다.',
+        'unknown_product' => '알 수 없는 상품',
         'update_failed' => '장바구니 수정에 실패했습니다.',
         'delete_failed' => '장바구니 삭제에 실패했습니다.',
         'deleted_multiple' => ':deleted_count개 상품이 삭제되었습니다.',
@@ -294,6 +347,7 @@ return [
         'not_downloadable' => '다운로드할 수 없는 쿠폰입니다.',
         'quantity_exhausted' => '쿠폰 수량이 소진되었습니다.',
         'issue_period_expired' => '쿠폰 발급 기간이 종료되었습니다.',
+        'validity_not_configured' => '쿠폰의 유효기간이 설정되어 있지 않아 발급할 수 없습니다. 관리자에게 문의해주세요.',
         // 쿠폰 검증 오류 (DTO/ValidationError)
         'expired' => '만료된 쿠폰입니다.',
         'min_amount_not_met' => '최소 주문 금액 조건을 충족하지 않습니다.',
@@ -301,6 +355,7 @@ return [
         'invalid_target' => '해당 상품에 적용할 수 없는 쿠폰입니다.',
         'already_used' => '이미 사용된 쿠폰입니다.',
         'not_found' => '쿠폰을 찾을 수 없습니다.',
+        'per_user_limit_exceeded' => '이 쿠폰의 사용 가능 횟수를 초과했습니다.',
     ],
 
     // 마일리지 메시지
@@ -309,6 +364,16 @@ return [
         'balance_fetch_failed' => '마일리지 잔액 조회에 실패했습니다.',
         'max_usable_fetched' => '사용 가능한 최대 마일리지를 조회했습니다.',
         'max_usable_fetch_failed' => '사용 가능한 마일리지 조회에 실패했습니다.',
+        'list_retrieved' => '마일리지 내역을 조회했습니다.',
+        'transaction_created' => '마일리지 거래가 처리되었습니다.',
+        'transaction_updated' => '마일리지 거래가 수정되었습니다.',
+        'expiry_extended' => '마일리지 유효기간이 연장되었습니다.',
+        'linked_retrieved' => '연결 거래를 조회했습니다.',
+        'not_found' => '마일리지 거래를 찾을 수 없습니다.',
+        'validation_failed' => '마일리지 처리에 실패했습니다.',
+        'not_earning' => '적립 거래만 수정할 수 있습니다.',
+        'expiry_not_editable' => '이미 소멸되었거나 모두 사용된 적립건은 유효기간을 변경할 수 없습니다.',
+        'expiry_before_earned' => '유효기간은 적립일시보다 이전일 수 없습니다.',
     ],
 
     // 임시주문 메시지
@@ -330,6 +395,8 @@ return [
         'updated' => '상품정보제공고시가 수정되었습니다.',
         'deleted' => '상품정보제공고시가 삭제되었습니다.',
         'copied' => '상품정보제공고시가 복사되었습니다.',
+        'activated' => '상품정보제공고시가 활성화되었습니다.',
+        'deactivated' => '상품정보제공고시가 비활성화되었습니다.',
         'not_found' => '상품정보제공고시를 찾을 수 없습니다.',
     ],
 
@@ -353,6 +420,7 @@ return [
         'updated' => '배송사가 수정되었습니다.',
         'deleted' => '배송사가 삭제되었습니다.',
         'toggled' => '배송사 상태가 변경되었습니다.',
+        'status_changed' => '배송사 상태가 변경되었습니다.',
         'delete_failed_in_use' => '주문에서 사용 중인 배송사는 삭제할 수 없습니다. 비활성화를 권장합니다.',
         'type_domestic' => '국내',
         'type_international' => '국제',
@@ -387,15 +455,15 @@ return [
         'confirm_delete' => '이 배송사를 삭제하시겠습니까?',
     ],
 
-    // 클래임 사유 메시지
+    // 클레임 사유 메시지
     'claim_reasons' => [
-        'list_retrieved' => '클래임 사유 목록을 조회했습니다.',
-        'retrieved' => '클래임 사유 정보를 조회했습니다.',
-        'not_found' => '클래임 사유를 찾을 수 없습니다.',
-        'created' => '클래임 사유가 등록되었습니다.',
-        'updated' => '클래임 사유가 수정되었습니다.',
-        'deleted' => '클래임 사유가 삭제되었습니다.',
-        'toggled' => '클래임 사유 상태가 변경되었습니다.',
+        'list_retrieved' => '클레임 사유 목록을 조회했습니다.',
+        'retrieved' => '클레임 사유 정보를 조회했습니다.',
+        'not_found' => '클레임 사유를 찾을 수 없습니다.',
+        'created' => '클레임 사유가 등록되었습니다.',
+        'updated' => '클레임 사유가 수정되었습니다.',
+        'deleted' => '클레임 사유가 삭제되었습니다.',
+        'toggled' => '클레임 사유 상태가 변경되었습니다.',
         'delete_failed_in_use' => '주문 취소에서 사용 중인 사유는 삭제할 수 없습니다. 비활성화를 권장합니다.',
     ],
 
@@ -410,8 +478,10 @@ return [
         'toggled' => '배송정책 사용여부가 변경되었습니다.',
         'copied' => '배송정책이 복사되었습니다.',
         'bulk_deleted' => ':count개 배송정책이 삭제되었습니다.',
+        'active_list_retrieved' => '사용 중인 배송정책 목록을 조회했습니다.',
         'bulk_toggled' => ':count개 배송정책의 사용여부가 변경되었습니다.',
         'set_default_success' => '기본 배송정책이 설정되었습니다.',
+        'api_test_done' => '계산 API 테스트 호출을 완료했습니다.',
         'fee_summary' => [
             'free' => '무료배송',
             'fixed' => '배송비: :fee',
@@ -422,6 +492,12 @@ return [
             'per_volume' => ':unitL당 :fee',
             'per_volume_weight' => ':unitkg당 :fee',
             'per_amount' => ':unit당 :fee',
+            // 구간별 정책의 경계값 단위 (부과정책에서 파생 — 저장 데이터에 의존하지 않음)
+            'range_unit' => [
+                'quantity' => '개',
+                'weight' => 'kg',
+                'volume' => 'L',
+            ],
         ],
         'fee_details' => [
             'base_fee' => '배송비',
@@ -1042,8 +1118,8 @@ return [
                 'bulk_summary_sales_status' => '판매상태: :status',
                 'bulk_summary_display_status' => '진열상태: :status',
                 'bulk_summary_name_changed' => '상품명 변경',
-                'bulk_summary_list_price' => '정가: :price원',
-                'bulk_summary_selling_price' => '판매가: :price원',
+                'bulk_summary_list_price' => '정가: :price',
+                'bulk_summary_selling_price' => '판매가: :price',
                 'bulk_summary_inline_modified' => '인라인 수정됨',
                 'bulk_summary_bulk_applied' => '일괄 변경 적용',
                 'bulk_summary_price_adjustment' => '가격 조정: :method :value',
@@ -1070,6 +1146,14 @@ return [
         'can_write_checked' => '리뷰 작성 가능 여부를 확인했습니다.',
         'can_write_check_failed' => '리뷰 작성 가능 여부 확인에 실패했습니다.',
         'cannot_write' => '리뷰를 작성할 수 없습니다. (사유: :reason)',
+        // 작성 불가 사유 라벨 — :reason 치환자에 원시 식별자 대신 번역문을 싣는다
+        'reasons' => [
+            'order_option_not_found' => '주문 내역을 찾을 수 없음',
+            'not_own_order' => '본인 주문이 아님',
+            'not_confirmed' => '구매확정 전',
+            'deadline_passed' => '작성 기한 경과',
+            'already_written' => '이미 작성한 리뷰',
+        ],
         'forbidden' => '권한이 없습니다.',
         'deleted' => '리뷰가 삭제되었습니다.',
         'delete_failed' => '리뷰 삭제에 실패했습니다.',
@@ -1115,26 +1199,29 @@ return [
 
     // 상품 1:1 문의
     'inquiries' => [
-        'fetch_success'         => '문의 목록을 조회했습니다.',
-        'fetch_failed'          => '문의 목록 조회에 실패했습니다.',
-        'created'               => '문의가 등록되었습니다.',
-        'create_failed'         => '문의 등록에 실패했습니다.',
-        'updated'               => '문의가 수정되었습니다.',
-        'update_failed'         => '문의 수정에 실패했습니다.',
-        'deleted'               => '문의가 삭제되었습니다.',
-        'delete_failed'         => '문의 삭제에 실패했습니다.',
-        'not_found'             => '문의를 찾을 수 없습니다.',
-        'forbidden'             => '해당 문의에 대한 권한이 없습니다.',
-        'board_not_configured'  => '문의 게시판이 설정되지 않았습니다.',
-        'board_unavailable'     => '게시판 모듈을 사용할 수 없습니다. 관리자에게 문의하세요.',
-        'board_changed'         => '게시판 설정이 변경되어 해당 게시글을 찾을 수 없습니다. 관리자에게 문의하세요.',
-        'reply_created'         => '답변이 등록되었습니다.',
-        'reply_failed'          => '답변 등록에 실패했습니다.',
-        'reply_updated'         => '답변이 수정되었습니다.',
-        'reply_update_failed'   => '답변 수정에 실패했습니다.',
-        'reply_deleted'         => '답변이 삭제되었습니다.',
-        'reply_delete_failed'   => '답변 삭제에 실패했습니다.',
-        'reply_not_found'       => '답변을 찾을 수 없습니다.',
+        'fetch_success' => '문의 목록을 조회했습니다.',
+        'fetch_failed' => '문의 목록 조회에 실패했습니다.',
+        'created' => '문의가 등록되었습니다.',
+        'create_failed' => '문의 등록에 실패했습니다.',
+        'updated' => '문의가 수정되었습니다.',
+        'update_failed' => '문의 수정에 실패했습니다.',
+        'deleted' => '문의가 삭제되었습니다.',
+        'delete_failed' => '문의 삭제에 실패했습니다.',
+        'not_found' => '문의를 찾을 수 없습니다.',
+        'forbidden' => '해당 문의에 대한 권한이 없습니다.',
+        'board_not_configured' => '문의 게시판이 설정되지 않았습니다.',
+        'board_unavailable' => '게시판 모듈을 사용할 수 없습니다. 관리자에게 문의하세요.',
+        'board_changed' => '게시판 설정이 변경되어 해당 게시글을 찾을 수 없습니다. 관리자에게 문의하세요.',
+        'reply_created' => '답변이 등록되었습니다.',
+        'reply_failed' => '답변 등록에 실패했습니다.',
+        'reply_already_exists' => '이미 등록된 답변이 있습니다. 기존 답변을 수정하거나 삭제한 후 다시 등록해주세요.',
+        'reply_updated' => '답변이 수정되었습니다.',
+        'reply_update_failed' => '답변 수정에 실패했습니다.',
+        'reply_deleted' => '답변이 삭제되었습니다.',
+        'reply_delete_failed' => '답변 삭제에 실패했습니다.',
+        'reply_not_found' => '답변을 찾을 수 없습니다.',
+        // 서비스가 던진 사유를 그대로 덧붙여, 실패 원인을 서버 기록 없이도 알 수 있게 한다
+        'operation_failed_reason' => ':reason',
     ],
 
     // 사용자 배송지
@@ -1155,5 +1242,23 @@ return [
         'set_default_failed' => '기본 배송지 설정에 실패했습니다.',
         'name_duplicate' => '동일한 이름의 배송지가 이미 존재합니다. 덮어쓰시겠습니까?',
         'auto_saved_label' => '새 배송지',
+    ],
+
+    // 결제 통화 설정 (A3)
+    'user_currency' => [
+        'fetched' => '결제 통화를 조회했습니다.',
+        'updated' => '결제 통화가 변경되었습니다.',
+        'update_failed' => '결제 통화 변경에 실패했습니다.',
+    ],
+
+    'user_shipping_country' => [
+        'fetched' => '배송국가를 조회했습니다.',
+        'updated' => '배송국가가 변경되었습니다.',
+        'update_failed' => '배송국가 변경에 실패했습니다.',
+    ],
+
+    // 대시보드
+    'dashboard' => [
+        'fetch_success' => '대시보드 데이터를 조회했습니다.',
     ],
 ];

@@ -7,9 +7,9 @@
 // 기존 핸들러
 import { updateProductFieldHandler } from './updateProductField';
 import { updateOptionFieldHandler } from './updateOptionField';
-import { buildProductColumnsHandler } from './buildProductColumns';
-import { buildOptionColumnsHandler } from './buildOptionColumns';
 import { calculateCurrencyPricesHandler } from './calculateCurrencyPrices';
+import { initPreferredCurrencyHandler } from './initPreferredCurrency';
+import { initPreferredShippingCountryHandler } from './initPreferredShippingCountry';
 import { setDateRangeHandler } from './setDateRange';
 import { setDefaultOptionHandler } from './setDefaultOption';
 import {
@@ -21,6 +21,12 @@ import {
 } from './optionSelection';
 import { generateCopyProductCodeHandler } from './generateCopyProductCode';
 import { copyProductHandler } from './copyProduct';
+
+// 목록 확장 행 옵션 지연 로딩
+import {
+    loadExpandedOptionsHandler,
+    retryExpandedOptionsHandler,
+} from './expandedOptionsHandlers';
 
 // 카테고리 관련 핸들러
 import {
@@ -62,14 +68,16 @@ import {
     updateAdditionalOptionHandler,
     removeAdditionalOptionHandler,
     reorderAdditionalOptionsHandler,
+    clearAdditionalOptionsHandler,
+    addAdditionalOptionValueHandler,
+    updateAdditionalOptionValueHandler,
+    removeAdditionalOptionValueHandler,
 } from './optionHandlers';
 
 // 이미지 관련 핸들러
 import {
     uploadImagesHandler,
     setThumbnailHandler,
-    confirmDeleteImageHandler,
-    deleteImageHandler,
     reorderImagesHandler,
 } from './imageHandlers';
 
@@ -134,11 +142,9 @@ import {
 
 // 상품옵션 추가 핸들러
 import {
-    toggleAutoMultiCurrencyHandler,
     setDefaultOptionHandler as setDefaultOptionHandler2,
     addOptionRowHandler,
     updateFormOptionFieldHandler,
-    updateFormOptionCurrencyFieldHandler,
     recalculateOptionPriceAdjustmentsHandler,
 } from './productOptionHandlers';
 
@@ -176,6 +182,8 @@ import {
     processOrderDetailBulkChangeHandler,
     saveAdminMemoHandler,
     updateChangeQuantityHandler,
+    openConfirmDepositModalHandler,
+    confirmDepositHandler,
 } from './orderDetailHandlers';
 
 // 주문 취소 핸들러 (관리자)
@@ -204,6 +212,9 @@ import {
 // 구매확정 핸들러 (사용자)
 import { confirmOrderOptionHandler } from './userConfirmOrderHandlers';
 
+// 배송지 변경 핸들러 (회원/비회원 공용)
+import { changeShippingAddressHandler } from './userChangeShippingAddressHandlers';
+
 // 리뷰 작성 핸들러 (사용자)
 import { submitReviewHandler } from './userReviewHandlers';
 
@@ -226,6 +237,10 @@ import {
     addApiRequestFieldHandler,
     updateApiRequestFieldHandler,
     removeApiRequestFieldHandler,
+    toggleApiRequestFieldHandler,
+    updateApiConfigFieldHandler,
+    updateApiFieldMapHandler,
+    testShippingApiHandler,
     updateExtraFeeFieldHandler,
 } from './shippingPolicyFormHandlers';
 
@@ -248,9 +263,9 @@ export const handlerMap = {
     // ===== 기존 핸들러 =====
     updateProductField: updateProductFieldHandler,
     updateOptionField: updateOptionFieldHandler,
-    buildProductColumns: buildProductColumnsHandler,
-    buildOptionColumns: buildOptionColumnsHandler,
     calculateCurrencyPrices: calculateCurrencyPricesHandler,
+    initPreferredCurrency: initPreferredCurrencyHandler,
+    initPreferredShippingCountry: initPreferredShippingCountryHandler,
     setDateRange: setDateRangeHandler,
     setDefaultOption: setDefaultOptionHandler,
     // 옵션 선택 관련 핸들러
@@ -259,6 +274,9 @@ export const handlerMap = {
     toggleAllOptionsInRow: toggleAllOptionsInRowHandler,
     getProductOptionStates: getProductOptionStatesHandler,
     syncProductSelection: syncProductSelectionHandler,
+    // 목록 확장 행 옵션 지연 로딩
+    loadExpandedOptions: loadExpandedOptionsHandler,
+    retryExpandedOptions: retryExpandedOptionsHandler,
     // 상품 폼 모달 관련 핸들러
     generateCopyProductCode: generateCopyProductCodeHandler,
     copyProduct: copyProductHandler,
@@ -296,12 +314,14 @@ export const handlerMap = {
     updateAdditionalOption: updateAdditionalOptionHandler,
     removeAdditionalOption: removeAdditionalOptionHandler,
     reorderAdditionalOptions: reorderAdditionalOptionsHandler,
+    clearAdditionalOptions: clearAdditionalOptionsHandler,
+    addAdditionalOptionValue: addAdditionalOptionValueHandler,
+    updateAdditionalOptionValue: updateAdditionalOptionValueHandler,
+    removeAdditionalOptionValue: removeAdditionalOptionValueHandler,
 
     // ===== 이미지 관련 =====
     uploadImages: uploadImagesHandler,
     setThumbnail: setThumbnailHandler,
-    confirmDeleteImage: confirmDeleteImageHandler,
-    deleteImage: deleteImageHandler,
     reorderImages: reorderImagesHandler,
 
     // ===== 상세설명 관련 =====
@@ -354,11 +374,9 @@ export const handlerMap = {
     addDescriptionLocale: addDescriptionLocaleHandler,
 
     // ===== 상품옵션 추가 =====
-    toggleAutoMultiCurrency: toggleAutoMultiCurrencyHandler,
     setDefaultOptionFromGrid: setDefaultOptionHandler2,
     addOptionRow: addOptionRowHandler,
     updateFormOptionField: updateFormOptionFieldHandler,
-    updateFormOptionCurrencyField: updateFormOptionCurrencyFieldHandler,
     recalculateOptionPriceAdjustments: recalculateOptionPriceAdjustmentsHandler,
 
     // ===== 통합 일괄 업데이트 =====
@@ -390,6 +408,8 @@ export const handlerMap = {
     processOrderDetailBulkChange: processOrderDetailBulkChangeHandler,
     saveAdminMemo: saveAdminMemoHandler,
     updateChangeQuantity: updateChangeQuantityHandler,
+    openConfirmDepositModal: openConfirmDepositModalHandler,
+    confirmDeposit: confirmDepositHandler,
 
     // ===== 배송정책 폼 =====
     initShippingPolicyForm: initShippingPolicyFormHandler,
@@ -409,6 +429,10 @@ export const handlerMap = {
     addApiRequestField: addApiRequestFieldHandler,
     updateApiRequestField: updateApiRequestFieldHandler,
     removeApiRequestField: removeApiRequestFieldHandler,
+    toggleApiRequestField: toggleApiRequestFieldHandler,
+    updateApiConfigField: updateApiConfigFieldHandler,
+    updateApiFieldMap: updateApiFieldMapHandler,
+    testShippingApi: testShippingApiHandler,
     updateExtraFeeField: updateExtraFeeFieldHandler,
 
     // ===== 주문 취소 (관리자) =====
@@ -434,6 +458,9 @@ export const handlerMap = {
 
     // ===== 구매확정 (사용자) =====
     confirmOrderOption: confirmOrderOptionHandler,
+
+    // ===== 배송지 변경 (회원/비회원 공용) =====
+    changeShippingAddress: changeShippingAddressHandler,
 
     // ===== 리뷰 작성 (사용자) =====
     submitReview: submitReviewHandler,

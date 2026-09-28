@@ -12,6 +12,7 @@
     "data_sources": [
         {
             "id": "settings",
+            "label_key": "$t:sirsoft-tosspayments.editor.data_source.settings",
             "type": "api",
             "endpoint": "/api/admin/plugins/{{route.identifier}}/settings",
             "method": "GET",
@@ -27,11 +28,10 @@
                 "id": "plugin_settings_content",
                 "type": "basic",
                 "name": "Div",
-                "blur_until_loaded": "{{_local.isSaving}}",
                 "dataKey": "form",
                 "trackChanges": true,
                 "props": {
-                    "className": "p-4 sm:p-6 lg:p-8 bg-gray-50 dark:bg-gray-900 min-h-screen"
+                    "className": "admin-page-content-responsive"
                 },
                 "children": [
                     {
@@ -51,7 +51,7 @@
                         "name": "Div",
                         "if": "{{_local.errors}}",
                         "props": {
-                            "className": "bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mt-6"
+                            "className": "alert-danger"
                         },
                         "children": [
                             {
@@ -66,7 +66,8 @@
                                         "name": "Icon",
                                         "props": {
                                             "name": "triangle-exclamation",
-                                            "className": "w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5"
+                                            "size": "md",
+                                            "className": "text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5"
                                         }
                                     },
                                     {
@@ -77,7 +78,7 @@
                                                 "type": "basic",
                                                 "name": "H3",
                                                 "props": {
-                                                    "className": "text-sm font-medium text-red-800 dark:text-red-200"
+                                                    "className": "text-error-strong"
                                                 },
                                                 "text": "$t:admin.plugins.settings.validation_error"
                                             },
@@ -97,7 +98,7 @@
                                                         "type": "basic",
                                                         "name": "Li",
                                                         "props": {
-                                                            "className": "text-sm text-red-700 dark:text-red-300"
+                                                            "className": "text-error-soft"
                                                         },
                                                         "text": "{{message}}"
                                                     }
@@ -129,7 +130,7 @@
                                         "type": "basic",
                                         "name": "Div",
                                         "props": {
-                                            "className": "flex items-center justify-between"
+                                            "className": "flex-between"
                                         },
                                         "children": [
                                             {
@@ -140,7 +141,7 @@
                                                         "type": "basic",
                                                         "name": "Label",
                                                         "props": {
-                                                            "className": "block text-sm font-medium text-gray-700 dark:text-gray-300"
+                                                            "className": "form-label"
                                                         },
                                                         "text": "$t:sirsoft-tosspayments.settings.test_mode"
                                                     },
@@ -148,7 +149,7 @@
                                                         "type": "basic",
                                                         "name": "P",
                                                         "props": {
-                                                            "className": "mt-1 text-xs text-gray-500 dark:text-gray-400"
+                                                            "className": "form-hint"
                                                         },
                                                         "text": "$t:sirsoft-tosspayments.settings.test_mode_hint"
                                                     }
@@ -179,14 +180,14 @@
                                 "type": "basic",
                                 "name": "Div",
                                 "props": {
-                                    "className": "px-6 py-4 border-b border-gray-200 dark:border-gray-700"
+                                    "className": "panel-header-row"
                                 },
                                 "children": [
                                     {
                                         "type": "basic",
                                         "name": "H3",
                                         "props": {
-                                            "className": "text-base font-semibold text-gray-900 dark:text-white"
+                                            "className": "section-heading-md"
                                         },
                                         "text": "$t:sirsoft-tosspayments.settings.section_test_keys"
                                     }
@@ -204,7 +205,7 @@
                                         "type": "basic",
                                         "name": "Div",
                                         "props": {
-                                            "className": "grid grid-cols-1 lg:grid-cols-3 gap-4 items-start"
+                                            "className": "grid-3col-responsive"
                                         },
                                         "children": [
                                             {
@@ -218,7 +219,7 @@
                                                         "type": "basic",
                                                         "name": "Label",
                                                         "props": {
-                                                            "className": "block text-sm font-medium text-gray-700 dark:text-gray-300"
+                                                            "className": "form-label"
                                                         },
                                                         "text": "$t:sirsoft-tosspayments.settings.test_client_key"
                                                     },
@@ -226,7 +227,7 @@
                                                         "type": "basic",
                                                         "name": "P",
                                                         "props": {
-                                                            "className": "mt-1 text-xs text-gray-500 dark:text-gray-400"
+                                                            "className": "form-hint"
                                                         },
                                                         "text": "$t:sirsoft-tosspayments.settings.test_client_key_hint"
                                                     }
@@ -246,7 +247,7 @@
                                                             "type": "text",
                                                             "name": "test_client_key",
                                                             "placeholder": "test_ck_...",
-                                                            "className": "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                                                            "className": "focus:border-transparent font-mono"
                                                         }
                                                     }
                                                 ]
@@ -258,7 +259,7 @@
                                         "type": "basic",
                                         "name": "Div",
                                         "props": {
-                                            "className": "grid grid-cols-1 lg:grid-cols-3 gap-4 items-start"
+                                            "className": "grid-3col-responsive"
                                         },
                                         "children": [
                                             {
@@ -272,7 +273,7 @@
                                                         "type": "basic",
                                                         "name": "Label",
                                                         "props": {
-                                                            "className": "block text-sm font-medium text-gray-700 dark:text-gray-300"
+                                                            "className": "form-label"
                                                         },
                                                         "text": "$t:sirsoft-tosspayments.settings.test_secret_key"
                                                     },
@@ -280,7 +281,7 @@
                                                         "type": "basic",
                                                         "name": "P",
                                                         "props": {
-                                                            "className": "mt-1 text-xs text-gray-500 dark:text-gray-400"
+                                                            "className": "form-hint"
                                                         },
                                                         "text": "$t:sirsoft-tosspayments.settings.test_secret_key_hint"
                                                     }
@@ -300,7 +301,7 @@
                                                             "type": "password",
                                                             "name": "test_secret_key",
                                                             "placeholder": "test_sk_...",
-                                                            "className": "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                                                            "className": "focus:border-transparent font-mono"
                                                         }
                                                     }
                                                 ]
@@ -323,14 +324,14 @@
                                 "type": "basic",
                                 "name": "Div",
                                 "props": {
-                                    "className": "px-6 py-4 border-b border-gray-200 dark:border-gray-700"
+                                    "className": "panel-header-row"
                                 },
                                 "children": [
                                     {
                                         "type": "basic",
                                         "name": "H3",
                                         "props": {
-                                            "className": "text-base font-semibold text-gray-900 dark:text-white"
+                                            "className": "section-heading-md"
                                         },
                                         "text": "$t:sirsoft-tosspayments.settings.section_live_keys"
                                     }
@@ -348,7 +349,7 @@
                                         "type": "basic",
                                         "name": "Div",
                                         "props": {
-                                            "className": "grid grid-cols-1 lg:grid-cols-3 gap-4 items-start"
+                                            "className": "grid-3col-responsive"
                                         },
                                         "children": [
                                             {
@@ -362,7 +363,7 @@
                                                         "type": "basic",
                                                         "name": "Label",
                                                         "props": {
-                                                            "className": "block text-sm font-medium text-gray-700 dark:text-gray-300"
+                                                            "className": "form-label"
                                                         },
                                                         "text": "$t:sirsoft-tosspayments.settings.live_client_key"
                                                     }
@@ -382,7 +383,7 @@
                                                             "type": "text",
                                                             "name": "live_client_key",
                                                             "placeholder": "live_ck_...",
-                                                            "className": "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                                                            "className": "focus:border-transparent font-mono"
                                                         }
                                                     }
                                                 ]
@@ -394,7 +395,7 @@
                                         "type": "basic",
                                         "name": "Div",
                                         "props": {
-                                            "className": "grid grid-cols-1 lg:grid-cols-3 gap-4 items-start"
+                                            "className": "grid-3col-responsive"
                                         },
                                         "children": [
                                             {
@@ -408,7 +409,7 @@
                                                         "type": "basic",
                                                         "name": "Label",
                                                         "props": {
-                                                            "className": "block text-sm font-medium text-gray-700 dark:text-gray-300"
+                                                            "className": "form-label"
                                                         },
                                                         "text": "$t:sirsoft-tosspayments.settings.live_secret_key"
                                                     },
@@ -416,7 +417,7 @@
                                                         "type": "basic",
                                                         "name": "P",
                                                         "props": {
-                                                            "className": "mt-1 text-xs text-gray-500 dark:text-gray-400"
+                                                            "className": "form-hint"
                                                         },
                                                         "text": "$t:sirsoft-tosspayments.settings.live_secret_key_hint"
                                                     }
@@ -436,7 +437,7 @@
                                                             "type": "password",
                                                             "name": "live_secret_key",
                                                             "placeholder": "live_sk_...",
-                                                            "className": "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                                                            "className": "focus:border-transparent font-mono"
                                                         }
                                                     }
                                                 ]
@@ -459,14 +460,14 @@
                                 "type": "basic",
                                 "name": "Div",
                                 "props": {
-                                    "className": "px-6 py-4 border-b border-gray-200 dark:border-gray-700"
+                                    "className": "panel-header-row"
                                 },
                                 "children": [
                                     {
                                         "type": "basic",
                                         "name": "H3",
                                         "props": {
-                                            "className": "text-base font-semibold text-gray-900 dark:text-white"
+                                            "className": "section-heading-md"
                                         },
                                         "text": "$t:sirsoft-tosspayments.settings.section_redirect"
                                     }
@@ -484,7 +485,7 @@
                                         "type": "basic",
                                         "name": "Div",
                                         "props": {
-                                            "className": "grid grid-cols-1 lg:grid-cols-3 gap-4 items-start"
+                                            "className": "grid-3col-responsive"
                                         },
                                         "children": [
                                             {
@@ -498,7 +499,7 @@
                                                         "type": "basic",
                                                         "name": "Label",
                                                         "props": {
-                                                            "className": "block text-sm font-medium text-gray-700 dark:text-gray-300"
+                                                            "className": "form-label"
                                                         },
                                                         "text": "$t:sirsoft-tosspayments.settings.redirect_success_url"
                                                     },
@@ -506,7 +507,7 @@
                                                         "type": "basic",
                                                         "name": "P",
                                                         "props": {
-                                                            "className": "mt-1 text-xs text-gray-500 dark:text-gray-400"
+                                                            "className": "form-hint"
                                                         },
                                                         "text": "$t:sirsoft-tosspayments.settings.redirect_success_url_hint"
                                                     }
@@ -526,7 +527,7 @@
                                                             "type": "text",
                                                             "name": "redirect_success_url",
                                                             "placeholder": "/shop/orders/{orderId}/complete",
-                                                            "className": "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                                                            "className": "focus:border-transparent"
                                                         }
                                                     }
                                                 ]
@@ -538,7 +539,7 @@
                                         "type": "basic",
                                         "name": "Div",
                                         "props": {
-                                            "className": "grid grid-cols-1 lg:grid-cols-3 gap-4 items-start"
+                                            "className": "grid-3col-responsive"
                                         },
                                         "children": [
                                             {
@@ -552,7 +553,7 @@
                                                         "type": "basic",
                                                         "name": "Label",
                                                         "props": {
-                                                            "className": "block text-sm font-medium text-gray-700 dark:text-gray-300"
+                                                            "className": "form-label"
                                                         },
                                                         "text": "$t:sirsoft-tosspayments.settings.redirect_fail_url"
                                                     },
@@ -560,7 +561,7 @@
                                                         "type": "basic",
                                                         "name": "P",
                                                         "props": {
-                                                            "className": "mt-1 text-xs text-gray-500 dark:text-gray-400"
+                                                            "className": "form-hint"
                                                         },
                                                         "text": "$t:sirsoft-tosspayments.settings.redirect_fail_url_hint"
                                                     }
@@ -580,10 +581,758 @@
                                                             "type": "text",
                                                             "name": "redirect_fail_url",
                                                             "placeholder": "/shop/checkout",
-                                                            "className": "w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                                                            "className": "focus:border-transparent"
                                                         }
                                                     }
                                                 ]
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        "id": "payment_methods_section",
+                        "type": "basic",
+                        "name": "Div",
+                        "props": {
+                            "className": "mt-6 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700"
+                        },
+                        "children": [
+                            {
+                                "type": "basic",
+                                "name": "Div",
+                                "props": {
+                                    "className": "panel-header-row"
+                                },
+                                "children": [
+                                    {
+                                        "type": "basic",
+                                        "name": "H3",
+                                        "props": {
+                                            "className": "section-heading-md"
+                                        },
+                                        "text": "$t:sirsoft-tosspayments.settings.section_payment_methods"
+                                    }
+                                ]
+                            },
+                            {
+                                "type": "basic",
+                                "name": "Div",
+                                "props": {
+                                    "className": "p-6 space-y-6"
+                                },
+                                "children": [
+                                    {
+                                        "id": "field_order_sheet_mode",
+                                        "type": "basic",
+                                        "name": "Div",
+                                        "props": {
+                                            "className": "flex-between"
+                                        },
+                                        "children": [
+                                            {
+                                                "type": "basic",
+                                                "name": "Div",
+                                                "children": [
+                                                    {
+                                                        "type": "basic",
+                                                        "name": "Label",
+                                                        "props": {
+                                                            "className": "form-label"
+                                                        },
+                                                        "text": "$t:sirsoft-tosspayments.settings.order_sheet_mode"
+                                                    },
+                                                    {
+                                                        "type": "basic",
+                                                        "name": "P",
+                                                        "props": {
+                                                            "className": "form-hint"
+                                                        },
+                                                        "text": "$t:sirsoft-tosspayments.settings.order_sheet_mode_hint"
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "type": "composite",
+                                                "name": "Toggle",
+                                                "props": {
+                                                    "name": "order_sheet_mode"
+                                                }
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "id": "enabled_methods_group",
+                                        "type": "basic",
+                                        "name": "Div",
+                                        "if": "{{_local.form?.order_sheet_mode}}",
+                                        "props": {
+                                            "className": "space-y-3 pt-2 border-t border-gray-100 dark:border-gray-700"
+                                        },
+                                        "children": [
+                                            {
+                                                "type": "basic",
+                                                "name": "Label",
+                                                "props": {
+                                                    "className": "form-label"
+                                                },
+                                                "text": "$t:sirsoft-tosspayments.settings.enabled_methods"
+                                            },
+                                            {
+                                                "type": "basic",
+                                                "name": "P",
+                                                "props": {
+                                                    "className": "form-hint"
+                                                },
+                                                "text": "$t:sirsoft-tosspayments.settings.enabled_methods_hint"
+                                            },
+                                            {
+                                                "id": "method_checkbox_grid",
+                                                "type": "basic",
+                                                "name": "Div",
+                                                "props": {
+                                                    "className": "grid grid-cols-3 gap-3"
+                                                },
+                                                "responsive": {
+                                                    "portable": {
+                                                        "props": {
+                                                            "className": "grid grid-cols-1 gap-2"
+                                                        }
+                                                    }
+                                                },
+                                                "children": [
+                                                    {
+                                                        "type": "basic",
+                                                        "name": "Label",
+                                                        "props": {
+                                                            "className": "flex items-center gap-2 cursor-pointer text-sm text-gray-700 dark:text-gray-300"
+                                                        },
+                                                        "children": [
+                                                            {
+                                                                "type": "basic",
+                                                                "name": "Checkbox",
+                                                                "props": {
+                                                                    "name": "method_card",
+                                                                    "autoBinding": false,
+                                                                    "checked": "{{!!_local.form?.method_card}}"
+                                                                },
+                                                                "actions": [
+                                                                    {
+                                                                        "type": "change",
+                                                                        "handler": "setState",
+                                                                        "params": {
+                                                                            "target": "local",
+                                                                            "form.method_card": "{{$event.target.checked}}",
+                                                                            "hasChanges": true
+                                                                        }
+                                                                    }
+                                                                ]
+                                                            },
+                                                            {
+                                                                "type": "basic",
+                                                                "name": "Span",
+                                                                "text": "$t:sirsoft-tosspayments.settings.method_card"
+                                                            }
+                                                        ]
+                                                    },
+                                                    {
+                                                        "type": "basic",
+                                                        "name": "Label",
+                                                        "props": {
+                                                            "className": "flex items-center gap-2 cursor-pointer text-sm text-gray-700 dark:text-gray-300"
+                                                        },
+                                                        "children": [
+                                                            {
+                                                                "type": "basic",
+                                                                "name": "Checkbox",
+                                                                "props": {
+                                                                    "name": "method_virtual_account",
+                                                                    "autoBinding": false,
+                                                                    "checked": "{{!!_local.form?.method_virtual_account}}"
+                                                                },
+                                                                "actions": [
+                                                                    {
+                                                                        "type": "change",
+                                                                        "handler": "setState",
+                                                                        "params": {
+                                                                            "target": "local",
+                                                                            "form.method_virtual_account": "{{$event.target.checked}}",
+                                                                            "hasChanges": true
+                                                                        }
+                                                                    }
+                                                                ]
+                                                            },
+                                                            {
+                                                                "type": "basic",
+                                                                "name": "Span",
+                                                                "text": "$t:sirsoft-tosspayments.settings.method_virtual_account"
+                                                            }
+                                                        ]
+                                                    },
+                                                    {
+                                                        "type": "basic",
+                                                        "name": "Label",
+                                                        "props": {
+                                                            "className": "flex items-center gap-2 cursor-pointer text-sm text-gray-700 dark:text-gray-300"
+                                                        },
+                                                        "children": [
+                                                            {
+                                                                "type": "basic",
+                                                                "name": "Checkbox",
+                                                                "props": {
+                                                                    "name": "method_transfer",
+                                                                    "autoBinding": false,
+                                                                    "checked": "{{!!_local.form?.method_transfer}}"
+                                                                },
+                                                                "actions": [
+                                                                    {
+                                                                        "type": "change",
+                                                                        "handler": "setState",
+                                                                        "params": {
+                                                                            "target": "local",
+                                                                            "form.method_transfer": "{{$event.target.checked}}",
+                                                                            "hasChanges": true
+                                                                        }
+                                                                    }
+                                                                ]
+                                                            },
+                                                            {
+                                                                "type": "basic",
+                                                                "name": "Span",
+                                                                "text": "$t:sirsoft-tosspayments.settings.method_transfer"
+                                                            }
+                                                        ]
+                                                    },
+                                                    {
+                                                        "type": "basic",
+                                                        "name": "Label",
+                                                        "props": {
+                                                            "className": "flex items-center gap-2 cursor-pointer text-sm text-gray-700 dark:text-gray-300"
+                                                        },
+                                                        "children": [
+                                                            {
+                                                                "type": "basic",
+                                                                "name": "Checkbox",
+                                                                "props": {
+                                                                    "name": "method_mobile_phone",
+                                                                    "autoBinding": false,
+                                                                    "checked": "{{!!_local.form?.method_mobile_phone}}"
+                                                                },
+                                                                "actions": [
+                                                                    {
+                                                                        "type": "change",
+                                                                        "handler": "setState",
+                                                                        "params": {
+                                                                            "target": "local",
+                                                                            "form.method_mobile_phone": "{{$event.target.checked}}",
+                                                                            "hasChanges": true
+                                                                        }
+                                                                    }
+                                                                ]
+                                                            },
+                                                            {
+                                                                "type": "basic",
+                                                                "name": "Span",
+                                                                "text": "$t:sirsoft-tosspayments.settings.method_mobile_phone"
+                                                            }
+                                                        ]
+                                                    },
+                                                    {
+                                                        "type": "basic",
+                                                        "name": "Label",
+                                                        "props": {
+                                                            "className": "flex items-center gap-2 cursor-pointer text-sm text-gray-700 dark:text-gray-300"
+                                                        },
+                                                        "children": [
+                                                            {
+                                                                "type": "basic",
+                                                                "name": "Checkbox",
+                                                                "props": {
+                                                                    "name": "method_tosspay",
+                                                                    "autoBinding": false,
+                                                                    "checked": "{{!!_local.form?.method_tosspay}}"
+                                                                },
+                                                                "actions": [
+                                                                    {
+                                                                        "type": "change",
+                                                                        "handler": "setState",
+                                                                        "params": {
+                                                                            "target": "local",
+                                                                            "form.method_tosspay": "{{$event.target.checked}}",
+                                                                            "hasChanges": true
+                                                                        }
+                                                                    }
+                                                                ]
+                                                            },
+                                                            {
+                                                                "type": "basic",
+                                                                "name": "Span",
+                                                                "text": "$t:sirsoft-tosspayments.settings.method_tosspay"
+                                                            }
+                                                        ]
+                                                    },
+                                                    {
+                                                        "type": "basic",
+                                                        "name": "Label",
+                                                        "props": {
+                                                            "className": "flex items-center gap-2 cursor-pointer text-sm text-gray-700 dark:text-gray-300"
+                                                        },
+                                                        "children": [
+                                                            {
+                                                                "type": "basic",
+                                                                "name": "Checkbox",
+                                                                "props": {
+                                                                    "name": "method_kakaopay",
+                                                                    "autoBinding": false,
+                                                                    "checked": "{{!!_local.form?.method_kakaopay}}"
+                                                                },
+                                                                "actions": [
+                                                                    {
+                                                                        "type": "change",
+                                                                        "handler": "setState",
+                                                                        "params": {
+                                                                            "target": "local",
+                                                                            "form.method_kakaopay": "{{$event.target.checked}}",
+                                                                            "hasChanges": true
+                                                                        }
+                                                                    }
+                                                                ]
+                                                            },
+                                                            {
+                                                                "type": "basic",
+                                                                "name": "Span",
+                                                                "text": "$t:sirsoft-tosspayments.settings.method_kakaopay"
+                                                            }
+                                                        ]
+                                                    },
+                                                    {
+                                                        "type": "basic",
+                                                        "name": "Label",
+                                                        "props": {
+                                                            "className": "flex items-center gap-2 cursor-pointer text-sm text-gray-700 dark:text-gray-300"
+                                                        },
+                                                        "children": [
+                                                            {
+                                                                "type": "basic",
+                                                                "name": "Checkbox",
+                                                                "props": {
+                                                                    "name": "method_naverpay",
+                                                                    "autoBinding": false,
+                                                                    "checked": "{{!!_local.form?.method_naverpay}}"
+                                                                },
+                                                                "actions": [
+                                                                    {
+                                                                        "type": "change",
+                                                                        "handler": "setState",
+                                                                        "params": {
+                                                                            "target": "local",
+                                                                            "form.method_naverpay": "{{$event.target.checked}}",
+                                                                            "hasChanges": true
+                                                                        }
+                                                                    }
+                                                                ]
+                                                            },
+                                                            {
+                                                                "type": "basic",
+                                                                "name": "Span",
+                                                                "text": "$t:sirsoft-tosspayments.settings.method_naverpay"
+                                                            }
+                                                        ]
+                                                    },
+                                                    {
+                                                        "type": "basic",
+                                                        "name": "Label",
+                                                        "props": {
+                                                            "className": "flex items-center gap-2 cursor-pointer text-sm text-gray-700 dark:text-gray-300"
+                                                        },
+                                                        "children": [
+                                                            {
+                                                                "type": "basic",
+                                                                "name": "Checkbox",
+                                                                "props": {
+                                                                    "name": "method_payco",
+                                                                    "autoBinding": false,
+                                                                    "checked": "{{!!_local.form?.method_payco}}"
+                                                                },
+                                                                "actions": [
+                                                                    {
+                                                                        "type": "change",
+                                                                        "handler": "setState",
+                                                                        "params": {
+                                                                            "target": "local",
+                                                                            "form.method_payco": "{{$event.target.checked}}",
+                                                                            "hasChanges": true
+                                                                        }
+                                                                    }
+                                                                ]
+                                                            },
+                                                            {
+                                                                "type": "basic",
+                                                                "name": "Span",
+                                                                "text": "$t:sirsoft-tosspayments.settings.method_payco"
+                                                            }
+                                                        ]
+                                                    },
+                                                    {
+                                                        "type": "basic",
+                                                        "name": "Label",
+                                                        "props": {
+                                                            "className": "flex items-center gap-2 cursor-pointer text-sm text-gray-700 dark:text-gray-300"
+                                                        },
+                                                        "children": [
+                                                            {
+                                                                "type": "basic",
+                                                                "name": "Checkbox",
+                                                                "props": {
+                                                                    "name": "method_samsungpay",
+                                                                    "autoBinding": false,
+                                                                    "checked": "{{!!_local.form?.method_samsungpay}}"
+                                                                },
+                                                                "actions": [
+                                                                    {
+                                                                        "type": "change",
+                                                                        "handler": "setState",
+                                                                        "params": {
+                                                                            "target": "local",
+                                                                            "form.method_samsungpay": "{{$event.target.checked}}",
+                                                                            "hasChanges": true
+                                                                        }
+                                                                    }
+                                                                ]
+                                                            },
+                                                            {
+                                                                "type": "basic",
+                                                                "name": "Span",
+                                                                "text": "$t:sirsoft-tosspayments.settings.method_samsungpay"
+                                                            }
+                                                        ]
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "type": "basic",
+                                                "name": "P",
+                                                "props": {
+                                                    "className": "form-hint"
+                                                },
+                                                "text": "$t:sirsoft-tosspayments.errors.non_krw_method"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        "id": "virtual_account_section",
+                        "type": "basic",
+                        "name": "Div",
+                        "props": {
+                            "className": "mt-6 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700"
+                        },
+                        "children": [
+                            {
+                                "type": "basic",
+                                "name": "Div",
+                                "props": {
+                                    "className": "panel-header-row"
+                                },
+                                "children": [
+                                    {
+                                        "type": "basic",
+                                        "name": "H3",
+                                        "props": {
+                                            "className": "section-heading-md"
+                                        },
+                                        "text": "$t:sirsoft-tosspayments.settings.section_virtual_account"
+                                    }
+                                ]
+                            },
+                            {
+                                "type": "basic",
+                                "name": "Div",
+                                "props": {
+                                    "className": "p-6 space-y-6"
+                                },
+                                "children": [
+                                    {
+                                        "id": "field_vbank_valid_hours",
+                                        "type": "basic",
+                                        "name": "Div",
+                                        "children": [
+                                            {
+                                                "type": "basic",
+                                                "name": "Label",
+                                                "props": {
+                                                    "className": "form-label"
+                                                },
+                                                "text": "$t:sirsoft-tosspayments.settings.vbank_valid_hours"
+                                            },
+                                            {
+                                                "type": "basic",
+                                                "name": "Input",
+                                                "props": {
+                                                    "type": "number",
+                                                    "name": "vbank_valid_hours",
+                                                    "min": 1,
+                                                    "max": 2160,
+                                                    "className": "w-32"
+                                                }
+                                            },
+                                            {
+                                                "type": "basic",
+                                                "name": "P",
+                                                "props": {
+                                                    "className": "form-hint"
+                                                },
+                                                "text": "$t:sirsoft-tosspayments.settings.vbank_valid_hours_hint"
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "id": "field_vbank_cash_receipt_type",
+                                        "type": "basic",
+                                        "name": "Div",
+                                        "children": [
+                                            {
+                                                "type": "basic",
+                                                "name": "Label",
+                                                "props": {
+                                                    "className": "form-label"
+                                                },
+                                                "text": "$t:sirsoft-tosspayments.settings.vbank_cash_receipt_type"
+                                            },
+                                            {
+                                                "type": "basic",
+                                                "name": "Select",
+                                                "props": {
+                                                    "name": "vbank_cash_receipt_type",
+                                                    "options": [
+                                                        { "value": "", "label": "$t:sirsoft-tosspayments.settings.vbank_cash_receipt_none" },
+                                                        { "value": "소득공제", "label": "$t:sirsoft-tosspayments.settings.vbank_cash_receipt_income" },
+                                                        { "value": "지출증빙", "label": "$t:sirsoft-tosspayments.settings.vbank_cash_receipt_expense" }
+                                                    ]
+                                                }
+                                            },
+                                            {
+                                                "type": "basic",
+                                                "name": "P",
+                                                "props": {
+                                                    "className": "form-hint"
+                                                },
+                                                "text": "$t:sirsoft-tosspayments.settings.vbank_cash_receipt_type_hint"
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "id": "field_use_escrow",
+                                        "type": "basic",
+                                        "name": "Div",
+                                        "children": [
+                                            {
+                                                "type": "basic",
+                                                "name": "Label",
+                                                "props": {
+                                                    "className": "form-label"
+                                                },
+                                                "text": "$t:sirsoft-tosspayments.settings.use_escrow"
+                                            },
+                                            {
+                                                "type": "basic",
+                                                "name": "Select",
+                                                "props": {
+                                                    "name": "use_escrow",
+                                                    "options": [
+                                                        { "value": "off", "label": "$t:sirsoft-tosspayments.settings.use_escrow_off" },
+                                                        { "value": "on", "label": "$t:sirsoft-tosspayments.settings.use_escrow_on" },
+                                                        { "value": "buyer_choice", "label": "$t:sirsoft-tosspayments.settings.use_escrow_buyer_choice" }
+                                                    ]
+                                                }
+                                            },
+                                            {
+                                                "type": "basic",
+                                                "name": "P",
+                                                "props": {
+                                                    "className": "form-hint"
+                                                },
+                                                "text": "$t:sirsoft-tosspayments.settings.use_escrow_hint"
+                                            },
+                                            {
+                                                "id": "escrow_operation_notice",
+                                                "if": "{{_local.form?.use_escrow !== 'off'}}",
+                                                "type": "basic",
+                                                "name": "Div",
+                                                "props": {
+                                                    "className": "mt-2 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 space-y-1"
+                                                },
+                                                "children": [
+                                                    {
+                                                        "type": "basic",
+                                                        "name": "P",
+                                                        "props": {
+                                                            "className": "text-sm text-amber-800 dark:text-amber-200"
+                                                        },
+                                                        "text": "$t:sirsoft-tosspayments.settings.escrow_no_partial_cancel_notice"
+                                                    },
+                                                    {
+                                                        "type": "basic",
+                                                        "name": "P",
+                                                        "props": {
+                                                            "className": "text-sm text-amber-800 dark:text-amber-200"
+                                                        },
+                                                        "children": [
+                                                            {
+                                                                "type": "basic",
+                                                                "name": "Span",
+                                                                "text": "$t:sirsoft-tosspayments.settings.escrow_shipping_info_notice"
+                                                            },
+                                                            {
+                                                                "type": "basic",
+                                                                "name": "A",
+                                                                "props": {
+                                                                    "href": "https://app.tosspayments.com/",
+                                                                    "target": "_blank",
+                                                                    "rel": "noopener noreferrer",
+                                                                    "className": "ml-1 underline font-medium hover:text-amber-900 dark:hover:text-amber-100"
+                                                                },
+                                                                "text": "$t:sirsoft-tosspayments.settings.escrow_shipping_info_link"
+                                                            }
+                                                        ]
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "id": "field_webhook_url",
+                                        "type": "basic",
+                                        "name": "Div",
+                                        "props": {
+                                            "className": "pt-2 border-t border-gray-100 dark:border-gray-700 space-y-2"
+                                        },
+                                        "children": [
+                                            {
+                                                "type": "basic",
+                                                "name": "Label",
+                                                "props": {
+                                                    "className": "form-label"
+                                                },
+                                                "text": "$t:sirsoft-tosspayments.settings.webhook_url_label"
+                                            },
+                                            {
+                                                "type": "basic",
+                                                "name": "Div",
+                                                "props": {
+                                                    "className": "flex items-center gap-2"
+                                                },
+                                                "responsive": {
+                                                    "portable": {
+                                                        "props": {
+                                                            "className": "flex flex-col items-stretch gap-2"
+                                                        }
+                                                    }
+                                                },
+                                                "children": [
+                                                    {
+                                                        "type": "basic",
+                                                        "name": "Div",
+                                                        "props": {
+                                                            "className": "flex-1 overflow-x-auto font-mono text-sm bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded px-3 py-2 whitespace-nowrap"
+                                                        },
+                                                        "text": "/plugins/sirsoft-tosspayments/webhook/deposit"
+                                                    },
+                                                    {
+                                                        "id": "webhook_copy_button",
+                                                        "type": "basic",
+                                                        "name": "Button",
+                                                        "props": {
+                                                            "type": "button",
+                                                            "className": "btn btn-secondary btn-sm flex-shrink-0"
+                                                        },
+                                                        "responsive": {
+                                                            "portable": {
+                                                                "props": {
+                                                                    "type": "button",
+                                                                    "className": "btn btn-secondary btn-sm w-full"
+                                                                }
+                                                            }
+                                                        },
+                                                        "actions": [
+                                                            {
+                                                                "type": "click",
+                                                                "handler": "copyToClipboard",
+                                                                "params": {
+                                                                    "text": "/plugins/sirsoft-tosspayments/webhook/deposit"
+                                                                },
+                                                                "onSuccess": [
+                                                                    {
+                                                                        "handler": "toast",
+                                                                        "params": {
+                                                                            "type": "success",
+                                                                            "message": "$t:sirsoft-tosspayments.settings.webhook_url_copied"
+                                                                        }
+                                                                    }
+                                                                ]
+                                                            }
+                                                        ],
+                                                        "children": [
+                                                            {
+                                                                "type": "basic",
+                                                                "name": "Span",
+                                                                "text": "$t:sirsoft-tosspayments.settings.webhook_url_copy"
+                                                            }
+                                                        ]
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "type": "basic",
+                                                "name": "P",
+                                                "props": {
+                                                    "className": "form-hint"
+                                                },
+                                                "text": "$t:sirsoft-tosspayments.settings.webhook_url_hint"
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "id": "field_webhook_secret_verify",
+                                        "type": "basic",
+                                        "name": "Div",
+                                        "props": {
+                                            "className": "flex-between pt-2"
+                                        },
+                                        "children": [
+                                            {
+                                                "type": "basic",
+                                                "name": "Div",
+                                                "children": [
+                                                    {
+                                                        "type": "basic",
+                                                        "name": "Label",
+                                                        "props": {
+                                                            "className": "form-label"
+                                                        },
+                                                        "text": "$t:sirsoft-tosspayments.settings.webhook_secret_verify"
+                                                    },
+                                                    {
+                                                        "type": "basic",
+                                                        "name": "P",
+                                                        "props": {
+                                                            "className": "form-hint"
+                                                        },
+                                                        "text": "$t:sirsoft-tosspayments.settings.webhook_secret_verify_hint"
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "type": "composite",
+                                                "name": "Toggle",
+                                                "props": {
+                                                    "name": "webhook_secret_verify"
+                                                }
                                             }
                                         ]
                                     }
@@ -596,7 +1345,7 @@
                         "type": "basic",
                         "name": "Div",
                         "props": {
-                            "className": "flex justify-end gap-3 mt-6"
+                            "className": "sticky-footer-buttons"
                         },
                         "children": [
                             {
@@ -604,7 +1353,7 @@
                                 "type": "basic",
                                 "name": "Button",
                                 "props": {
-                                    "className": "px-4 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 font-medium transition-colors"
+                                    "className": "btn btn-secondary"
                                 },
                                 "actions": [
                                     {
@@ -629,7 +1378,7 @@
                                 "name": "Button",
                                 "props": {
                                     "disabled": "{{!_local.hasChanges || _local.isSaving}}",
-                                    "className": "flex items-center gap-1.5 px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-100 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    "className": "btn btn-primary flex-center gap-1.5"
                                 },
                                 "actions": [
                                     {
@@ -688,7 +1437,7 @@
                                                         "handler": "toast",
                                                         "params": {
                                                             "type": "error",
-                                                            "message": "$t:admin.plugins.settings.save_error"
+                                                            "message": "{{error.message ?? '$t:admin.plugins.settings.save_error'}}"
                                                         }
                                                     }
                                                 ]
@@ -703,7 +1452,7 @@
                                         "if": "{{_local.isSaving}}",
                                         "props": {
                                             "name": "spinner",
-                                            "className": "w-4 h-4 animate-spin"
+                                            "className": "spinner-sm"
                                         }
                                     },
                                     {
@@ -725,50 +1474,5 @@
                 ]
             }
         ]
-    },
-    "schema": {
-        "is_test_mode": {
-            "type": "boolean",
-            "default": true,
-            "label": "$t:sirsoft-tosspayments.settings.test_mode",
-            "hint": "$t:sirsoft-tosspayments.settings.test_mode_hint"
-        },
-        "test_client_key": {
-            "type": "string",
-            "default": "",
-            "label": "$t:sirsoft-tosspayments.settings.test_client_key",
-            "hint": "$t:sirsoft-tosspayments.settings.test_client_key_hint"
-        },
-        "test_secret_key": {
-            "type": "string",
-            "default": "",
-            "sensitive": true,
-            "label": "$t:sirsoft-tosspayments.settings.test_secret_key",
-            "hint": "$t:sirsoft-tosspayments.settings.test_secret_key_hint"
-        },
-        "live_client_key": {
-            "type": "string",
-            "default": "",
-            "label": "$t:sirsoft-tosspayments.settings.live_client_key"
-        },
-        "live_secret_key": {
-            "type": "string",
-            "default": "",
-            "sensitive": true,
-            "label": "$t:sirsoft-tosspayments.settings.live_secret_key",
-            "hint": "$t:sirsoft-tosspayments.settings.live_secret_key_hint"
-        },
-        "redirect_success_url": {
-            "type": "string",
-            "default": "/shop/orders/{orderId}/complete",
-            "label": "$t:sirsoft-tosspayments.settings.redirect_success_url",
-            "hint": "$t:sirsoft-tosspayments.settings.redirect_success_url_hint"
-        },
-        "redirect_fail_url": {
-            "type": "string",
-            "default": "/shop/checkout",
-            "label": "$t:sirsoft-tosspayments.settings.redirect_fail_url",
-            "hint": "$t:sirsoft-tosspayments.settings.redirect_fail_url_hint"
-        }
     }
 }

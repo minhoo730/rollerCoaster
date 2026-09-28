@@ -7,9 +7,6 @@
   "type": "basic",
   "name": "Div",
   "if": "{{(_global.activeBoardSettingsTab || query.tab || 'general') === 'basic_defaults'}}",
-  "props": {
-    "className": "mt-6 space-y-6"
-  },
   "classMap": {
     "key": "{{_computed.isReadOnly ? 'readonly' : 'normal'}}",
     "variants": {
@@ -24,14 +21,14 @@
       "type": "layout",
       "name": "SectionLayout",
       "props": {
-        "className": "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6 mb-6"
+        "className": "admin-card"
       },
       "children": [
         {
           "type": "basic",
           "name": "H3",
           "props": {
-            "className": "text-lg font-semibold text-gray-900 dark:text-white pb-3 mb-4 border-b-2 border-gray-200 dark:border-gray-700"
+            "className": "card-title"
           },
           "text": "$t:sirsoft-board.admin.settings.bulk_apply.title"
         },
@@ -40,14 +37,14 @@
           "name": "Div",
           "if": "{{(boards_list?.data?.data ?? []).length > 0}}",
           "props": {
-            "className": "space-y-2 mb-6"
+            "className": "flex flex-col gap-3 mt-2"
           },
           "children": [
             {
               "type": "basic",
               "name": "Div",
               "props": {
-                "className": "p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg flex items-center gap-3"
+                "className": "alert-warning"
               },
               "children": [
                 {
@@ -63,63 +60,9 @@
                   "type": "basic",
                   "name": "P",
                   "props": {
-                    "className": "text-sm text-amber-800 dark:text-amber-200"
+                    "className": "text-warning-soft"
                   },
                   "text": "$t:sirsoft-board.admin.settings.bulk_apply.checked_fields_notice"
-                }
-              ]
-            },
-            {
-              "type": "basic",
-              "name": "Div",
-              "if": "{{!(_local.bulkApplyFields ?? []).length}}",
-              "props": {
-                "className": "flex items-center gap-2 px-1"
-              },
-              "children": [
-                {
-                  "type": "basic",
-                  "name": "Icon",
-                  "props": {
-                    "name": "circle-exclamation",
-                    "className": "text-amber-600 dark:text-amber-400 flex-shrink-0",
-                    "size": "sm"
-                  }
-                },
-                {
-                  "type": "basic",
-                  "name": "P",
-                  "props": {
-                    "className": "text-sm text-amber-700 dark:text-amber-300"
-                  },
-                  "text": "$t:sirsoft-board.admin.settings.bulk_apply.no_fields_selected"
-                }
-              ]
-            },
-            {
-              "type": "basic",
-              "name": "Div",
-              "if": "{{(_local.bulkApplyFields ?? []).length > 0 && _local.bulkApplyAll === false && !(_local._bulkApplyBoardIds ?? []).length}}",
-              "props": {
-                "className": "flex items-center gap-2 px-1"
-              },
-              "children": [
-                {
-                  "type": "basic",
-                  "name": "Icon",
-                  "props": {
-                    "name": "circle-exclamation",
-                    "className": "text-red-500 dark:text-red-400 flex-shrink-0",
-                    "size": "sm"
-                  }
-                },
-                {
-                  "type": "basic",
-                  "name": "P",
-                  "props": {
-                    "className": "text-sm text-red-600 dark:text-red-400"
-                  },
-                  "text": "$t:sirsoft-board.admin.settings.bulk_apply.no_boards_selected"
                 }
               ]
             }
@@ -131,7 +74,7 @@
           "name": "Div",
           "if": "{{!(boards_list?.data?.data ?? []).length}}",
           "props": {
-            "className": "p-4 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg flex items-center gap-3"
+            "className": "flex-center p-4 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg gap-3"
           },
           "children": [
             {
@@ -159,14 +102,14 @@
           "name": "Div",
           "if": "{{(boards_list?.data?.data ?? []).length > 0}}",
           "props": {
-            "className": "space-y-2 mb-6"
+            "className": "mt-6"
           },
           "children": [
             {
               "type": "basic",
               "name": "Label",
               "props": {
-                "className": "block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+                "className": "form-label"
               },
               "children": [
                 {
@@ -180,15 +123,26 @@
               "type": "basic",
               "name": "Div",
               "props": {
-                "className": "flex items-center gap-4"
+                "className": "grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2"
               },
               "children": [
                 {
+                  "id": "bulk_apply_target_all",
                   "type": "basic",
-                  "name": "Label",
+                  "name": "Div",
                   "props": {
-                    "className": "flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer"
+                    "className": "{{_local.bulkApplyAll !== false ? 'flex-center gap-2 p-3 rounded-lg border-2 border-blue-500 bg-blue-50 dark:bg-blue-900/20 cursor-pointer' : 'flex-center gap-2 p-3 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 cursor-pointer hover:border-gray-300 dark:hover:border-gray-600'}}"
                   },
+                  "actions": [
+                    {
+                      "type": "click",
+                      "handler": "setState",
+                      "params": {
+                        "target": "local",
+                        "bulkApplyAll": true
+                      }
+                    }
+                  ],
                   "children": [
                     {
                       "type": "basic",
@@ -213,16 +167,30 @@
                     {
                       "type": "basic",
                       "name": "Span",
+                      "props": {
+                        "className": "text-primary text-sm font-semibold"
+                      },
                       "text": "$t:sirsoft-board.admin.settings.bulk_apply.apply_all"
                     }
                   ]
                 },
                 {
+                  "id": "bulk_apply_target_selected",
                   "type": "basic",
-                  "name": "Label",
+                  "name": "Div",
                   "props": {
-                    "className": "flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer"
+                    "className": "{{_local.bulkApplyAll === false ? 'flex-center gap-2 p-3 rounded-lg border-2 border-blue-500 bg-blue-50 dark:bg-blue-900/20 cursor-pointer' : 'flex-center gap-2 p-3 rounded-lg border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 cursor-pointer hover:border-gray-300 dark:hover:border-gray-600'}}"
                   },
+                  "actions": [
+                    {
+                      "type": "click",
+                      "handler": "setState",
+                      "params": {
+                        "target": "local",
+                        "bulkApplyAll": false
+                      }
+                    }
+                  ],
                   "children": [
                     {
                       "type": "basic",
@@ -247,6 +215,9 @@
                     {
                       "type": "basic",
                       "name": "Span",
+                      "props": {
+                        "className": "text-primary text-sm font-semibold"
+                      },
                       "text": "$t:sirsoft-board.admin.settings.bulk_apply.apply_selected"
                     }
                   ]
@@ -258,9 +229,17 @@
               "name": "Div",
               "if": "{{_local.bulkApplyAll === false}}",
               "props": {
-                "className": "mt-3"
+                "className": "mt-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-700/30 border border-gray-200 dark:border-gray-700"
               },
               "children": [
+                {
+                  "type": "basic",
+                  "name": "P",
+                  "props": {
+                    "className": "text-tertiary mb-2"
+                  },
+                  "text": "$t:sirsoft-board.admin.settings.bulk_apply.select_boards_hint"
+                },
                 {
                   "type": "composite",
                   "name": "TagInput",
@@ -291,7 +270,7 @@
           "name": "Div",
           "if": "{{(boards_list?.data?.data ?? []).length > 0}}",
           "props": {
-            "className": "flex justify-end"
+            "className": "flex justify-end mt-6"
           },
           "children": [
             {
@@ -299,8 +278,8 @@
               "name": "Button",
               "props": {
                 "type": "button",
-                "disabled": "{{_computed.isReadOnly || !(_local.bulkApplyFields ?? []).length || (_local.bulkApplyAll === false && !(_local._bulkApplyBoardIds ?? []).length)}}",
-                "className": "flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                "disabled": "{{_computed.isReadOnly}}",
+                "className": "flex-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               },
               "actions": [
                 {
@@ -308,23 +287,46 @@
                   "handler": "sequence",
                   "actions": [
                     {
+                      "comment": "검증 실패 안내 토스트 - 적용할 항목 미선택",
+                      "handler": "toast",
+                      "if": "{{!(_local.bulkApplyFields ?? []).length}}",
+                      "params": {
+                        "type": "error",
+                        "message": "$t:sirsoft-board.admin.settings.bulk_apply.no_fields_selected"
+                      }
+                    },
+                    {
+                      "comment": "검증 실패 안내 토스트 - 선택한 게시판 미선택 (적용 항목은 선택된 경우에만 표시)",
+                      "handler": "toast",
+                      "if": "{{(_local.bulkApplyFields ?? []).length > 0 && _local.bulkApplyAll === false && !(_local._bulkApplyBoardIds ?? []).length}}",
+                      "params": {
+                        "type": "error",
+                        "message": "$t:sirsoft-board.admin.settings.bulk_apply.no_boards_selected"
+                      }
+                    },
+                    {
                       "comment": "모달 열기 전 현재 _local 상태를 _global 스냅샷에 저장 + 오류 상태 초기화",
                       "handler": "setState",
+                      "if": "{{(_local.bulkApplyFields ?? []).length > 0 && (_local.bulkApplyAll !== false || (_local._bulkApplyBoardIds ?? []).length > 0)}}",
                       "params": {
                         "target": "global",
                         "bulkApplySnapshot": "{{(function() { const fields = _local.bulkApplyFields ?? []; const applyAll = _local.bulkApplyAll !== false; const boardIds = _local._bulkApplyBoardIds ?? []; const tab = _global.activeBoardSettingsTab || 'basic_defaults'; const form = _local.form || {}; return { fields: fields, applyAll: applyAll, boardIds: boardIds, tab: tab, form: form }; })()}}"
                       }
                     },
                     {
-                      "comment": "이전 오류 메시지 초기화",
+                      "comment": "이전 오류/롤백 안내 초기화 (모달 재오픈 시 직전 실패 안내 잔존 방지)",
                       "handler": "setState",
+                      "if": "{{(_local.bulkApplyFields ?? []).length > 0 && (_local.bulkApplyAll !== false || (_local._bulkApplyBoardIds ?? []).length > 0)}}",
                       "params": {
                         "target": "local",
-                        "bulkApplySaveError": false
+                        "bulkApplySaveError": false,
+                        "bulkApplyAborted": false,
+                        "bulkApplyAbortedBoard": null
                       }
                     },
                     {
                       "handler": "openModal",
+                      "if": "{{(_local.bulkApplyFields ?? []).length > 0 && (_local.bulkApplyAll !== false || (_local._bulkApplyBoardIds ?? []).length > 0)}}",
                       "target": "bulk_apply_confirm_modal"
                     }
                   ]

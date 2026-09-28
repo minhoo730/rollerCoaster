@@ -1,12 +1,14 @@
 /**
  * 환경설정 탭별 개별 저장 패턴 검증 테스트
+ * e2e:allow 테스트 설명 문구만 변경(공개 릴리즈 사전점검 — 내부 호칭 정리).
+ * 런타임 코드/레이아웃 무변경이라 브라우저 동작 차이가 없다.
  *
  * @description
  * - 저장 버튼의 apiCall body가 활성 탭 데이터만 전송하는지 검증
  * - 코어 환경설정과 동일한 탭별 개별 저장 패턴 확인
  * - _tab 메타 필드 포함 여부 검증
- * - 탭 8종 (basic_info, language_currency, seo, order_settings, claim, shipping,
- *   review_settings, notification_definitions) 정의 검증
+ * - 탭 10종 (basic_info, language_currency, seo, order_settings, claim, shipping,
+ *   review_settings, notification_definitions, identity_policies, mileage) 정의 검증
  *
  * @vitest-environment node
  */
@@ -93,6 +95,20 @@ describe('환경설정 탭별 개별 저장 패턴 검증', () => {
             expect(body).toContain("'basic_info'");
         });
 
+        it('저장 실패 토스트가 서버 오류 메시지를 노출해야 한다 (회귀 — 운영 실측 제보)', () => {
+            // 고정 문구만 쓰면 검증 실패 사유(예: 필드별 422 메시지)가 사용자에게
+            // 도달하지 못하고 "설정 저장에 실패했습니다" 로 뭉개진다.
+            const apiCallAction = findActionByHandler(saveButton.actions, 'apiCall');
+            const errorToast = (apiCallAction.onError ?? []).find(
+                (a: any) => a.handler === 'toast',
+            );
+
+            expect(errorToast).toBeDefined();
+            expect(errorToast.params.message).toContain('error.message');
+            // 서버 메시지 부재 시 기존 고정 문구로 폴백
+            expect(errorToast.params.message).toContain('save_error');
+        });
+
         it('body 에 _tab 메타 필드가 포함되어야 한다', () => {
             const apiCallAction = findActionByHandler(saveButton.actions, 'apiCall');
             const body = apiCallAction.params.body;
@@ -127,6 +143,16 @@ describe('환경설정 탭별 개별 저장 패턴 검증', () => {
             expect(body).toContain('notifications:');
             expect(body).toContain('form.notifications?.channels');
         });
+
+        it('mileage 탭은 _tab:mileage + mileage 데이터만 전송한다 (inquiry 미포함)', () => {
+            const apiCallAction = findActionByHandler(saveButton.actions, 'apiCall');
+            const body = apiCallAction.params.body;
+
+            // 마일리지 탭 분기: 해당 카테고리만 전송 (다른 탭 데이터 오염 방지)
+            expect(body).toContain("tab === 'mileage'");
+            expect(body).toContain("_tab: 'mileage'");
+            expect(body).toContain('mileage: form.mileage');
+        });
     });
 
     describe('탭 네비게이션과 저장 연동', () => {
@@ -156,9 +182,9 @@ describe('환경설정 탭별 개별 저장 패턴 검증', () => {
             expect(globalSetState.params.activeEcommerceSettingsTab).toContain('$args[0]');
         });
 
-        it('9개 탭이 정의되어야 한다', () => {
+        it('10개 탭이 정의되어야 한다 (마일리지 탭 포함)', () => {
             const tabs = tabNav.props.tabs;
-            expect(tabs).toHaveLength(9);
+            expect(tabs).toHaveLength(10);
 
             const tabIds = tabs.map((t: any) => t.id);
             expect(tabIds).toEqual([
@@ -171,6 +197,7 @@ describe('환경설정 탭별 개별 저장 패턴 검증', () => {
                 'review_settings',
                 'notification_definitions',
                 'identity_policies',
+                'mileage',
             ]);
         });
 

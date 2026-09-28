@@ -234,14 +234,6 @@
       }
     },
     {
-      "path": "*/admin/external-apis/list",
-      "layout": "admin_external_apis_list",
-      "auth_required": true,
-      "meta": {
-        "title": "$t:admin.external_apis.page_title"
-      }
-    },
-    {
       "path": "*/admin/identity/challenge",
       "layout": "auth/identity_challenge",
       "auth_required": false,

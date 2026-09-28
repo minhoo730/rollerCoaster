@@ -187,8 +187,12 @@ G7은 레이아웃 JSON 보안을 위해 **10개의 Custom Validation Rule**을 
 **허용 패턴**:
 
 ```regex
-^/api/(admin|auth|public)/
+^/api/((admin|auth|public)/|(modules|plugins)/{vendor-id}/)
 ```
+
+`/api/modules/{vendor-module}/`, `/api/plugins/{vendor-plugin}/` 은 코어 라우트 프로바이더가
+등록하는 확장 API 네임스페이스로, 확장 식별자(vendor-name — 하이픈 포함) 세그먼트가 뒤따를
+때만 허용된다.
 
 **검증 대상**:
 - `data_sources[].endpoint` — 데이터소스 엔드포인트
@@ -197,6 +201,7 @@ G7은 레이아웃 JSON 보안을 위해 **10개의 Custom Validation Rule**을 
 **차단**:
 - 외부 URL (`http://`, `https://`)
 - 비공개 API (`/api/internal/*`)
+- 확장 식별자 형식이 아닌 modules/plugins 세그먼트 (`/api/modules/assets/*` 등)
 - 직접 경로 (`/admin/*`)
 - **경로 트래버설**: `../`, `..\` 패턴 차단
 
@@ -220,7 +225,17 @@ G7은 레이아웃 JSON 보안을 위해 **10개의 Custom Validation Rule**을 
 
 **추가 차단**: `//`로 시작하는 프로토콜 상대 URL
 
-**검증 범위**: `components[]` → `props`, `actions` 내 모든 문자열 값을 재귀적으로 스캔
+**외부의 기준**: 사이트 자기 host(`app.url`)와 운영자가 「공개 자산 스토리지」로 선언한 디스크의 host 는
+외부가 아닙니다. 레이아웃 첨부 API 가 스스로 발급하는 주소(공개 서빙 URL·직접 URL)가 그 host 를
+쓰므로, 여기서 차단하면 image 위젯으로 올린 파일이 업로드는 되고 저장은 422 가 됩니다. 판정은
+접두 문자열 비교가 아니라 브라우저와 같은 정규화 뒤의 host 등가 비교입니다(`App\Support\SiteAssetHosts`).
+`host.evil.com`·`host@evil.com`·`evil.com\@host` 같은 흉내 host 는 통과하지 않으며, 요청의 `Host` 헤더는
+위조 가능하므로 근거로 쓰지 않습니다. 프로토콜 상대 URL 과 http/https 밖의 스킴은 host 가 같아도
+차단됩니다.
+
+**검증 범위**: `components[]` → `props`, `actions`, `lifecycle`, `onComponentEvent`, `slots`, `component_layout`,
+`responsive` 와 최상위 `init_actions`/`modals`/`named_actions`/`errorHandling` 내 모든 문자열 값을 재귀적으로 스캔.
+`style` 은 스캔 대상이 아닙니다 — 배경 이미지(`backgroundImage`)가 절대 URL 이어도 통과하는 이유입니다.
 
 ### 5. ValidParentLayout
 

@@ -4,7 +4,8 @@
  * 템플릿에서 사용하는 모든 커스텀 핸들러를 정의합니다.
  */
 
-import { setLocaleHandler } from './setLocaleHandler';
+// 언어 관련 핸들러는 엔진 레벨(ActionDispatcher)에서 처리
+// setLocale 핸들러는 ActionDispatcher에 빌트인으로 등록되어 있음
 import { setThemeHandler, initThemeHandler } from './setThemeHandler';
 import { scrollToSectionHandler } from './scrollToSectionHandler';
 import { initMenuFromUrlHandler } from './initMenuFromUrlHandler';
@@ -20,6 +21,11 @@ import {
   updateMultilingualTagValueHandler,
 } from './multilingualTagHandler';
 import { setDateRangeHandler } from './setDateRangeHandler';
+import { toggleSidebarHandler, initSidebarHandler } from './sidebarHandler';
+// 게시판 첨부 다운로드 핸들러 (토큰 동반 → 활동이력 행위자 기록, #413 item 58b)
+import { downloadAttachmentHandler } from './downloadAttachment';
+// 자산 URL 방식 자동 감지 (이슈 #486) — 브라우저에서 프로브 쌍을 던져 재판정
+import { checkAssetUrlModeDriftHandler, detectAssetUrlModeHandler } from './detectAssetUrlModeHandler';
 
 /**
  * 핸들러 맵
@@ -30,7 +36,10 @@ import { setDateRangeHandler } from './setDateRangeHandler';
  * 새로운 핸들러 추가 시 여기에만 등록하면 자동으로 ActionDispatcher에 등록됩니다.
  */
 export const handlerMap = {
-  setLocale: setLocaleHandler,
+  // 언어: setLocale은 엔진 레벨(ActionDispatcher)에서 빌트인으로 처리
+  detectAssetUrlMode: detectAssetUrlModeHandler,
+  // 대시보드 진단 — 저장된 방식과 실제 환경을 대조해 불일치만 알린다 (저장하지 않음)
+  checkAssetUrlModeDrift: checkAssetUrlModeDriftHandler,
   setTheme: setThemeHandler,
   initTheme: initThemeHandler,
   scrollToSection: scrollToSectionHandler,
@@ -46,4 +55,9 @@ export const handlerMap = {
   updateMultilingualTagValue: updateMultilingualTagValueHandler,
   // 날짜 범위 프리셋 핸들러
   setDateRange: setDateRangeHandler,
+  // 데스크톱 사이드바 접기 핸들러
+  toggleSidebar: toggleSidebarHandler,
+  initSidebar: initSidebarHandler,
+  // 게시판 첨부 다운로드 (토큰 동반 → 활동이력 행위자 기록, #413 item 58b)
+  downloadAttachment: downloadAttachmentHandler,
 } as const;

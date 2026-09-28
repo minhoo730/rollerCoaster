@@ -13,6 +13,7 @@ return [
         'already_exists' => 'Board slug already exists.',
         'has_posts' => 'Cannot delete board with posts.',
         'fetch_success' => 'Board information retrieved.',
+        'fetch_failed' => 'Failed to retrieve boards.',
         'create_success' => 'Board has been created.',
         'update_success' => 'Board has been updated.',
         'delete_success' => 'Board has been deleted.',
@@ -20,6 +21,7 @@ return [
         'config_retrieved' => 'Board configuration retrieved.',
         'types_retrieved' => 'Board types retrieved.',
         'form_data_retrieved' => 'Board form data retrieved.',
+        'form_data_failed' => 'Failed to retrieve board form data.',
         'copy_data_retrieved' => 'Board copy data retrieved.',
         'create_failed' => 'Failed to create board.',
         'update_failed' => 'Failed to update board.',
@@ -29,6 +31,7 @@ return [
         'menu_added_success' => 'Added to admin menu.',
         'menu_add_failed' => 'Failed to add to menu.',
         'menu_already_exists' => 'Menu already exists.',
+        'menu_name_suffix' => 'Board',
         'module_not_found' => 'Board module not found.',
         'error_404' => 'Board not found: :slug',
     ],
@@ -41,6 +44,7 @@ return [
         'secret_password_incorrect' => 'Secret post password is incorrect.',
         // Secret post filtering messages
         'secret_post_content' => 'This is a secret post. Please enter the password to view the content.',
+        'secret_post_title' => 'Secret post',
         'deleted_post_title' => 'Deleted post',
         'deleted_post_content' => 'This post has been deleted.',
         'blinded_post_content' => 'This post has been blinded by administrator.',
@@ -80,6 +84,7 @@ return [
         'guest_write_not_allowed' => 'Guest posting is not allowed on this board.',
         'file_upload_not_allowed' => 'File upload is not allowed on this board.',
         'guest_upload_not_allowed' => 'Guest file upload is not allowed on this board.',
+        'secret_post_not_allowed' => 'Secret posts are not available on this board.',
         'modify_permission_denied' => 'You do not have permission to modify this post.',
         'delete_permission_denied' => 'You do not have permission to delete this post.',
         'error_404' => 'Post not found.',
@@ -109,11 +114,23 @@ return [
         'restore_success' => 'Comment has been restored.',
         'restore_failed' => 'Failed to restore comment.',
         'blinded_comment_content' => 'This comment has been hidden according to the community guidelines.',
+        'deleted_comment_content' => 'This comment has been deleted.',
+        // Guest comment password verification
+        'not_guest_comment' => 'This is not a guest comment.',
+        'invalid_password' => 'The password does not match.',
+        'password_verified' => 'Password verified.',
+        'verify_password_failed' => 'Failed to verify the password.',
+        // Comment availability
+        'post_blinded' => 'You cannot comment on a blinded post.',
+        'post_deleted' => 'You cannot comment on a deleted post.',
+        'post_secret' => 'You cannot comment on a secret post you are not allowed to view.',
     ],
 
     // Additional comment messages
     'comments' => [
         'comments_disabled' => 'Comments are disabled for this board.',
+        'index_success' => 'Comments retrieved.',
+        'index_failed' => 'Failed to retrieve comments.',
     ],
 
     // Attachment operation messages
@@ -205,10 +222,12 @@ return [
         'table_creation_failed' => 'Failed to create board table (:table): :error',
         'category_in_use' => 'Category :category is in use by :count post(s).',
         'board_not_found' => 'Board not found.',
+        'attachment_limit_exceeded' => 'You can attach up to :limit file(s). (requested: :attempted)',
         'post_not_found' => 'Post not found.',
         'permission_denied' => 'Permission denied.',
         'validation_failed' => 'Validation failed.',
         'duplicate_report' => 'You have already reported this content.',
+        'operation_failed' => 'An error occurred while processing the operation.',
     ],
 
     // Warning messages
@@ -285,6 +304,24 @@ return [
         'stats_failed' => 'Failed to fetch activity statistics.',
     ],
 
+    // Board settings messages
+    //
+    // Referenced by BoardSettingsController via ResponseHelper::moduleSuccess/moduleError.
+    // If these exist only in the frontend language pack, __() cannot resolve them and the raw
+    // key leaks into the API response message.
+    'settings' => [
+        'fetch_success' => 'Settings loaded successfully.',
+        'fetch_failed' => 'Failed to load settings.',
+        'save_success' => 'Settings saved successfully.',
+        'save_failed' => 'Failed to save settings.',
+        'save_error' => 'An error occurred while saving settings.',
+        'bulk_apply_success' => 'Settings applied to :count boards.',
+        'bulk_apply_aborted' => 'An error occurred during bulk apply. All changes have been rolled back.',
+        'bulk_apply_failed' => 'Failed to bulk apply settings.',
+        'clear_cache_success' => 'Settings cache cleared successfully.',
+        'clear_cache_error' => 'An error occurred while clearing settings cache.',
+    ],
+
     // Table related messages
     'invalid_slug_format' => 'Invalid slug format. Must start with lowercase letter and contain only lowercase letters, numbers, and hyphens. (slug: :slug)',
     'invalid_slug_length' => 'Invalid slug length. Must be between 1-50 characters. (slug: :slug)',
@@ -296,6 +333,8 @@ return [
     // Common
     'common' => [
         'guest' => 'Guest',
+        // Display name when the processor is the system (automated)
+        'system' => 'System',
         'status' => [
             'published' => 'Published',
             'blinded' => 'Blinded',
@@ -305,8 +344,20 @@ return [
             'auto' => 'Auto',
             'manual' => 'Manual',
         ],
+        // Display convention for FormatsBoardDate — shared across post/comment lists, dashboard captions.
+        'relative_time' => [
+            'just_now' => 'just now',
+            'minutes_ago' => ':count minutes ago',
+            'hours_ago' => ':count hours ago',
+            'days_ago' => ':count days ago',
+            'months_ago' => ':count months ago',
+            'years_ago' => ':count years ago',
+        ],
     ],
     'inquiry' => [
         'default_title' => 'Product Inquiry',
+    ],
+    'dashboard' => [
+        'fetch_success' => 'Dashboard data retrieved successfully.',
     ],
 ];

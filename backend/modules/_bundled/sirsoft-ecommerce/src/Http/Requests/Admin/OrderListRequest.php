@@ -8,8 +8,8 @@ use Illuminate\Validation\Rule;
 use Modules\Sirsoft\Ecommerce\Enums\DeviceTypeEnum;
 use Modules\Sirsoft\Ecommerce\Enums\OrderDateTypeEnum;
 use Modules\Sirsoft\Ecommerce\Enums\OrderStatusEnum;
-use Modules\Sirsoft\Ecommerce\Enums\PaymentMethodEnum;
-use Modules\Sirsoft\Ecommerce\Models\ShippingType;
+use Modules\Sirsoft\Ecommerce\Repositories\Contracts\ShippingTypeRepositoryInterface;
+use Modules\Sirsoft\Ecommerce\Services\PaymentMethodResolver;
 
 /**
  * 주문 목록 조회 요청
@@ -19,7 +19,7 @@ class OrderListRequest extends FormRequest
     /**
      * 권한 확인
      *
-     * @return bool
+     * @return bool 항상 true (권한 체크는 라우트의 permission 미들웨어에서 수행)
      */
     public function authorize(): bool
     {
@@ -29,7 +29,7 @@ class OrderListRequest extends FormRequest
     /**
      * 유효성 검사 규칙
      *
-     * @return array
+     * @return array 주문 목록 조회 파라미터 검증 규칙
      */
     public function rules(): array
     {
@@ -53,11 +53,16 @@ class OrderListRequest extends FormRequest
 
             // 배송유형 (다중선택)
             'shipping_type' => ['nullable', 'array'],
-            'shipping_type.*' => ['string', Rule::in(ShippingType::pluck('code')->toArray())],
+            // 비활성 배송유형으로도 과거 주문을 필터링할 수 있어야 하므로 전체 코드를 허용한다
+            // (getActiveCodes() 를 쓰면 비활성 유형의 기존 주문이 조회 불가가 된다).
+            'shipping_type.*' => ['string', Rule::in(
+                app(ShippingTypeRepositoryInterface::class)->getAll()->pluck('code')->toArray()
+            )],
 
             // 결제수단 (다중선택)
             'payment_method' => ['nullable', 'array'],
-            'payment_method.*' => ['string', Rule::in(PaymentMethodEnum::values())],
+            // 확장 결제수단(간편결제)도 주문 목록에서 필터링할 수 있어야 한다 (#475).
+            'payment_method.*' => ['string', Rule::in(app(PaymentMethodResolver::class)->allValidIds())],
 
             // 카테고리
             'category_id' => ['nullable', 'integer'],
@@ -87,8 +92,13 @@ class OrderListRequest extends FormRequest
             // 주문자 UUID (회원 검색 필터용)
             'orderer_uuid' => ['nullable', 'uuid'],
 
+            // 회원 구분 (member: 회원 주문, guest: 비회원 주문)
+            'member_type' => ['nullable', 'in:member,guest'],
+
             // 정렬 및 페이지네이션
-            'sort_by' => ['nullable', 'in:ordered_at,paid_at,total_amount'],
+            // shipped_at 은 주문이 아니라 배송 테이블 컬럼이다 — OrderRepository 가
+            // RELATED_SORTABLE_COLUMNS 로 상관 서브쿼리 정렬을 수행한다.
+            'sort_by' => ['nullable', 'in:ordered_at,paid_at,total_amount,shipped_at'],
             'sort_order' => ['nullable', 'in:asc,desc'],
             'per_page' => ['nullable', 'integer', 'min:10', 'max:100'],
             'page' => ['nullable', 'integer', 'min:1'],
@@ -157,6 +167,7 @@ class OrderListRequest extends FormRequest
             'user_id.integer' => __('sirsoft-ecommerce::validation.orders.user_id.integer'),
             // 주문자 UUID
             'orderer_uuid.uuid' => __('sirsoft-ecommerce::validation.orders.orderer_uuid.uuid'),
+            'member_type.in' => __('sirsoft-ecommerce::validation.orders.member_type.in'),
             // 정렬 및 페이지네이션
             'sort_by.in' => __('sirsoft-ecommerce::validation.orders.sort_by.in'),
             'sort_order.in' => __('sirsoft-ecommerce::validation.orders.sort_order.in'),

@@ -31,6 +31,7 @@
     "data_sources": [
         {
             "id": "posts",
+            "label_key": "$t:editor.data_source.posts",
             "type": "api",
             "endpoint": "/api/modules/sirsoft-board/boards/{{route.slug}}/posts",
             "method": "GET",
@@ -38,6 +39,8 @@
                 "page": "{{query.page ?? 1}}",
                 "search": "{{query.search ?? ''}}",
                 "category": "{{query.category ?? ''}}",
+                "sort_by": "{{query.sort_by ?? ''}}",
+                "sort_order": "{{query.sort_order ?? ''}}",
                 "filters[0][field]": "{{query['filters[0][field]'] ?? ''}}",
                 "filters[0][value]": "{{query['filters[0][value]'] ?? ''}}",
                 "filters[0][operator]": "{{query['filters[0][operator]'] ?? ''}}",
@@ -51,7 +54,7 @@
                     "handler": "sequence",
                     "actions": [
                         { "handler": "toast", "params": { "type": "info", "message": "$t:board.login_required" } },
-                        { "handler": "navigate", "params": { "path": "/login" } }
+                        { "handler": "redirectToLoginWithReturn" }
                     ]
                 },
                 "403": {

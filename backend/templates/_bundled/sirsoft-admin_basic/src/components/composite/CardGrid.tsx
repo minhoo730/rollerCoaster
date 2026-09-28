@@ -3,6 +3,7 @@ import { Div } from '../basic/Div';
 import { P } from '../basic/P';
 import { ActionMenuItem } from './ActionMenu';
 import { Pagination } from './Pagination';
+import type { EditorAttrs } from '../../types';
 
 // Logger 설정 (G7Core 초기화 전에도 동작하도록 폴백 포함)
 const logger = ((window as any).G7Core?.createLogger?.('Comp:CardGrid')) ?? {
@@ -102,6 +103,13 @@ export interface CardGridProps {
   showSkeleton?: boolean;              // 스켈레톤 표시 여부 (기본값: true)
   skeletonCount?: number;              // 스켈레톤 개수 (기본값: gridColumns)
   skeletonCellChildren?: CardGridCellChild[];  // 커스텀 스켈레톤 정의
+
+  /**
+   * DOM id 속성 (레이아웃 편집기 코어 일괄 ID)
+   */
+  id?: string;
+  /** 레이아웃 편집기 주입 속성 (편집 모드 전용, 루트에 spread) */
+  editorAttrs?: EditorAttrs;
 }
 
 /**
@@ -115,46 +123,21 @@ const getComponentMap = (): Record<string, React.ComponentType<any>> => {
 
 /**
  * 조건 문자열을 평가합니다.
- * 복잡한 JavaScript 표현식도 지원합니다 (&&, ||, length 등)
+ *
+ * 판정은 엔진(`G7Core.evaluateCondition`)에 위임합니다. 종전에는 이 파일이
+ * `new Function('row', ...)` 로 자체 평가기를 두어 엔진과 판정이 갈렸고,
+ * `_local`/`_global` 을 참조하는 조건에서 예외가 나면 여기서는 `false`(자식이 사라짐),
+ * DataGrid 에서는 `true`(항상 표시)로 **반대 방향** 결과가 났습니다.
  */
 const evaluateCondition = (condition: string, row: any): boolean => {
   if (!condition) return true;
 
-  const match = condition.match(/^\{\{(.+)\}\}$/);
-  if (!match) return true;
-
-  const expr = match[1].trim();
-
-  // 디버깅: row 데이터와 표현식 확인
-  logger.log('evaluateCondition:', { condition, expr, row, rowStatus: row?.status });
-
-  // 복잡한 표현식 (&&, ||, length, > 등)이 포함된 경우 eval 사용
-  if (/[&|<>=!]/.test(expr) || expr.includes('.length')) {
-    try {
-      // row 컨텍스트에서 표현식 평가
-      // eslint-disable-next-line no-new-func
-      const evaluator = new Function('row', `return ${expr}`);
-      const result = !!evaluator(row);
-      logger.log('evaluateCondition result:', result);
-      return result;
-    } catch (error) {
-      logger.warn('evaluateCondition: 표현식 평가 실패:', expr, error);
-      return false;
-    }
+  const G7Core = (window as any).G7Core;
+  if (typeof G7Core?.evaluateCondition === 'function') {
+    return G7Core.evaluateCondition(condition, { row, item: row, $item: row });
   }
 
-  // !row.field 패턴
-  if (expr.startsWith('!row.')) {
-    const field = expr.slice(5);
-    return !row[field];
-  }
-
-  // row.field 패턴
-  if (expr.startsWith('row.')) {
-    const field = expr.slice(4);
-    return !!row[field];
-  }
-
+  logger.warn('G7Core.evaluateCondition 미노출 — 조건을 평가할 수 없습니다:', condition);
   return true;
 };
 
@@ -422,6 +405,8 @@ export const CardGrid: React.FC<CardGridProps> = ({
   showSkeleton = true,
   skeletonCount,
   skeletonCellChildren,
+  id,
+  editorAttrs,
 }) => {
   // props로 전달된 값이 없으면 다국어 키 사용
   const resolvedEmptyMessage = emptyMessage ?? t('common.no_data');
@@ -535,7 +520,7 @@ export const CardGrid: React.FC<CardGridProps> = ({
     const effectiveSkeletonCount = skeletonCount ?? gridColumns;
 
     return (
-      <Div className={`grid ${gridClasses} gap-${gap} ${className}`} style={style}>
+      <Div className={`grid ${gridClasses} gap-${gap} ${className}`} style={style} id={id} {...editorAttrs}>
         {Array.from({ length: effectiveSkeletonCount }).map((_, index) => (
           <Div
             key={`skeleton-${index}`}
@@ -551,7 +536,7 @@ export const CardGrid: React.FC<CardGridProps> = ({
   // 빈 데이터 상태
   if (paginatedData.length === 0) {
     return (
-      <Div className={className} style={style}>
+      <Div className={className} style={style} id={id} {...editorAttrs}>
         <Div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-12">
           <P className="text-center text-gray-600 dark:text-gray-400">
             {resolvedEmptyMessage}
@@ -567,7 +552,7 @@ export const CardGrid: React.FC<CardGridProps> = ({
     (alwaysShowPagination || effectiveTotalPages > 1);
 
   return (
-    <Div className={className} style={style}>
+    <Div className={className} style={style} id={id} {...editorAttrs}>
       {/* 카드 그리드 */}
       <Div className={`grid ${gridClasses} gap-${gap}`}>
         {paginatedData.map((row, index) => (

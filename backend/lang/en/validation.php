@@ -164,10 +164,55 @@ return [
     |--------------------------------------------------------------------------
     */
 
+    // Custom translation (dynamic i18n key) validation messages
+    'custom_translation' => [
+        'layout_name' => [
+            'required' => 'The layout name is required.',
+            'string' => 'The layout name must be a string.',
+            'max' => 'The layout name may not be greater than :max characters.',
+        ],
+        'locale' => [
+            'required' => 'The locale is required.',
+            'string' => 'The locale must be a string.',
+        ],
+        'value' => [
+            'required' => 'The translation value is required.',
+            'string' => 'The translation value must be a string.',
+        ],
+        'values' => [
+            'required' => 'The translation values are required.',
+            'array' => 'The translation values must be a locale-keyed object.',
+        ],
+        'status' => [
+            'in' => 'The status must be either active or orphaned.',
+        ],
+        'expected_lock_version' => [
+            'required' => 'expected_lock_version is missing from the save request.',
+            'integer' => 'expected_lock_version must be an integer.',
+            'min' => 'expected_lock_version must be 0 or greater.',
+        ],
+        'ids' => [
+            'required' => 'Select at least one translation key to delete.',
+            'array' => 'The deletion target must be an array of IDs.',
+            'min' => 'Select at least one translation key to delete.',
+            'integer' => 'Translation key ID must be an integer.',
+            'exists' => 'The request contains a translation key that does not exist.',
+        ],
+    ],
+
     // Layout structure validation messages
     'layout' => [
+        // Optimistic lock
+        'expected_lock_version' => [
+            'required' => 'expected_lock_version is missing from the save request.',
+            'integer' => 'expected_lock_version must be an integer.',
+            'min' => 'expected_lock_version must be 0 or greater.',
+        ],
+
         'invalid_json' => 'Invalid JSON format.',
         'must_be_array' => 'Layout data must be an array.',
+        'dangerous_expression' => 'The layout contains a disallowed expression: :snippet',
+        'external_resource_url' => 'External resource URLs are not allowed (same-origin paths only): :url',
         'required_field_missing' => "Required field ':field' is missing.",
         'version_must_be_string' => 'The version field must be a string.',
         'layout_name_must_be_string' => 'The layout_name field must be a string.',
@@ -177,6 +222,8 @@ return [
         'max_depth_exceeded' => 'Component nesting depth exceeds maximum allowed depth (:max).',
         'component_required_field_missing' => "Required field ':field' is missing in components[:index].",
         'component_field_must_be_string' => 'components[:index].component must be a string.',
+        'component_name_must_be_string' => 'components[:index].name must be a string.',
+        'component_type_invalid' => 'components[:index].type must be one of basic, composite, layout.',
         'props_must_be_object' => 'components[:index].props must be an object (array).',
         'children_must_be_array' => 'components[:index].children must be an array.',
         'permissions_must_be_array' => 'components[:index].permissions must be an array.',
@@ -236,11 +283,60 @@ return [
             'description' => [
                 'string' => 'The meta.description must be a string.',
             ],
+            'keywords' => [
+                'string' => 'The meta.keywords must be a string.',
+            ],
             'auth_required' => [
                 'boolean' => 'The meta.auth_required must be a boolean.',
             ],
             'is_base' => [
                 'boolean' => 'The meta.is_base must be a boolean.',
+            ],
+            'guest_only' => [
+                'boolean' => 'The meta.guest_only must be a boolean.',
+            ],
+            'is_error_layout' => [
+                'boolean' => 'The meta.is_error_layout must be a boolean.',
+            ],
+            'error_code' => [
+                'integer' => 'The meta.error_code must be an integer.',
+            ],
+            'seo' => [
+                'array' => 'The meta.seo must be an array.',
+                'enabled' => [
+                    'boolean' => 'The meta.seo.enabled must be a boolean.',
+                ],
+                'data_sources' => [
+                    'array' => 'The meta.seo.data_sources must be an array.',
+                    'string' => 'Each item in meta.seo.data_sources must be a string.',
+                ],
+                'priority' => [
+                    'numeric' => 'The meta.seo.priority must be numeric.',
+                    'min' => 'The meta.seo.priority must be at least 0.',
+                    'max' => 'The meta.seo.priority must not exceed 1.',
+                ],
+                'changefreq' => [
+                    'string' => 'The meta.seo.changefreq must be a string.',
+                    'in' => 'The meta.seo.changefreq must be one of always, hourly, daily, weekly, monthly, yearly, never.',
+                ],
+                'og' => [
+                    'array' => 'The meta.seo.og must be an array.',
+                ],
+                'structured_data' => [
+                    'array' => 'The meta.seo.structured_data must be an array.',
+                ],
+                'page_type' => [
+                    'string' => 'The meta.seo.page_type must be a string.',
+                ],
+                'toggle_setting' => [
+                    'string' => 'The meta.seo.toggle_setting must be a string.',
+                ],
+                'vars' => [
+                    'array' => 'The meta.seo.vars must be an array.',
+                ],
+                'extensions' => [
+                    'array' => 'The meta.seo.extensions must be an array.',
+                ],
             ],
         ],
         'modals' => [
@@ -257,6 +353,27 @@ return [
         ],
         'init_state' => [
             'array' => 'The init_state field must be an array.',
+        ],
+        'initLocal' => [
+            'array' => 'The initLocal field must be an array.',
+        ],
+        'initGlobal' => [
+            'array' => 'The initGlobal field must be an array.',
+        ],
+        'global_state' => [
+            'array' => 'The global_state field must be an array.',
+        ],
+        'errorHandling' => [
+            'array' => 'The errorHandling field must be an array.',
+        ],
+        'actions' => [
+            'array' => 'The actions field must be an array.',
+        ],
+        'pageConfig' => [
+            'array' => 'The pageConfig field must be an array.',
+        ],
+        'schema' => [
+            'array' => 'The schema field must be an array.',
         ],
         'routes' => [
             'array' => 'The routes field must be an array.',
@@ -320,6 +437,56 @@ return [
         ],
     ],
 
+    // Layout extension validation messages
+    'layout_extension' => [
+        // Optimistic lock
+        'expected_lock_version' => [
+            'required' => 'expected_lock_version is missing from the save request.',
+            'integer' => 'expected_lock_version must be an integer.',
+            'min' => 'expected_lock_version must be 0 or greater.',
+        ],
+
+        'invalid_json' => 'Invalid JSON format.',
+        'must_be_array' => 'Layout extension data must be an array.',
+        'target_required' => "An extension definition requires either 'extension_point' or 'target_layout'.",
+        'target_exclusive' => "'extension_point' and 'target_layout' cannot be specified together.",
+        'extension_point_invalid' => 'The extension_point field must be a non-empty string.',
+        'target_layout_invalid' => 'The target_layout field must be a non-empty string.',
+        'components_must_be_array' => 'The components field must be an array.',
+        'injections_required' => 'An overlay extension requires the injections field.',
+        'injections_must_be_array' => 'The injections field must be an array.',
+        'injection_must_be_array' => 'injections[:index] must be an array.',
+        'injection_target_id_required' => 'injections[:index] requires the target_id field.',
+        'injection_position_invalid' => 'injections[:index].position is invalid.',
+        'injection_components_must_be_array' => 'injections[:index].components must be an array.',
+        'injection_props_must_be_array' => 'injections[:index].props must be an array.',
+        'section_must_be_array' => 'The :section field must be an array.',
+        'max_depth_exceeded' => 'Component nesting depth exceeds the maximum allowed depth (:max).',
+        'component_must_be_array' => 'components[:index] must be an array.',
+        'component_required_field_missing' => "components[:index] is missing the required field ':field'.",
+        'component_name_must_be_string' => 'components[:index].name must be a string.',
+        'component_type_invalid' => 'components[:index].type must be one of basic, composite, layout.',
+        'props_must_be_object' => 'components[:index].props must be an object (array).',
+        'children_must_be_array' => 'components[:index].children must be an array.',
+        'content' => [
+            'required' => 'Extension content is required.',
+            'array' => 'Extension content must be an array.',
+        ],
+        'priority' => [
+            'integer' => 'priority must be an integer.',
+            'min' => 'priority must be at least 0.',
+            'max' => 'priority must not exceed 9999.',
+        ],
+        'data_sources' => [
+            'array' => 'data_sources must be an array.',
+        ],
+        'preview_layout' => [
+            'string' => 'The preview layout name must be a string.',
+            'max' => 'The preview layout name must not exceed 255 characters.',
+            'required' => 'An extension point preview requires selecting a representative layout.',
+        ],
+    ],
+
     // API endpoint validation messages
     'endpoint' => [
         'must_be_string' => 'The API endpoint must be a string.',
@@ -337,6 +504,23 @@ return [
         'data_uri_not_allowed' => 'Data URI scheme is not allowed.',
         'javascript_uri_not_allowed' => 'JavaScript URI scheme is not allowed.',
         'dangerous_scheme_detected' => 'Dangerous URI scheme detected: :scheme',
+    ],
+
+    // Outbound URL (external API, schedule, etc.) validation messages
+    'outbound_url' => [
+        'invalid' => 'This is not a valid URL. Enter an address starting with http or https.',
+        'internal_not_allowed' => 'Internal network addresses (private IPs, localhost, etc.) are not allowed. Enter a publicly reachable address.',
+    ],
+
+    // Schedule command (shell/Artisan) validation messages — these run on the server
+    'schedule_command' => [
+        'shell_not_allowed' => 'This shell command is not allowed. Only executables registered on the server may be used, and special characters such as pipes (|) or semicolons (;) are not permitted.',
+        'shell_interpreter_denied' => 'You cannot run inline commands/code through an interpreter or point it at an unsafe path. After an interpreter, specify only an absolute-path script file.',
+        'artisan_denied' => 'This Artisan command cannot be run as a schedule for security reasons.',
+        'artisan_not_allowlisted' => 'This Artisan command is not allowed to run on a schedule. Only maintenance commands such as cache clearing and queue processing can be registered.',
+        'artisan_malformed' => 'The Artisan command format is invalid. Quotes, backslashes, and short options (-v) are not allowed; use "command --option[=value]" only.',
+        'artisan_option_denied' => 'This Artisan command contains an option that is not allowed.',
+        'artisan_argument_denied' => 'This Artisan command does not accept additional arguments.',
     ],
 
     // Component existence validation messages
@@ -389,6 +573,12 @@ return [
         'data_source_id_must_be_string' => 'data_sources[:index].id must be a string.',
     ],
 
+    // Notification channel validation messages
+    'notification_channel' => [
+        'invalid' => 'The notification channel identifier is invalid.',
+        'unavailable' => "Unavailable notification channel: ':value'",
+    ],
+
     // Translatable field validation messages
     'translatable' => [
         'must_be_array' => 'Translatable field must be an array.',
@@ -400,25 +590,13 @@ return [
         'current_locale_required' => 'The :locale language value is required.',
     ],
 
-    // Template validation messages
-    'template' => [
-        'type' => [
-            'in' => 'The type parameter must be either user or admin.',
-        ],
-        'description' => [
-            'string' => 'The template description must be a string.',
-            'max' => 'The template description may not be greater than :max characters.',
-        ],
-        'metadata' => [
-            'array' => 'metadata must be an array.',
-        ],
-        'status' => [
-            'in' => 'status must be either active or inactive.',
-        ],
-    ],
-
     // Menu validation messages
     'menu' => [
+        'roles' => [
+            'array' => 'The roles must be an array.',
+            'integer' => 'Each role ID must be an integer.',
+            'exists' => 'The selected role could not be found.',
+        ],
         'name' => [
             'required' => 'Please enter a menu name.',
         ],
@@ -559,7 +737,19 @@ return [
     ],
 
     // Module path validation messages
+    // Extension identifier validation messages (ValidExtensionIdentifier Rule)
+    'extension_identifier' => [
+        'max' => 'The extension identifier must not exceed 255 characters.',
+        'must_be_string' => 'The extension identifier must be a string.',
+        'min_parts' => 'The extension identifier must be in vendor-name format (e.g., sirsoft-board).',
+        'empty_part' => 'The extension identifier has an empty part. Hyphens cannot be consecutive or at the edges.',
+        'invalid_characters' => 'The extension identifier may only contain lowercase letters, numbers, and underscores (_).',
+        'empty_word' => 'The extension identifier has consecutive or edge underscores.',
+        'word_starts_with_digit' => 'Each word in the extension identifier must not start with a digit.',
+    ],
+
     'module_path' => [
+        'file_type_not_allowed' => 'File type not allowed. Extension: :extension (Allowed: :allowed)',
         'must_be_string' => 'The path must be a string.',
         'traversal_detected' => 'Path traversal detected: :pattern',
         'absolute_path_not_allowed' => 'Absolute paths are not allowed.',
@@ -569,6 +759,7 @@ return [
 
     // Plugin path validation messages
     'plugin_path' => [
+        'file_type_not_allowed' => 'File type not allowed. Extension: :extension (Allowed: :allowed)',
         'must_be_string' => 'The path must be a string.',
         'traversal_detected' => 'Path traversal detected: :pattern',
         'absolute_path_not_allowed' => 'Absolute paths are not allowed.',
@@ -578,6 +769,11 @@ return [
 
     // Auth validation messages
     'auth' => [
+        'two_factor' => [
+            'challenge_required' => 'Verification request is missing. Please sign in again.',
+            'challenge_invalid' => 'Verification request is not valid.',
+            'code_required' => 'Enter the verification code.',
+        ],
         'email' => [
             'required' => 'Email is required.',
             'email' => 'Please enter a valid email address.',
@@ -596,6 +792,14 @@ return [
         ],
         'nickname' => [
             'max' => 'Nickname may not be greater than :max characters.',
+        ],
+        'mobile' => [
+            'max' => 'Mobile number may not be greater than :max characters.',
+            'regex' => 'Mobile number may only contain digits and -, +, (), spaces.',
+        ],
+        'phone' => [
+            'max' => 'Phone number may not be greater than :max characters.',
+            'regex' => 'Phone number may only contain digits and -, +, (), spaces.',
         ],
         'agree_terms' => [
             'accepted' => 'You must agree to the Terms of Service.',
@@ -624,9 +828,13 @@ return [
     // Setting value validation messages
     'setting' => [
         'value' => [
-            'required' => 'Setting value is required.',
-            'string' => 'Setting value must be a string.',
+            'present' => 'The value field must be present in the request.',
+            'boolean' => 'This setting only accepts an on/off value.',
+            'integer' => 'This setting only accepts an integer.',
+            'numeric' => 'This setting only accepts a number.',
+            'type' => 'The setting value has an unsupported format.',
             'max' => 'Setting value may not be greater than :max characters.',
+            'array_max' => 'Setting value may not be larger than :max characters.',
         ],
     ],
 
@@ -659,6 +867,7 @@ return [
         // Security settings
         'force_https_required' => 'Please select the Force HTTPS setting.',
         'force_https_boolean' => 'Force HTTPS must be true or false.',
+        'allow_internal_outbound_urls_boolean' => 'Allow internal network address calls must be true or false.',
         'login_attempt_enabled_required' => 'Please select the login attempt limit setting.',
         'login_attempt_enabled_boolean' => 'Login attempt limit must be true or false.',
         'auth_token_lifetime_integer' => 'Auth token lifetime must be an integer.',
@@ -687,18 +896,39 @@ return [
         'stats_cache_ttl_integer' => 'Stats cache TTL must be an integer.',
         'stats_cache_ttl_min' => 'Stats cache TTL must be at least 0 seconds.',
         'stats_cache_ttl_max' => 'Stats cache TTL may not be greater than 14400 seconds (4 hours).',
-        'seo_cache_enabled_required' => 'Please select the SEO cache setting.',
-        'seo_cache_enabled_boolean' => 'SEO cache must be true or false.',
-        'seo_cache_ttl_required' => 'Please enter the SEO cache TTL.',
-        'seo_cache_ttl_integer' => 'SEO cache TTL must be an integer.',
-        'seo_cache_ttl_min' => 'SEO cache TTL must be at least 0 seconds.',
-        'seo_cache_ttl_max' => 'SEO cache TTL may not be greater than 14400 seconds (4 hours).',
+        // Advanced tab only — the SEO tab override field (seo_cache_*) allows a different range.
+        'advanced_seo_cache_enabled_required' => 'Please select the SEO cache setting.',
+        'advanced_seo_cache_enabled_boolean' => 'SEO cache must be true or false.',
+        'advanced_seo_cache_ttl_required' => 'Please enter the SEO cache TTL.',
+        'advanced_seo_cache_ttl_integer' => 'SEO cache TTL must be an integer.',
+        'advanced_seo_cache_ttl_min' => 'SEO cache TTL must be at least 0 seconds.',
+        'advanced_seo_cache_ttl_max' => 'SEO cache TTL may not be greater than 14400 seconds (4 hours).',
+        'seo_sitemap_cache_ttl_integer' => 'Sitemap cache TTL must be an integer.',
+        'seo_sitemap_cache_ttl_min' => 'Sitemap cache TTL must be at least 3600 seconds (1 hour).',
+        'seo_sitemap_cache_ttl_max' => 'Sitemap cache TTL may not be greater than 604800 seconds (7 days).',
 
         // Debug settings
         'debug_mode_required' => 'Please select the debug mode setting.',
         'debug_mode_boolean' => 'Debug mode must be true or false.',
         'sql_query_log_required' => 'Please select the SQL query log setting.',
         'sql_query_log_boolean' => 'SQL query log must be true or false.',
+
+        // Outbound HTTP proxy
+        'outbound_proxy_required' => 'Please enter the outbound proxy address.',
+        'outbound_proxy_string' => 'The outbound proxy address must be a string.',
+        'outbound_proxy_max' => 'The outbound proxy address may not be greater than :max characters.',
+        'outbound_proxy_invalid' => 'The outbound proxy address format is invalid. Supported schemes: :schemes (e.g. socks5h://127.0.0.1:1080)',
+        'outbound_proxy_bypass_array' => 'The proxy bypass list must be an array.',
+        'outbound_proxy_bypass_item_string' => 'Each proxy bypass entry must be a string.',
+        'outbound_proxy_bypass_item_max' => 'Each proxy bypass entry may not be greater than :max characters.',
+
+        // List limits
+        'pagination_result_cap_integer' => 'The total count cap must be a number.',
+        'pagination_result_cap_min' => 'The total count cap must be at least :min. (0 = unlimited)',
+        'pagination_result_cap_max' => 'The total count cap may not be greater than :max.',
+        'pagination_max_page_integer' => 'The maximum page number must be a number.',
+        'pagination_max_page_min' => 'The maximum page number must be at least :min. (0 = unlimited)',
+        'pagination_max_page_max' => 'The maximum page number may not be greater than :max.',
 
         // Core update settings
         'core_update_github_url_invalid' => 'The GitHub repository URL format is invalid.',
@@ -740,6 +970,10 @@ return [
         'image_quality_integer' => 'Image quality must be an integer.',
         'image_quality_min' => 'Image quality must be at least 1.',
         'image_quality_max' => 'Image quality may not be greater than 100.',
+        'orphan_cleanup_enabled_boolean' => 'Orphan attachment cleanup must be enabled or disabled.',
+        'orphan_retention_days_integer' => 'Orphan attachment retention period must be an integer.',
+        'orphan_retention_days_min' => 'Orphan attachment retention period must be at least 1 day.',
+        'orphan_retention_days_max' => 'Orphan attachment retention period may not be greater than 3650 days.',
 
         // SEO settings
         'meta_title_suffix_max' => 'Meta title suffix may not be greater than 100 characters.',
@@ -776,6 +1010,14 @@ return [
         'sitemap_cache_ttl_integer' => 'Sitemap cache TTL must be an integer.',
         'sitemap_cache_ttl_min' => 'Sitemap cache TTL must be at least 3600 seconds (1 hour).',
         'sitemap_cache_ttl_max' => 'Sitemap cache TTL may not be greater than 604800 seconds (7 days).',
+        'sitemap_urls_per_file_integer' => 'URLs per sitemap file must be an integer.',
+        'sitemap_urls_per_file_min' => 'URLs per sitemap file must be at least 1000.',
+        'sitemap_urls_per_file_max' => 'URLs per sitemap file may not be greater than 50000.',
+        'sitemap_gzip_boolean' => 'Sitemap compression setting must be true or false.',
+        'sitemap_serve_stale_on_miss_boolean' => 'Serving the previous sitemap setting must be true or false.',
+        'sitemap_max_urls_per_contributor_integer' => 'Maximum URLs per contributor must be an integer.',
+        'sitemap_max_urls_per_contributor_min' => 'Maximum URLs per contributor must be at least 0.',
+        'sitemap_hreflang_enabled_boolean' => 'The sitemap hreflang alternate links setting must be true or false.',
         'sitemap_schedule_invalid' => 'Please select a valid sitemap generation schedule.',
         'sitemap_schedule_time_invalid' => 'Sitemap generation time must be in HH:mm format.',
 
@@ -789,14 +1031,19 @@ return [
         'storage_driver_invalid' => 'Please select a valid storage driver.',
         's3_bucket_required' => 'S3 bucket name is required.',
         's3_bucket_max' => 'S3 bucket name may not be greater than 255 characters.',
-        's3_region_required' => 'Please select an S3 region.',
-        's3_region_invalid' => 'Please select a valid S3 region.',
+        's3_region_invalid' => 'S3 region may only contain lowercase letters, numbers, and hyphens. (e.g. ap-northeast-2, or auto for Cloudflare R2)',
+        's3_region_max' => 'S3 region may not be greater than 64 characters.',
         's3_access_key_required' => 'S3 access key is required.',
         's3_access_key_max' => 'S3 access key may not be greater than 255 characters.',
         's3_secret_key_required' => 'S3 secret key is required.',
         's3_secret_key_max' => 'S3 secret key may not be greater than 255 characters.',
         's3_url_url' => 'S3 URL must be a valid URL.',
-        's3_url_max' => 'S3 URL may not be greater than 255 characters.',
+        's3_url_invalid' => 'S3 URL is not a valid URL format.',
+        's3_url_max' => 'S3 URL may not be greater than 500 characters.',
+        's3_endpoint_invalid' => 'S3 endpoint is not a valid URL format.',
+        's3_endpoint_max' => 'S3 endpoint may not be greater than 500 characters.',
+        's3_use_path_style_boolean' => 'Path-style addressing must be true or false.',
+        'driver_unusable' => "The ':driver' driver cannot be used on this server. :reason",
 
         // Driver settings - Cache
         'cache_driver_required' => 'Please select a cache driver.',
@@ -852,6 +1099,18 @@ return [
         'websocket_server_scheme_invalid' => 'Please select a valid WebSocket server scheme.',
         'search_engine_driver_invalid' => 'Please select a valid search engine driver.',
 
+        // Log driver settings
+        'log_driver_required' => 'Please select a log driver.',
+        'log_driver_invalid' => 'Please select a valid log driver.',
+        'log_level_required' => 'Please select a log level.',
+        'log_level_invalid' => 'Please select a valid log level.',
+        'log_days_integer' => 'Log retention days must be an integer.',
+        'log_days_min' => 'Log retention days must be at least 1.',
+        'log_days_max' => 'Log retention days may not be greater than 365.',
+
+        // Public asset disk settings
+        'public_asset_disk_invalid' => 'Please select a valid public asset disk.',
+
         // Identity verification (IDV) settings
         'identity_default_provider_string' => 'Default provider must be a string.',
         'identity_default_provider_max' => 'Default provider identifier may not be longer than 100 characters.',
@@ -888,6 +1147,7 @@ return [
         'priority_integer' => 'Priority must be an integer.',
         'priority_min' => 'Priority must be at least 0.',
         'priority_max' => 'Priority may not be greater than 65535.',
+        'priority_duplicate' => 'An active policy with priority :priority already exists for the same location (:target). Since the order of enforcement would be undefined, please use a different priority or disable the existing policy.',
         'conditions_array' => 'Conditions must be an array.',
         'applies_to_required' => 'Please select applies-to.',
         'applies_to_invalid' => 'Applies-to must be one of self, admin, both.',
@@ -902,9 +1162,19 @@ return [
         'definition_already_exists' => 'A definition with the same (provider, scope_type, scope_value) already exists.',
     ],
 
+    // Layout version list
+    'layout_version' => [
+        'limit' => [
+            'integer' => 'The limit must be a number.',
+            'min' => 'The limit must be at least 1.',
+            'max' => 'The limit may not be greater than :max.',
+        ],
+    ],
+
     // Validation attribute names (validation.attributes)
     'attributes' => [
-        'ids' => 'user ID list',
+        'ids' => 'ID list',
+        'user_ids' => 'user ID list',
         'user_id' => 'user ID',
         'status' => 'status',
         // Settings fields
@@ -913,7 +1183,8 @@ return [
         'site_description' => 'site description',
         'admin_email' => 'admin email',
         'timezone' => 'timezone',
-        'language' => 'default language',
+        'language' => 'language',
+        'default_language' => 'default language',
         // Identity verification (IDV) fields
         'identity_default_provider' => 'default provider',
         'identity_purpose_providers' => 'purpose-to-provider mapping',
@@ -931,10 +1202,14 @@ return [
         'identity_policy_fail_mode' => 'fail mode',
         // Mail settings
         'mailer' => 'mailer',
-        'host' => 'SMTP host',
-        'port' => 'SMTP port',
-        'username' => 'SMTP username',
-        'password' => 'SMTP password',
+        'host' => 'host',
+        'port' => 'port',
+        'username' => 'username',
+        'password' => 'password',
+        'smtp_host' => 'SMTP host',
+        'smtp_port' => 'SMTP port',
+        'smtp_username' => 'SMTP username',
+        'smtp_password' => 'SMTP password',
         'encryption' => 'encryption',
         'from_address' => 'sender email',
         'from_name' => 'sender name',
@@ -944,6 +1219,8 @@ return [
         'image_max_width' => 'max image width',
         'image_max_height' => 'max image height',
         'image_quality' => 'image quality',
+        'orphan_cleanup_enabled' => 'orphan attachment cleanup',
+        'orphan_retention_days' => 'orphan attachment retention period',
         // SEO settings
         'meta_title_suffix' => 'meta title suffix',
         'meta_description' => 'meta description',
@@ -958,6 +1235,8 @@ return [
         's3_access_key' => 'S3 access key',
         's3_secret_key' => 'S3 secret key',
         's3_url' => 'S3 URL',
+        's3_endpoint' => 'S3 endpoint URL',
+        's3_use_path_style' => 'path-style addressing',
         'cache_driver' => 'cache driver',
         'redis_host' => 'Redis host',
         'redis_port' => 'Redis port',
@@ -976,5 +1255,88 @@ return [
         // Changelog fields
         'from_version' => 'start version',
         'to_version' => 'end version',
+        'layout' => 'layout',
+        'module' => 'module',
+        'token' => 'token',
+        'mailgun_domain' => 'Mailgun domain',
+        'mailgun_secret' => 'Mailgun secret',
+        'ses_key' => 'SES access key',
+        'ses_secret' => 'SES secret key',
+        'ses_region' => 'SES region',
+        'mailgun_endpoint' => 'Mailgun endpoint',
+        // General settings (additional)
+        'channels' => 'channels',
+        'notification_channels' => 'notification channels',
+        'currency' => 'currency',
+        'default_currency' => 'default currency',
+        'maintenance_mode' => 'maintenance mode',
+        'asset_url_mode' => 'asset URL mode',
+        'site_logo' => 'site logo',
+        'og_image_default' => 'default share image',
+        // SEO settings (additional)
+        'bot_user_agents' => 'bot user agents',
+        'bot_detection_enabled' => 'bot detection',
+        'bot_detection_library_enabled' => 'bot detection library',
+        'og_default_site_name' => 'OG default site name',
+        'og_image_default_width' => 'OG image default width',
+        'og_image_default_height' => 'OG image default height',
+        'twitter_default_card' => 'Twitter default card type',
+        'twitter_default_site' => 'Twitter default account',
+        'seo_page_cache_enabled' => 'SEO page cache',
+        'cache_ttl' => 'cache lifetime',
+        'seo_page_cache_ttl' => 'SEO page cache lifetime',
+        'sitemap_enabled' => 'sitemap',
+        'sitemap_cache_ttl' => 'sitemap cache lifetime',
+        'sitemap_urls_per_file' => 'sitemap URLs per file',
+        'sitemap_gzip' => 'sitemap compression',
+        'sitemap_serve_stale_on_miss' => 'serve stale sitemap on miss',
+        'sitemap_max_urls_per_contributor' => 'sitemap max URLs per contributor',
+        'sitemap_hreflang_enabled' => 'sitemap hreflang links',
+        'sitemap_schedule' => 'sitemap schedule',
+        'sitemap_schedule_time' => 'sitemap schedule time',
+        'generator_enabled' => 'SEO page generator',
+        'generator_content' => 'SEO page generator content',
+        // Security settings (additional)
+        'force_https' => 'force HTTPS',
+        'login_attempt_enabled' => 'login attempt limit',
+        'auth_token_lifetime' => 'auth token lifetime',
+        'max_login_attempts' => 'max login attempts',
+        'login_lockout_time' => 'login lockout time',
+        'password_min_length' => 'minimum password length',
+        'require_password_special_char' => 'require special character in password',
+        'two_factor_auth' => 'two-factor authentication',
+        'allow_internal_outbound_urls' => 'allow internal outbound URLs',
+        // Advanced settings (additional)
+        'advanced_cache_enabled' => 'cache',
+        'layout_cache_enabled' => 'layout cache',
+        'layout_cache_ttl' => 'layout cache lifetime',
+        'stats_cache_enabled' => 'statistics cache',
+        'stats_cache_ttl' => 'statistics cache lifetime',
+        'seo_cache_enabled' => 'SEO cache',
+        'seo_cache_ttl' => 'SEO cache lifetime',
+        'seo_sitemap_cache_ttl' => 'SEO sitemap cache lifetime',
+        'debug_mode' => 'debug mode',
+        'sql_query_log' => 'SQL query log',
+        'outbound_proxy' => 'outbound proxy address',
+        'outbound_proxy_bypass' => 'proxy bypass list',
+        'core_update_github_url' => 'core update GitHub URL',
+        'core_update_github_token' => 'core update GitHub token',
+        'geoip_enabled' => 'GeoIP',
+        'geoip_license_key' => 'GeoIP license key',
+        'geoip_auto_update_enabled' => 'GeoIP auto update',
+        'pagination_result_cap' => 'list total count cap',
+        'pagination_max_page' => 'list maximum page number',
+        // Driver settings (additional)
+        'websocket_app_id' => 'WebSocket app ID',
+        'websocket_app_secret' => 'WebSocket app secret',
+        'websocket_verify_ssl' => 'WebSocket SSL verification',
+        'websocket_server_host' => 'WebSocket server host',
+        'websocket_server_port' => 'WebSocket server port',
+        'websocket_server_scheme' => 'WebSocket server scheme',
+        'search_engine_driver' => 'search engine driver',
+        'log_driver' => 'log driver',
+        'log_level' => 'log level',
+        'log_days' => 'log retention days',
+        'public_asset_disk' => 'public asset disk',
     ],
 ];

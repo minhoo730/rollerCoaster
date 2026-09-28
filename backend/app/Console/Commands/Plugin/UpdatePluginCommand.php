@@ -4,9 +4,12 @@ namespace App\Console\Commands\Plugin;
 
 use App\Console\Commands\Traits\HasProgressBar;
 use App\Console\Commands\Traits\HasUnifiedConfirm;
+use App\Console\Commands\Traits\RebuildsSearchIndex;
 use App\Contracts\Repositories\PluginRepositoryInterface;
+use App\Enums\LayoutSourceType;
 use App\Extension\PluginManager;
 use App\Extension\Vendor\VendorMode;
+use App\Services\LayoutExtensionService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
@@ -14,6 +17,7 @@ class UpdatePluginCommand extends Command
 {
     use HasProgressBar;
     use HasUnifiedConfirm;
+    use RebuildsSearchIndex;
 
     /**
      * The name and signature of the console command.
@@ -24,7 +28,8 @@ class UpdatePluginCommand extends Command
         {--vendor-mode=auto : Vendor 설치 모드 (auto|composer|bundled)}
         {--layout-strategy=overwrite : 레이아웃 전략 (overwrite|keep)}
         {--source=auto : 업데이트 소스 (auto|bundled|github) — bundled 는 _bundled 만 사용(GitHub 우회)}
-        {--zip= : 외부 ZIP 파일 경로 (지정 시 GitHub/번들 우회 + 버전은 plugin.json 기준)}';
+        {--zip= : 외부 ZIP 파일 경로 (지정 시 GitHub/번들 우회 + 버전은 plugin.json 기준)}
+        {--rebuild-search-index : 완료 후 색인이 누락된 검색 인덱스를 재생성 (인덱스가 잠기거나 재색인됩니다 — 운영 중에는 유지보수 시간에 수행하세요)}';
 
     /**
      * The console command description.
@@ -36,7 +41,8 @@ class UpdatePluginCommand extends Command
      */
     public function __construct(
         private PluginManager $pluginManager,
-        private PluginRepositoryInterface $pluginRepository
+        private PluginRepositoryInterface $pluginRepository,
+        private LayoutExtensionService $layoutExtensionService
     ) {
         parent::__construct();
     }
@@ -119,6 +125,30 @@ class UpdatePluginCommand extends Command
                 $this->info('업데이트 버전: (plugin.json 추출 후 판별)');
             }
 
+            $this->info(__('plugins.commands.update.layout_strategy', ['strategy' => $layoutStrategy]));
+
+            // overwrite 전략일 때 관리자가 편집한 레이아웃 확장 경고
+            if ($layoutStrategy === 'overwrite') {
+                $modifiedExtensions = $this->layoutExtensionService->getModifiedExtensionsBySource(
+                    LayoutSourceType::Plugin,
+                    $identifier
+                );
+
+                if (! empty($modifiedExtensions)) {
+                    $this->newLine();
+                    $this->warn('⚠️  '.__('plugins.commands.update.modified_extensions_warning', [
+                        'count' => count($modifiedExtensions),
+                    ]));
+
+                    foreach ($modifiedExtensions as $extension) {
+                        $this->warn(__('plugins.commands.update.modified_extension_item', [
+                            'target' => $extension['target_name'],
+                            'source' => $extension['source_identifier'],
+                        ]));
+                    }
+                }
+            }
+
             $this->newLine();
 
             // 확인 프롬프트 (--force 시 건너뜀)
@@ -174,6 +204,9 @@ class UpdatePluginCommand extends Command
                     'to' => $updateResult['to_version'],
                     'layout_strategy' => $layoutStrategy,
                 ]);
+
+                // 검색 인덱스 재생성은 운영자가 선택했을 때만 수행한다 (인덱스 잠금·재색인 비용)
+                $this->handleSearchIndexRebuild();
 
                 return Command::SUCCESS;
             }

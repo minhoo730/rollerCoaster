@@ -33,6 +33,7 @@
     "data_sources": [
         {
             "id": "users",
+            "label_key": "$t:editor.data_source.users",
             "type": "api",
             "endpoint": "/api/admin/users",
             "method": "GET",
@@ -48,7 +49,7 @@
             },
             "params": {
                 "page": "{{query.page}}",
-                "per_page": "{{query.per_page}}",
+                "per_page": "{{query.per_page || '10'}}",
                 "filters[0][field]": "{{query['filters[0][field]'] || 'all'}}",
                 "filters[0][value]": "{{query['filters[0][value]']}}",
                 "filters[0][operator]": "{{query['filters[0][operator]']}}",
@@ -68,11 +69,15 @@
     ],
     "named_actions": {
         "searchUsers": {
+            "comment": "검색 실행 — 열거한 검색 조건만 덮어쓰고 정렬/페이지당 개수 등 나머지 목록 상태는 유지한다. page 는 새 검색이므로 1페이지로 되돌린다 (#75). 검색도 표를 다시 그리므로 페이지 이동과 동일하게 표 본문에 전환 오버레이를 건다 (#245). transition_overlay_target 은 replace:true 인 navigate 에서만 읽히므로 함께 둔다.",
             "handler": "navigate",
             "params": {
                 "path": "/admin/users",
                 "mergeQuery": true,
+                "replace": true,
+                "transition_overlay_target": "users_data_grid__body",
                 "query": {
+                    "page": "",
                     "filters[0][field]": "{{_local.searchField || 'all'}}",
                     "filters[0][value]": "{{_local.searchQuery || undefined}}",
                     "filters[0][operator]": "like"
@@ -87,12 +92,12 @@
                 "type": "basic",
                 "name": "Div",
                 "props": {
-                    "className": "p-6 bg-gray-50 dark:bg-gray-900"
+                    "className": "admin-page-content-fluid"
                 },
                 "responsive": {
                     "portable": {
                         "props": {
-                            "className": "p-4 bg-gray-50 dark:bg-gray-900"
+                            "className": "admin-page-content-fluid-compact"
                         }
                     }
                 },
@@ -108,28 +113,22 @@
                         "children": [
                             {
                                 "id": "refresh_button",
-                                "type": "basic",
-                                "name": "Button",
+                                "type": "composite",
+                                "name": "IconButton",
                                 "props": {
-                                    "className": "p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                                    "iconName": "refresh",
+                                    "variant": "outline",
+                                    "size": "md"
                                 },
                                 "actions": [
                                     {
+                                        "comment": "새로고침은 보고 있던 목록을 그대로 다시 부르는 것이다 — 페이지와 걸어둔 검색 조건을 유지한다 (#75).",
                                         "type": "click",
                                         "handler": "navigate",
                                         "params": {
                                             "path": "/admin/users",
-                                            "mergeQuery": false
-                                        }
-                                    }
-                                ],
-                                "children": [
-                                    {
-                                        "type": "basic",
-                                        "name": "Icon",
-                                        "props": {
-                                            "name": "refresh",
-                                            "className": "w-5 h-5"
+                                            "mergeQuery": true,
+                                            "query": {}
                                         }
                                     }
                                 ]
@@ -140,14 +139,17 @@
                                 "name": "Button",
                                 "props": {
                                     "disabled": "{{users?.data?.abilities?.can_create !== true}}",
-                                    "className": "flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    "className": "flex-center gap-2 px-4 h-10 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-100 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 },
                                 "actions": [
                                     {
+                                        "comment": "등록 폼은 회원 목록 클러스터 안이다 — 취소하고 돌아왔을 때 보고 있던 페이지·검색 조건이 그대로여야 한다 (#75).",
                                         "type": "click",
                                         "handler": "navigate",
                                         "params": {
-                                            "path": "/admin/users/create"
+                                            "path": "/admin/users/create",
+                                            "mergeQuery": true,
+                                            "query": {}
                                         }
                                     }
                                 ],
@@ -157,7 +159,7 @@
                                         "name": "Icon",
                                         "props": {
                                             "name": "plus",
-                                            "className": "w-5 h-5"
+                                            "size": "md"
                                         }
                                     },
                                     {
@@ -174,7 +176,7 @@
                         "type": "basic",
                         "name": "Div",
                         "props": {
-                            "className": "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 mb-4"
+                            "className": "admin-card"
                         },
                         "children": [
                             {
@@ -182,7 +184,7 @@
                                 "type": "basic",
                                 "name": "Div",
                                 "props": {
-                                    "className": "flex flex-row gap-3 items-center"
+                                    "className": "flex-center flex-row gap-3"
                                 },
                                 "children": [
                                     {
@@ -191,7 +193,7 @@
                                         "name": "Select",
                                         "props": {
                                             "value": "{{_local.searchField || 'all'}}",
-                                            "className": "w-32 px-4 py-2.5 bg-gray-100 dark:bg-gray-700 border-0 rounded-xl text-gray-700 dark:text-gray-200 font-medium focus:ring-2 focus:ring-blue-500",
+                                            "className": "select-composite w-32",
                                             "options": [
                                                 {
                                                     "label": "$t:admin.users.search_fields.all",
@@ -225,7 +227,7 @@
                                             "type": "text",
                                             "placeholder": "$t:admin.users.search_placeholder",
                                             "value": "{{_local.searchQuery || ''}}",
-                                            "className": "flex-1 min-w-0 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                                            "className": "input flex-1 min-w-0"
                                         },
                                         "actions": [
                                             {
@@ -335,7 +337,7 @@
                                 "responsive": {
                                     "portable": {
                                         "props": {
-                                            "className": "flex flex-col gap-3"
+                                            "className": "row-stack"
                                         },
                                         "children": [
                                             {
@@ -386,7 +388,7 @@
                                                             "type": "text",
                                                             "placeholder": "$t:admin.users.search_placeholder",
                                                             "value": "{{_local.searchQuery || ''}}",
-                                                            "className": "flex-1 min-w-0 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                                                            "className": "input flex-1 min-w-0"
                                                         },
                                                         "actions": [
                                                             {
@@ -517,7 +519,7 @@
                         "name": "Div",
                         "if": "{{users?.data?.abilities?.can_update === true}}",
                         "props": {
-                            "className": "bg-gray-100 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg p-3 mb-4 flex items-center gap-3"
+                            "className": "bulk-actions-bar"
                         },
                         "children": [
                             {
@@ -525,7 +527,7 @@
                                 "type": "basic",
                                 "name": "Span",
                                 "props": {
-                                    "className": "text-sm text-gray-700 dark:text-gray-300 font-medium"
+                                    "className": "text-body font-medium"
                                 },
                                 "text": "$t:admin.users.selected_count|count={{(_global.selectedIds_admin_users || []).length}}"
                             },
@@ -534,9 +536,9 @@
                                 "type": "basic",
                                 "name": "Span",
                                 "props": {
-                                    "className": "text-sm text-gray-500 dark:text-gray-400"
+                                    "className": "text-label-subtle"
                                 },
-                                "text": "상태 변경"
+                                "text": "$t:admin.users.bulk_status_change"
                             },
                             {
                                 "id": "bulk_buttons",
@@ -551,7 +553,7 @@
                                         "type": "basic",
                                         "name": "Button",
                                         "props": {
-                                            "className": "px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
+                                            "className": "btn btn-sm btn-success",
                                             "disabled": "{{!_global.selectedIds_admin_users || _global.selectedIds_admin_users.length === 0}}"
                                         },
                                         "actions": [
@@ -574,7 +576,7 @@
                                         "type": "basic",
                                         "name": "Button",
                                         "props": {
-                                            "className": "px-3 py-1.5 text-sm bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
+                                            "className": "btn btn-sm btn-neutral",
                                             "disabled": "{{!_global.selectedIds_admin_users || _global.selectedIds_admin_users.length === 0}}"
                                         },
                                         "actions": [
@@ -597,7 +599,7 @@
                                         "type": "basic",
                                         "name": "Button",
                                         "props": {
-                                            "className": "px-3 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
+                                            "className": "btn btn-sm btn-danger",
                                             "disabled": "{{!_global.selectedIds_admin_users || _global.selectedIds_admin_users.length === 0}}"
                                         },
                                         "actions": [
@@ -620,7 +622,7 @@
                                         "type": "basic",
                                         "name": "Button",
                                         "props": {
-                                            "className": "px-3 py-1.5 text-sm bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
+                                            "className": "btn btn-sm btn-warning",
                                             "disabled": "{{!_global.selectedIds_admin_users || _global.selectedIds_admin_users.length === 0}}"
                                         },
                                         "actions": [
@@ -644,7 +646,7 @@
                         "responsive": {
                             "portable": {
                                 "props": {
-                                    "className": "bg-gray-100 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg p-3 mb-4 flex items-center gap-3"
+                                    "className": "bulk-actions-bar"
                                 },
                                 "children": [
                                     {
@@ -652,7 +654,7 @@
                                         "type": "basic",
                                         "name": "Span",
                                         "props": {
-                                            "className": "text-sm text-gray-700 dark:text-gray-300 font-medium"
+                                            "className": "text-body font-medium"
                                         },
                                         "text": "$t:admin.users.selected_count|count={{(_global.selectedIds_admin_users || []).length}}"
                                     },
@@ -718,7 +720,7 @@
                         "type": "basic",
                         "name": "Div",
                         "props": {
-                            "className": "flex items-center justify-between mb-4"
+                            "className": "flex-between mb-4"
                         },
                         "children": [
                             {
@@ -726,7 +728,7 @@
                                 "type": "basic",
                                 "name": "Span",
                                 "props": {
-                                    "className": "text-sm text-gray-600 dark:text-gray-400"
+                                    "className": "text-label"
                                 },
                                 "text": "$t:admin.users.total_count|count={{users?.data?.pagination?.total ?? 0}}"
                             },
@@ -735,7 +737,7 @@
                                 "type": "basic",
                                 "name": "Div",
                                 "props": {
-                                    "className": "flex items-center gap-3"
+                                    "className": "flex-center gap-3"
                                 },
                                 "children": [
                                     {
@@ -776,6 +778,7 @@
                                                         "sort_order": "{{$event.target.value.split('_').pop()}}",
                                                         "page": 1
                                                     },
+                                                    "replace": true,
                                                     "transition_overlay_target": "users_data_grid__body"
                                                 }
                                             }
@@ -818,6 +821,7 @@
                                                         "per_page": "{{$event.target.value}}",
                                                         "page": 1
                                                     },
+                                                    "replace": true,
                                                     "transition_overlay_target": "users_data_grid__body"
                                                 }
                                             }
@@ -856,7 +860,7 @@
                                                     "type": "basic",
                                                     "name": "Div",
                                                     "props": {
-                                                        "className": "text-xs text-gray-500 dark:text-gray-400"
+                                                        "className": "text-tertiary"
                                                     },
                                                     "text": "{{row.nickname}}",
                                                     "if": "{{row.nickname}}"
@@ -977,8 +981,10 @@
                             "pageSize": 15,
                             "serverSidePagination": true,
                             "serverCurrentPage": "{{users?.data?.pagination?.current_page ?? 1}}",
-                            "serverTotalPages": "{{users?.data?.pagination?.last_page ?? 1}}",
+                            "serverTotalPages": "{{users?.data?.pagination?.last_page ?? null}}",
+                            "serverHasMorePages": "{{users?.data?.pagination?.has_more_pages ?? false}}",
                             "selectable": "{{users?.data?.abilities?.can_update === true}}",
+                            "selectionScope": "page",
                             "selectedIds": "{{_global.selectedIds_admin_users || []}}",
                             "idField": "uuid",
                             "showColumnSelector": false,
@@ -1032,10 +1038,13 @@
                                 "params": {
                                     "path": "/admin/users",
                                     "mergeQuery": true,
+                                    "replace": true,
                                     "query": {
                                         "sort_by": "{{$args[0]}}",
-                                        "sort_order": "{{$args[1]}}"
-                                    }
+                                        "sort_order": "{{$args[1]}}",
+                                        "page": 1
+                                    },
+                                    "transition_overlay_target": "users_data_grid__body"
                                 }
                             },
                             {
@@ -1048,6 +1057,7 @@
                                     "query": {
                                         "page": "{{$args[0]}}"
                                     },
+                                    "replace": true,
                                     "transition_overlay_target": "users_data_grid__body"
                                 }
                             },
@@ -1057,15 +1067,21 @@
                                 "handler": "switch",
                                 "cases": {
                                     "view": {
+                                        "comment": "상세는 회원 목록 클러스터 안이다 — 돌아왔을 때 보고 있던 페이지·검색 조건이 그대로여야 한다 (#75).",
                                         "handler": "navigate",
                                         "params": {
-                                            "path": "/admin/users/{{$args[1].uuid}}"
+                                            "path": "/admin/users/{{$args[1].uuid}}",
+                                            "mergeQuery": true,
+                                            "query": {}
                                         }
                                     },
                                     "edit": {
+                                        "comment": "수정 폼도 같은 클러스터다 — 취소하고 돌아왔을 때 목록 상태가 살아 있어야 한다 (#75).",
                                         "handler": "navigate",
                                         "params": {
-                                            "path": "/admin/users/{{$args[1].uuid}}/edit"
+                                            "path": "/admin/users/{{$args[1].uuid}}/edit",
+                                            "mergeQuery": true,
+                                            "query": {}
                                         }
                                     },
                                     "delete": {
@@ -1091,12 +1107,15 @@
     },
     "modals": [
         {
+            "meta": {
+                "editor_label": "$t:admin.modal_label.user_list.bulk_activate_confirm_modal"
+            },
             "id": "bulk_activate_confirm_modal",
             "type": "composite",
             "name": "Modal",
             "props": {
                 "title": "$t:admin.users.modals.bulk_activate_title",
-                "size": "small"
+                "size": "sm"
             },
             "children": [
                 {
@@ -1120,7 +1139,7 @@
                     "type": "basic",
                     "name": "Div",
                     "props": {
-                        "className": "flex justify-end gap-3 mt-6"
+                        "className": "modal-footer-buttons"
                     },
                     "children": [
                         {
@@ -1128,7 +1147,7 @@
                             "name": "Button",
                             "props": {
                                 "disabled": "{{_global.isProcessing}}",
-                                "className": "px-4 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                "className": "btn btn-secondary"
                             },
                             "actions": [
                                 {
@@ -1149,7 +1168,7 @@
                             "name": "Button",
                             "props": {
                                 "disabled": "{{_global.isProcessing}}",
-                                "className": "flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                "className": "flex-center gap-2 px-4 py-2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
                             },
                             "actions": [
                                 {
@@ -1191,7 +1210,7 @@
                                                     "params": {
                                                         "path": "/admin/users",
                                                         "mergeQuery": true,
-                                                        "query": []
+                                                        "query": {}
                                                     }
                                                 },
                                                 {
@@ -1243,12 +1262,15 @@
             ]
         },
         {
+            "meta": {
+                "editor_label": "$t:admin.modal_label.user_list.bulk_deactivate_confirm_modal"
+            },
             "id": "bulk_deactivate_confirm_modal",
             "type": "composite",
             "name": "Modal",
             "props": {
                 "title": "$t:admin.users.modals.bulk_deactivate_title",
-                "size": "small"
+                "size": "sm"
             },
             "children": [
                 {
@@ -1272,7 +1294,7 @@
                     "type": "basic",
                     "name": "Div",
                     "props": {
-                        "className": "flex justify-end gap-3 mt-6"
+                        "className": "modal-footer-buttons"
                     },
                     "children": [
                         {
@@ -1280,7 +1302,7 @@
                             "name": "Button",
                             "props": {
                                 "disabled": "{{_global.isProcessing}}",
-                                "className": "px-4 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                "className": "btn btn-secondary"
                             },
                             "actions": [
                                 {
@@ -1301,7 +1323,7 @@
                             "name": "Button",
                             "props": {
                                 "disabled": "{{_global.isProcessing}}",
-                                "className": "flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                                "className": "flex-center gap-2 px-4 py-2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
                             },
                             "actions": [
                                 {
@@ -1343,7 +1365,7 @@
                                                     "params": {
                                                         "path": "/admin/users",
                                                         "mergeQuery": true,
-                                                        "query": []
+                                                        "query": {}
                                                     }
                                                 },
                                                 {
@@ -1395,12 +1417,15 @@
             ]
         },
         {
+            "meta": {
+                "editor_label": "$t:admin.modal_label.user_list.delete_confirm_modal"
+            },
             "id": "delete_confirm_modal",
             "type": "composite",
             "name": "Modal",
             "props": {
                 "title": "$t:admin.users.modals.delete_title",
-                "size": "small"
+                "size": "sm"
             },
             "children": [
                 {
@@ -1424,14 +1449,14 @@
                     "type": "basic",
                     "name": "Div",
                     "props": {
-                        "className": "flex justify-end gap-3 mt-6"
+                        "className": "modal-footer-buttons"
                     },
                     "children": [
                         {
                             "type": "basic",
                             "name": "Button",
                             "props": {
-                                "className": "px-4 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed",
+                                "className": "btn btn-secondary",
                                 "disabled": "{{_global.isDeleting}}"
                             },
                             "actions": [
@@ -1452,7 +1477,7 @@
                             "type": "basic",
                             "name": "Button",
                             "props": {
-                                "className": "flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed",
+                                "className": "flex-center gap-2 px-4 py-2 bg-red-600 dark:bg-red-700 text-white rounded-lg hover:bg-red-700 dark:hover:bg-red-800 disabled:opacity-50 disabled:cursor-not-allowed",
                                 "disabled": "{{_global.isDeleting}}"
                             },
                             "actions": [
@@ -1526,7 +1551,7 @@
                                     "if": "{{_global.isDeleting}}",
                                     "props": {
                                         "name": "spinner",
-                                        "className": "w-4 h-4 animate-spin"
+                                        "className": "spinner-sm"
                                     }
                                 },
                                 {
@@ -1541,12 +1566,15 @@
             ]
         },
         {
+            "meta": {
+                "editor_label": "$t:admin.modal_label.user_list.error_modal"
+            },
             "id": "error_modal",
             "type": "composite",
             "name": "Modal",
             "props": {
                 "title": "$t:common.error",
-                "size": "small"
+                "size": "sm"
             },
             "children": [
                 {
@@ -1598,12 +1626,15 @@
             ]
         },
         {
+            "meta": {
+                "editor_label": "$t:admin.modal_label.user_list.bulk_block_confirm_modal"
+            },
             "id": "bulk_block_confirm_modal",
             "type": "composite",
             "name": "Modal",
             "props": {
                 "title": "$t:admin.users.modals.bulk_block_title",
-                "size": "small"
+                "size": "sm"
             },
             "children": [
                 {
@@ -1627,7 +1658,7 @@
                     "type": "basic",
                     "name": "Div",
                     "props": {
-                        "className": "flex justify-end gap-3 mt-6"
+                        "className": "modal-footer-buttons"
                     },
                     "children": [
                         {
@@ -1635,7 +1666,7 @@
                             "name": "Button",
                             "props": {
                                 "disabled": "{{_global.isProcessing}}",
-                                "className": "px-4 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                "className": "btn btn-secondary"
                             },
                             "actions": [
                                 {
@@ -1656,7 +1687,7 @@
                             "name": "Button",
                             "props": {
                                 "disabled": "{{_global.isProcessing}}",
-                                "className": "flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                "className": "flex-center gap-2 px-4 py-2 bg-red-600 dark:bg-red-700 text-white rounded-lg hover:bg-red-700 dark:hover:bg-red-800 disabled:opacity-50 disabled:cursor-not-allowed"
                             },
                             "actions": [
                                 {
@@ -1698,7 +1729,7 @@
                                                     "params": {
                                                         "path": "/admin/users",
                                                         "mergeQuery": true,
-                                                        "query": []
+                                                        "query": {}
                                                     }
                                                 },
                                                 {
@@ -1750,12 +1781,15 @@
             ]
         },
         {
+            "meta": {
+                "editor_label": "$t:admin.modal_label.user_list.bulk_withdraw_confirm_modal"
+            },
             "id": "bulk_withdraw_confirm_modal",
             "type": "composite",
             "name": "Modal",
             "props": {
                 "title": "$t:admin.users.modals.bulk_withdraw_title",
-                "size": "small"
+                "size": "sm"
             },
             "children": [
                 {
@@ -1779,7 +1813,7 @@
                     "type": "basic",
                     "name": "Div",
                     "props": {
-                        "className": "flex justify-end gap-3 mt-6"
+                        "className": "modal-footer-buttons"
                     },
                     "children": [
                         {
@@ -1787,7 +1821,7 @@
                             "name": "Button",
                             "props": {
                                 "disabled": "{{_global.isProcessing}}",
-                                "className": "px-4 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                "className": "btn btn-secondary"
                             },
                             "actions": [
                                 {
@@ -1808,7 +1842,7 @@
                             "name": "Button",
                             "props": {
                                 "disabled": "{{_global.isProcessing}}",
-                                "className": "flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                "className": "flex-center gap-2 px-4 py-2 bg-yellow-600 dark:bg-yellow-700 text-white rounded-lg hover:bg-yellow-700 dark:hover:bg-yellow-800 disabled:opacity-50 disabled:cursor-not-allowed"
                             },
                             "actions": [
                                 {
@@ -1850,14 +1884,15 @@
                                                     "params": {
                                                         "path": "/admin/users",
                                                         "mergeQuery": true,
-                                                        "query": []
+                                                        "query": {}
                                                     }
                                                 },
                                                 {
+                                                    "comment": "탈퇴 불가 대상(관리자 계정 등)은 200 응답 안에서 건별로 실패한다 — failed_count 를 읽지 않으면 아무 일도 없었는데 성공으로 안내된다.",
                                                     "handler": "toast",
                                                     "params": {
-                                                        "type": "success",
-                                                        "message": "$t:admin.users.modals.bulk_withdraw_success"
+                                                        "type": "{{(response.data?.failed_count ?? 0) === 0 ? 'success' : ((response.data?.updated_count ?? 0) === 0 ? 'error' : 'warning')}}",
+                                                        "message": "{{(response.data?.failed_count ?? 0) === 0 ? '$t:admin.users.modals.bulk_withdraw_success' : ((response.data?.updated_count ?? 0) === 0 ? '$t:admin.users.modals.bulk_withdraw_all_failed|reason=' + (response.data?.failed_reasons ?? []).join(' / ') : '$t:admin.users.modals.bulk_withdraw_partial|updated=' + (response.data?.updated_count ?? 0) + '|failed=' + (response.data?.failed_count ?? 0) + '|reason=' + (response.data?.failed_reasons ?? []).join(' / '))}}"
                                                     }
                                                 }
                                             ],

@@ -7,6 +7,7 @@ use Modules\Sirsoft\Ecommerce\Enums\PaymentMethodEnum;
 use Modules\Sirsoft\Ecommerce\Enums\PaymentStatusEnum;
 use Modules\Sirsoft\Ecommerce\Models\Order;
 use Modules\Sirsoft\Ecommerce\Models\OrderPayment;
+use Modules\Sirsoft\Ecommerce\Services\CurrencyConversionService;
 
 /**
  * 주문 결제 Factory
@@ -17,8 +18,6 @@ class OrderPaymentFactory extends Factory
 
     /**
      * 기본 정의
-     *
-     * @return array
      */
     public function definition(): array
     {
@@ -32,13 +31,13 @@ class OrderPaymentFactory extends Factory
             'embedded_pg_provider' => null,
             'transaction_id' => $faker->uuid(),
             'merchant_order_id' => 'MO-'.strtoupper($faker->bothify('????-####-????')),
-            'payment_method' => PaymentMethodEnum::CARD,
+            'payment_method' => PaymentMethodEnum::CARD->value,
             'payment_device' => $faker->randomElement(['pc', 'mobile']),
             'paid_amount_local' => $amount,
             'paid_amount_base' => $amount,
             'vat_amount' => round($amount / 11, 2),
-            'currency' => 'KRW',
-            'currency_snapshot' => ['KRW' => 1.0, 'USD' => 0.00074],
+            'currency' => $this->defaultCurrency(),
+            'currency_snapshot' => $this->defaultRateMap(),
             'card_name' => $faker->randomElement(['신한카드', '삼성카드', 'KB국민카드', '현대카드']),
             'card_number_masked' => $faker->numerify('####-****-****-####'),
             'card_approval_number' => $faker->numerify('########'),
@@ -84,10 +83,35 @@ class OrderPaymentFactory extends Factory
     }
 
     /**
-     * 특정 주문의 결제
+     * 설정의 기본 통화 코드를 반환합니다 (KRW 하드코딩 제거 — base 추종).
      *
-     * @param  Order  $order
-     * @return static
+     * @return string 기본 통화 코드
+     */
+    private function defaultCurrency(): string
+    {
+        return app(CurrencyConversionService::class)->getDefaultCurrency();
+    }
+
+    /**
+     * 통화코드 → 환율 맵을 반환합니다 (기본 통화=1.0).
+     *
+     * @return array<string, float> 통화코드별 환율
+     */
+    private function defaultRateMap(): array
+    {
+        $service = app(CurrencyConversionService::class);
+
+        $rates = [];
+        foreach ($service->getCurrencySettings() as $currency) {
+            $code = $currency['code'];
+            $rates[$code] = ($currency['is_default'] ?? false) ? 1.0 : (float) ($currency['exchange_rate'] ?? 0);
+        }
+
+        return $rates;
+    }
+
+    /**
+     * 특정 주문의 결제
      */
     public function forOrder(Order $order): static
     {
@@ -100,15 +124,13 @@ class OrderPaymentFactory extends Factory
 
     /**
      * 카드 결제
-     *
-     * @return static
      */
     public function card(): static
     {
         $faker = \fake();
 
         return $this->state(fn (array $attributes) => [
-            'payment_method' => PaymentMethodEnum::CARD,
+            'payment_method' => PaymentMethodEnum::CARD->value,
             'card_name' => $faker->randomElement(['신한카드', '삼성카드', 'KB국민카드', '현대카드']),
             'card_number_masked' => $faker->numerify('####-****-****-####'),
         ]);
@@ -116,15 +138,13 @@ class OrderPaymentFactory extends Factory
 
     /**
      * 무통장입금 결제
-     *
-     * @return static
      */
     public function directBank(): static
     {
         $faker = \fake();
 
         return $this->state(fn (array $attributes) => [
-            'payment_method' => PaymentMethodEnum::DBANK,
+            'payment_method' => PaymentMethodEnum::DBANK->value,
             'payment_status' => PaymentStatusEnum::WAITING_DEPOSIT,
             'pg_provider' => '',
             'embedded_pg_provider' => null,
@@ -143,15 +163,13 @@ class OrderPaymentFactory extends Factory
 
     /**
      * 가상계좌 결제
-     *
-     * @return static
      */
     public function virtualAccount(): static
     {
         $faker = \fake();
 
         return $this->state(fn (array $attributes) => [
-            'payment_method' => PaymentMethodEnum::VBANK,
+            'payment_method' => PaymentMethodEnum::VBANK->value,
             'payment_status' => PaymentStatusEnum::WAITING_DEPOSIT,
             'vbank_code' => '088',
             'vbank_name' => $faker->randomElement(['신한은행', '국민은행', '우리은행']),
@@ -168,8 +186,6 @@ class OrderPaymentFactory extends Factory
 
     /**
      * 결제 대기 상태
-     *
-     * @return static
      */
     public function pending(): static
     {
@@ -181,8 +197,6 @@ class OrderPaymentFactory extends Factory
 
     /**
      * 결제 완료 상태
-     *
-     * @return static
      */
     public function completed(): static
     {
@@ -194,8 +208,6 @@ class OrderPaymentFactory extends Factory
 
     /**
      * 결제 실패 상태
-     *
-     * @return static
      */
     public function failed(): static
     {
@@ -207,8 +219,6 @@ class OrderPaymentFactory extends Factory
 
     /**
      * 취소 상태
-     *
-     * @return static
      */
     public function cancelled(): static
     {

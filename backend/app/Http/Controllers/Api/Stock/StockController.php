@@ -10,7 +10,7 @@ use Throwable;
 class StockController extends Controller
 {
     public function __construct(
-        private KisStockService $kisStockService
+        private KisStockService $kisStockService,
     ) {}
 
     public function price(string $code): JsonResponse

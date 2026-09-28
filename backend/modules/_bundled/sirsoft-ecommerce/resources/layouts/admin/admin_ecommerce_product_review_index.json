@@ -43,6 +43,7 @@
     "data_sources": [
         {
             "id": "reviews",
+            "label_key": "$t:sirsoft-ecommerce.editor.data_source.reviews",
             "type": "api",
             "endpoint": "/api/modules/sirsoft-ecommerce/admin/reviews",
             "method": "GET",
@@ -113,7 +114,7 @@
                 "type": "basic",
                 "name": "Div",
                 "props": {
-                    "className": "p-6 bg-gray-50 dark:bg-gray-900 min-h-screen"
+                    "className": "admin-page-content"
                 },
                 "children": [
                     {
@@ -161,7 +162,7 @@
                                         "name": "Button",
                                         "props": {
                                             "type": "button",
-                                            "className": "p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:bg-gray-700 dark:hover:bg-gray-800 transition-colors",
+                                            "className": "btn-icon",
                                             "aria-label": "$t:sirsoft-ecommerce.common.refresh"
                                         },
                                         "children": [
@@ -176,10 +177,13 @@
                                         ],
                                         "actions": [
                                             {
+                                                "comment": "새로고침은 보고 있던 목록을 그대로 다시 부르는 것이다 — 페이지/검색/필터를 유지한다 (#75).",
                                                 "type": "click",
                                                 "handler": "navigate",
                                                 "params": {
                                                     "path": "/admin/ecommerce/reviews",
+                                                    "mergeQuery": true,
+                                                    "query": {},
                                                     "replace": true
                                                 }
                                             }
@@ -194,7 +198,7 @@
                         "type": "basic",
                         "name": "Div",
                         "props": {
-                            "className": "card mb-6"
+                            "className": "admin-card mb-6"
                         },
                         "children": [
                             {
@@ -209,7 +213,7 @@
                                         "type": "basic",
                                         "name": "Div",
                                         "props": {
-                                            "className": "flex flex-wrap items-center gap-3 mb-3"
+                                            "className": "flex-center flex-wrap gap-3 mb-3"
                                         },
                                         "children": [
                                             {
@@ -268,7 +272,7 @@
                                                         "props": {
                                                             "type": "text",
                                                             "placeholder": "$t:sirsoft-ecommerce.admin.product_review.search.placeholder",
-                                                            "className": "input w-full pr-10",
+                                                            "className": "input pr-10",
                                                             "value": "{{_local.filter.searchKeyword ?? ''}}"
                                                         },
                                                         "actions": [
@@ -373,7 +377,7 @@
                                 "type": "basic",
                                 "name": "Div",
                                 "props": {
-                                    "className": "flex flex-wrap items-center gap-3 mb-4"
+                                    "className": "flex-center flex-wrap gap-3 mb-4"
                                 },
                                 "children": [
                                     {
@@ -405,12 +409,12 @@
                                                         "handler": "navigate",
                                                         "params": {
                                                             "path": "/admin/ecommerce/reviews",
-                                                            "replace": true,
                                                             "mergeQuery": true,
                                                             "query": {
                                                                 "rating": "",
                                                                 "page": 1
                                                             },
+                                                            "replace": true,
                                                             "transition_overlay_target": "review_datagrid__body"
                                                         }
                                                     }
@@ -437,12 +441,12 @@
                                                         "handler": "navigate",
                                                         "params": {
                                                             "path": "/admin/ecommerce/reviews",
-                                                            "replace": true,
                                                             "mergeQuery": true,
                                                             "query": {
                                                                 "rating": "5",
                                                                 "page": 1
                                                             },
+                                                            "replace": true,
                                                             "transition_overlay_target": "review_datagrid__body"
                                                         }
                                                     }
@@ -469,12 +473,12 @@
                                                         "handler": "navigate",
                                                         "params": {
                                                             "path": "/admin/ecommerce/reviews",
-                                                            "replace": true,
                                                             "mergeQuery": true,
                                                             "query": {
                                                                 "rating": "4",
                                                                 "page": 1
                                                             },
+                                                            "replace": true,
                                                             "transition_overlay_target": "review_datagrid__body"
                                                         }
                                                     }
@@ -501,12 +505,12 @@
                                                         "handler": "navigate",
                                                         "params": {
                                                             "path": "/admin/ecommerce/reviews",
-                                                            "replace": true,
                                                             "mergeQuery": true,
                                                             "query": {
                                                                 "rating": "3",
                                                                 "page": 1
                                                             },
+                                                            "replace": true,
                                                             "transition_overlay_target": "review_datagrid__body"
                                                         }
                                                     }
@@ -533,12 +537,12 @@
                                                         "handler": "navigate",
                                                         "params": {
                                                             "path": "/admin/ecommerce/reviews",
-                                                            "replace": true,
                                                             "mergeQuery": true,
                                                             "query": {
                                                                 "rating": "2",
                                                                 "page": 1
                                                             },
+                                                            "replace": true,
                                                             "transition_overlay_target": "review_datagrid__body"
                                                         }
                                                     }
@@ -565,12 +569,12 @@
                                                         "handler": "navigate",
                                                         "params": {
                                                             "path": "/admin/ecommerce/reviews",
-                                                            "replace": true,
                                                             "mergeQuery": true,
                                                             "query": {
                                                                 "rating": "1",
                                                                 "page": 1
                                                             },
+                                                            "replace": true,
                                                             "transition_overlay_target": "review_datagrid__body"
                                                         }
                                                     }
@@ -592,7 +596,7 @@
                                 "type": "basic",
                                 "name": "Div",
                                 "props": {
-                                    "className": "flex flex-wrap items-center gap-3 mb-4"
+                                    "className": "flex-center flex-wrap gap-3 mb-4"
                                 },
                                 "children": [
                                     {
@@ -624,12 +628,12 @@
                                                         "handler": "navigate",
                                                         "params": {
                                                             "path": "/admin/ecommerce/reviews",
-                                                            "replace": true,
                                                             "mergeQuery": true,
                                                             "query": {
                                                                 "reply_status": "",
                                                                 "page": 1
                                                             },
+                                                            "replace": true,
                                                             "transition_overlay_target": "review_datagrid__body"
                                                         }
                                                     }
@@ -656,12 +660,12 @@
                                                         "handler": "navigate",
                                                         "params": {
                                                             "path": "/admin/ecommerce/reviews",
-                                                            "replace": true,
                                                             "mergeQuery": true,
                                                             "query": {
                                                                 "reply_status": "replied",
                                                                 "page": 1
                                                             },
+                                                            "replace": true,
                                                             "transition_overlay_target": "review_datagrid__body"
                                                         }
                                                     }
@@ -688,12 +692,12 @@
                                                         "handler": "navigate",
                                                         "params": {
                                                             "path": "/admin/ecommerce/reviews",
-                                                            "replace": true,
                                                             "mergeQuery": true,
                                                             "query": {
                                                                 "reply_status": "not_replied",
                                                                 "page": 1
                                                             },
+                                                            "replace": true,
                                                             "transition_overlay_target": "review_datagrid__body"
                                                         }
                                                     }
@@ -715,7 +719,7 @@
                                 "type": "basic",
                                 "name": "Div",
                                 "props": {
-                                    "className": "flex flex-wrap items-center gap-3 mb-4"
+                                    "className": "flex-center flex-wrap gap-3 mb-4"
                                 },
                                 "children": [
                                     {
@@ -747,12 +751,12 @@
                                                         "handler": "navigate",
                                                         "params": {
                                                             "path": "/admin/ecommerce/reviews",
-                                                            "replace": true,
                                                             "mergeQuery": true,
                                                             "query": {
                                                                 "photo": "",
                                                                 "page": 1
                                                             },
+                                                            "replace": true,
                                                             "transition_overlay_target": "review_datagrid__body"
                                                         }
                                                     }
@@ -779,12 +783,12 @@
                                                         "handler": "navigate",
                                                         "params": {
                                                             "path": "/admin/ecommerce/reviews",
-                                                            "replace": true,
                                                             "mergeQuery": true,
                                                             "query": {
                                                                 "photo": "photo",
                                                                 "page": 1
                                                             },
+                                                            "replace": true,
                                                             "transition_overlay_target": "review_datagrid__body"
                                                         }
                                                     }
@@ -811,12 +815,12 @@
                                                         "handler": "navigate",
                                                         "params": {
                                                             "path": "/admin/ecommerce/reviews",
-                                                            "replace": true,
                                                             "mergeQuery": true,
                                                             "query": {
                                                                 "photo": "normal",
                                                                 "page": 1
                                                             },
+                                                            "replace": true,
                                                             "transition_overlay_target": "review_datagrid__body"
                                                         }
                                                     }
@@ -838,7 +842,7 @@
                                 "type": "basic",
                                 "name": "Div",
                                 "props": {
-                                    "className": "flex flex-wrap items-center gap-3 mb-4"
+                                    "className": "flex-center flex-wrap gap-3 mb-4"
                                 },
                                 "children": [
                                     {
@@ -870,12 +874,12 @@
                                                         "handler": "navigate",
                                                         "params": {
                                                             "path": "/admin/ecommerce/reviews",
-                                                            "replace": true,
                                                             "mergeQuery": true,
                                                             "query": {
                                                                 "status": "",
                                                                 "page": 1
                                                             },
+                                                            "replace": true,
                                                             "transition_overlay_target": "review_datagrid__body"
                                                         }
                                                     }
@@ -902,12 +906,12 @@
                                                         "handler": "navigate",
                                                         "params": {
                                                             "path": "/admin/ecommerce/reviews",
-                                                            "replace": true,
                                                             "mergeQuery": true,
                                                             "query": {
                                                                 "status": "visible",
                                                                 "page": 1
                                                             },
+                                                            "replace": true,
                                                             "transition_overlay_target": "review_datagrid__body"
                                                         }
                                                     }
@@ -934,12 +938,12 @@
                                                         "handler": "navigate",
                                                         "params": {
                                                             "path": "/admin/ecommerce/reviews",
-                                                            "replace": true,
                                                             "mergeQuery": true,
                                                             "query": {
                                                                 "status": "hidden",
                                                                 "page": 1
                                                             },
+                                                            "replace": true,
                                                             "transition_overlay_target": "review_datagrid__body"
                                                         }
                                                     }
@@ -961,7 +965,7 @@
                                 "type": "basic",
                                 "name": "Div",
                                 "props": {
-                                    "className": "flex flex-wrap items-center gap-3"
+                                    "className": "flex-center flex-wrap gap-3"
                                 },
                                 "children": [
                                     {
@@ -976,7 +980,7 @@
                                         "type": "basic",
                                         "name": "Div",
                                         "props": {
-                                            "className": "flex flex-wrap items-center gap-2"
+                                            "className": "flex-center flex-wrap gap-2"
                                         },
                                         "children": [
                                             {
@@ -1222,12 +1226,12 @@
                                 "type": "basic",
                                 "name": "Div",
                                 "props": {
-                                    "className": "flex items-center border-t border-gray-200 dark:border-gray-700 pt-4 mt-4"
+                                    "className": "flex-center border-t border-gray-200 dark:border-gray-700 pt-4 mt-4"
                                 },
                                 "responsive": {
                                     "portable": {
                                         "props": {
-                                            "className": "flex flex-col gap-2 border-t border-gray-200 dark:border-gray-700 pt-4 mt-4"
+                                            "className": "row-stack border-t border-gray-200 dark:border-gray-700 pt-4 mt-4"
                                         }
                                     }
                                 },
@@ -1250,7 +1254,7 @@
                                         "type": "basic",
                                         "name": "Div",
                                         "props": {
-                                            "className": "flex items-center justify-center gap-2 flex-1"
+                                            "className": "flex-center justify-center gap-2 flex-1"
                                         },
                                         "responsive": {
                                             "portable": {
@@ -1281,7 +1285,7 @@
                                                         "handler": "navigate",
                                                         "params": {
                                                             "path": "/admin/ecommerce/reviews",
-                                                            "replace": true,
+                                                            "mergeQuery": true,
                                                             "query": {
                                                                 "search_field": "{{_local.filter.searchField !== 'product_name' ? _local.filter.searchField : ''}}",
                                                                 "search_keyword": "{{_local.filter.searchKeyword ?? ''}}",
@@ -1295,6 +1299,7 @@
                                                                 "per_page": "{{query.per_page || 20}}",
                                                                 "page": 1
                                                             },
+                                                            "replace": true,
                                                             "transition_overlay_target": "review_datagrid__body"
                                                         }
                                                     }
@@ -1334,6 +1339,7 @@
                                                                 }
                                                             },
                                                             {
+                                                                "comment": "audit:allow layout-list-context-navigate-merge-query 필터 초기화 — 걸려 있던 조건을 전부 비우는 것이 이 버튼의 목적이므로 병합하지 않는다.",
                                                                 "handler": "navigate",
                                                                 "params": {
                                                                     "path": "/admin/ecommerce/reviews",
@@ -1369,14 +1375,14 @@
                         "type": "basic",
                         "name": "Div",
                         "props": {
-                            "className": "bg-gray-100 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg p-3 mb-4 flex flex-wrap items-center justify-between gap-3"
+                            "className": "bg-gray-100 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg p-3 mb-4 flex-between flex-wrap gap-3"
                         },
                         "children": [
                             {
                                 "type": "basic",
                                 "name": "Div",
                                 "props": {
-                                    "className": "flex flex-wrap items-center gap-3"
+                                    "className": "flex-center flex-wrap gap-3"
                                 },
                                 "children": [
                                     {
@@ -1428,7 +1434,7 @@
                                 "name": "Button",
                                 "props": {
                                     "type": "button",
-                                    "className": "px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
+                                    "className": "px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
                                     "disabled": "{{!_local.batchAction || (_local.selectedReviews ?? []).length === 0}}"
                                 },
                                 "text": "$t:sirsoft-ecommerce.admin.product_review.batch.apply",
@@ -1460,7 +1466,7 @@
                         "type": "basic",
                         "name": "Div",
                         "props": {
-                            "className": "flex flex-wrap items-center justify-between gap-4 mb-4"
+                            "className": "flex-between flex-wrap gap-4 mb-4"
                         },
                         "children": [
                             {
@@ -1475,7 +1481,7 @@
                                 "type": "basic",
                                 "name": "Div",
                                 "props": {
-                                    "className": "flex items-center gap-3"
+                                    "className": "flex-center gap-3"
                                 },
                                 "children": [
                                     {
@@ -1510,12 +1516,12 @@
                                                 "handler": "navigate",
                                                 "params": {
                                                     "path": "/admin/ecommerce/reviews",
-                                                    "replace": true,
                                                     "mergeQuery": true,
                                                     "query": {
                                                         "sort": "{{$event.target.value}}",
                                                         "page": 1
                                                     },
+                                                    "replace": true,
                                                     "transition_overlay_target": "review_datagrid__body"
                                                 }
                                             }
@@ -1553,12 +1559,12 @@
                                                 "handler": "navigate",
                                                 "params": {
                                                     "path": "/admin/ecommerce/reviews",
-                                                    "replace": true,
                                                     "mergeQuery": true,
                                                     "query": {
                                                         "per_page": "{{$event.target.value}}",
                                                         "page": 1
                                                     },
+                                                    "replace": true,
                                                     "transition_overlay_target": "review_datagrid__body"
                                                 }
                                             }
@@ -1584,6 +1590,7 @@
                                     "data": "{{reviews.data?.data ?? []}}",
                                     "idField": "id",
                                     "selectable": true,
+                                    "selectionScope": "page",
                                     "selectedIds": "{{_local.selectedReviews ?? []}}",
                                     "expandable": true,
                                     "expandedRowIds": "{{_local.expandedRows ?? []}}",
@@ -1608,7 +1615,7 @@
                                                     "type": "basic",
                                                     "name": "Div",
                                                     "props": {
-                                                        "className": "flex items-center gap-2"
+                                                        "className": "flex-center gap-2"
                                                     },
                                                     "children": [
                                                         {
@@ -1712,6 +1719,7 @@
                                                             "name": "A",
                                                             "if": "{{!!row.user_id}}",
                                                             "props": {
+                                                                "href": "#",
                                                                 "className": "text-blue-600 dark:text-blue-400 hover:underline cursor-pointer font-medium"
                                                             },
                                                             "text": "{{row.user?.name ?? ''}}",
@@ -1856,7 +1864,7 @@
                                                             "type": "basic",
                                                             "name": "Div",
                                                             "props": {
-                                                                "className": "col-span-1-lg bg-white dark:bg-gray-800 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700"
+                                                                "className": "admin-card"
                                                             },
                                                             "children": [
                                                                 {
@@ -1864,7 +1872,7 @@
                                                                     "type": "basic",
                                                                     "name": "Div",
                                                                     "props": {
-                                                                        "className": "px-4 py-3 border-b border-gray-200 dark:border-gray-700"
+                                                                        "className": "px-4 panel-header"
                                                                     },
                                                                     "children": [
                                                                         {
@@ -1906,14 +1914,14 @@
                                                                                     "type": "basic",
                                                                                     "name": "Div",
                                                                                     "props": {
-                                                                                        "className": "flex flex-col gap-1 min-w-0"
+                                                                                        "className": "row-stack min-w-0"
                                                                                     },
                                                                                     "children": [
                                                                                         {
                                                                                             "type": "basic",
                                                                                             "name": "A",
                                                                                             "props": {
-                                                                                                "href": "{{`/admin/ecommerce/products/${row.product?.id}`}}",
+                                                                                                "href": "{{`/admin/ecommerce/products/${row.product?.product_code ?? row.product?.id}/edit`}}",
                                                                                                 "className": "text-blue-600 hover:underline dark:text-blue-400 font-medium text-sm leading-snug"
                                                                                             },
                                                                                             "text": "{{row.product?.name ?? ''}}"
@@ -2089,7 +2097,7 @@
                                                                     "type": "basic",
                                                                     "name": "Div",
                                                                     "props": {
-                                                                        "className": "bg-white dark:bg-gray-800 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700"
+                                                                        "className": "admin-card"
                                                                     },
                                                                     "children": [
                                                                         {
@@ -2097,7 +2105,7 @@
                                                                             "type": "basic",
                                                                             "name": "Div",
                                                                             "props": {
-                                                                                "className": "flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700"
+                                                                                "className": "flex-between px-4 panel-header"
                                                                             },
                                                                             "children": [
                                                                                 {
@@ -2112,7 +2120,7 @@
                                                                                     "type": "basic",
                                                                                     "name": "Div",
                                                                                     "props": {
-                                                                                        "className": "flex items-center gap-2"
+                                                                                        "className": "flex-center gap-2"
                                                                                     },
                                                                                     "children": [
                                                                                         {
@@ -2157,7 +2165,7 @@
                                                                                     "name": "Div",
                                                                                     "if": "{{rowImageCount > 0}}",
                                                                                     "props": {
-                                                                                        "className": "flex items-center gap-1 mt-2 text-xs text-gray-500 dark:text-gray-400"
+                                                                                        "className": "flex items-center gap-1 mt-2 text-tertiary"
                                                                                     },
                                                                                     "children": [
                                                                                         {
@@ -2455,7 +2463,7 @@
                                                                     "name": "Div",
                                                                     "if": "{{rowHasReply}}",
                                                                     "props": {
-                                                                        "className": "bg-white dark:bg-gray-800 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700"
+                                                                        "className": "admin-card"
                                                                     },
                                                                     "children": [
                                                                         {
@@ -2463,19 +2471,19 @@
                                                                             "type": "basic",
                                                                             "name": "Div",
                                                                             "props": {
-                                                                                "className": "flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700"
+                                                                                "className": "flex-between px-4 panel-header"
                                                                             },
                                                                             "children": [
                                                                                 {
                                                                                     "type": "basic",
                                                                                     "name": "Span",
                                                                                     "props": {
-                                                                                        "className": "text-gray-700 dark:text-gray-300 text-sm font-medium"
+                                                                                        "className": "text-body font-medium"
                                                                                     },
                                                                                     "text": "$t:sirsoft-ecommerce.admin.product_review.detail.seller_reply.title"
                                                                                 },
                                                                                 {
-                                                                                    "type": "basic",
+                                                                                    "type": "composite",
                                                                                     "name": "Badge",
                                                                                     "props": {
                                                                                         "color": "{{row.has_reply_badge_color}}",
@@ -2509,7 +2517,7 @@
                                                                             "name": "Div",
                                                                             "if": "{{_local.editingReviewId !== row.id}}",
                                                                             "props": {
-                                                                                "className": "flex items-center justify-between gap-2 px-4 py-2 border-t border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50"
+                                                                                "className": "flex-between gap-2 px-4 py-2 border-t border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50"
                                                                             },
                                                                             "children": [
                                                                                 {
@@ -2727,7 +2735,7 @@
                                                                     "name": "Div",
                                                                     "if": "{{!rowHasReply}}",
                                                                     "props": {
-                                                                        "className": "bg-white dark:bg-gray-800 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700"
+                                                                        "className": "admin-card"
                                                                     },
                                                                     "children": [
                                                                         {
@@ -2735,7 +2743,7 @@
                                                                             "type": "basic",
                                                                             "name": "Div",
                                                                             "props": {
-                                                                                "className": "px-4 py-3 border-b border-gray-200 dark:border-gray-700"
+                                                                                "className": "px-4 panel-header"
                                                                             },
                                                                             "children": [
                                                                                 {
@@ -2895,10 +2903,11 @@
                     {
                         "type": "composite",
                         "name": "Pagination",
-                        "if": "{{(reviews.data?.meta?.last_page ?? 1) > 1}}",
+                        "if": "{{((reviews.data?.meta?.last_page ?? 0) > 1) || (reviews.data?.meta?.has_more_pages === true) || ((reviews.data?.meta?.current_page ?? 1) > 1)}}",
                         "props": {
                             "currentPage": "{{reviews.data?.meta?.current_page ?? 1}}",
-                            "totalPages": "{{reviews.data?.meta?.last_page ?? 1}}",
+                            "totalPages": "{{reviews.data?.meta?.last_page ?? null}}",
+                            "hasMorePages": "{{reviews.data?.meta?.has_more_pages ?? false}}",
                             "className": "flex justify-center mt-4"
                         },
                         "actions": [
@@ -2907,11 +2916,11 @@
                                 "handler": "navigate",
                                 "params": {
                                     "path": "/admin/ecommerce/reviews",
-                                    "replace": true,
                                     "mergeQuery": true,
                                     "query": {
                                         "page": "{{$args[0]}}"
                                     },
+                                    "replace": true,
                                     "transition_overlay_target": "review_datagrid__body"
                                 }
                             }

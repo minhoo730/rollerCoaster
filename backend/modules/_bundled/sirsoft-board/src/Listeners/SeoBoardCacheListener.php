@@ -4,9 +4,13 @@ namespace Modules\Sirsoft\Board\Listeners;
 
 use App\Contracts\Extension\CacheInterface;
 use App\Contracts\Extension\HookListenerInterface;
+use App\Enums\SitemapChangeFreq;
+use App\Jobs\GenerateSitemapJob;
 use App\Seo\Contracts\SeoCacheManagerInterface;
 use App\Seo\SeoCacheRegenerator;
+use App\Seo\SitemapIndexer;
 use Illuminate\Support\Facades\Log;
+use Modules\Sirsoft\Board\Enums\PostStatus;
 
 /**
  * 게시글 변경 시 SEO 캐시 무효화 리스너
@@ -37,6 +41,10 @@ class SeoBoardCacheListener implements HookListenerInterface
                 'method' => 'onPostDelete',
                 'priority' => 20,
             ],
+            'sirsoft-board.board.after_update' => [
+                'method' => 'onBoardUpdate',
+                'priority' => 20,
+            ],
         ];
     }
 
@@ -61,6 +69,8 @@ class SeoBoardCacheListener implements HookListenerInterface
 
         // 게시글 상세 페이지 캐시 즉시 재생성
         $this->regenerateDetailCache($args);
+
+        $this->syncPostSitemapIndex($args, false);
     }
 
     /**
@@ -74,6 +84,8 @@ class SeoBoardCacheListener implements HookListenerInterface
 
         // 게시글 상세 페이지 캐시 즉시 재생성
         $this->regenerateDetailCache($args);
+
+        $this->syncPostSitemapIndex($args, false);
     }
 
     /**
@@ -86,6 +98,149 @@ class SeoBoardCacheListener implements HookListenerInterface
     public function onPostDelete(...$args): void
     {
         $this->invalidateRelatedCaches($args);
+
+        $this->syncPostSitemapIndex($args, true);
+    }
+
+    /**
+     * 게시판 정보 수정 시 해당 게시판의 SEO 캐시를 무효화합니다.
+     *
+     * 게시판 이름/설명 변경은 게시판 목록(/board/{slug})과 인덱스(/boards)의
+     * title/description 메타에 노출되므로, 수정 후 이전 메타가 봇에게 계속
+     * 반환되지 않도록 관련 캐시를 무효화합니다. 게시글 상세(/board/{slug}/{id})는
+     * 게시판명을 메타에 노출하지 않으므로 광역 무효화 대상에서 제외합니다.
+     *
+     * @param  mixed  ...$args  훅 인자 (첫 번째: Board 모델, 두 번째: 변경 데이터, 세 번째: 스냅샷)
+     */
+    public function onBoardUpdate(...$args): void
+    {
+        $board = $args[0] ?? null;
+        $slug = is_object($board) ? ($board->slug ?? null) : null;
+
+        if (! $slug) {
+            return;
+        }
+
+        try {
+            $cache = app(SeoCacheManagerInterface::class);
+
+            // 해당 게시판 목록 페이지 (title/description 직접 노출).
+            // 봇 캐시 키는 쿼리스트링 변종(`?`, `?page=2`, `?_escaped_fragment_=` 등)을
+            // 포함해 저장되므로(SeoMiddleware::buildCacheUrl), 와일드카드로 변종까지 무효화한다.
+            // matchesPattern 이 ^...$ 정확 매칭이라 와일드카드 없이는 `/board/{slug}?` 가 누락된다.
+            $cache->invalidateByUrl("/board/{$slug}");
+            $cache->invalidateByUrl("/board/{$slug}?*");
+
+            // 게시판 인덱스 페이지 (게시판명 목록 노출 가능)
+            $cache->invalidateByUrl('/boards');
+            $cache->invalidateByUrl('/boards?*');
+
+            // 홈 / 검색 페이지 (게시판명이 함께 노출될 수 있음)
+            $cache->invalidateByLayout('home');
+            $cache->invalidateByLayout('search/index');
+
+            // Sitemap 캐시 무효화 (게시판 lastmod 갱신 반영)
+            app(CacheInterface::class)->forget('seo.sitemap');
+
+            Log::debug('[SEO] Board cache invalidated on board update', [
+                'board_slug' => $slug,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('[SEO] Board cache invalidation on board update failed', [
+                'error' => $e->getMessage(),
+                'board_slug' => $slug,
+            ]);
+        }
+
+        $this->syncBoardSitemapIndex($board);
+    }
+
+    /**
+     * 게시글의 사이트맵 색인을 증분 갱신합니다.
+     *
+     * 게시 상태(Published)이고 비밀글이 아니며 'SEO 제공 페이지(게시글 상세)' 토글이 켜져 있으면
+     * 색인(upsert), 아니면 색인 해제(remove)한 뒤 사이트맵 재생성 잡을 디바운스 디스패치합니다.
+     * 색인 규칙은 BoardSitemapContributor 의 게시글 URL 규칙과 일치해야 합니다.
+     *
+     * @param  array  $args  훅 인자 배열 (첫 번째: Post 모델, 두 번째: 게시판 slug)
+     * @param  bool  $deleted  삭제 이벤트 여부
+     */
+    private function syncPostSitemapIndex(array $args, bool $deleted): void
+    {
+        $post = $args[0] ?? null;
+        $slug = $args[1] ?? null;
+
+        if (! $post || ! isset($post->id) || ! $slug) {
+            return;
+        }
+
+        try {
+            $indexer = app(SitemapIndexer::class);
+
+            $visible = ! $deleted
+                && ($post->status ?? null) === PostStatus::Published
+                && ! (bool) ($post->is_secret ?? false)
+                && (bool) g7_module_settings('sirsoft-board', 'seo.seo_post_detail', true);
+
+            if ($visible) {
+                $indexer->indexResource('board_post', $post->id, 'sirsoft-board', [[
+                    'url' => "/board/{$slug}/{$post->id}",
+                    'lastmod' => $post->updated_at?->toW3cString(),
+                    'changefreq' => SitemapChangeFreq::Monthly->value,
+                    'priority' => 0.5,
+                ]]);
+            } else {
+                $indexer->deindexResource('board_post', $post->id);
+            }
+
+            GenerateSitemapJob::dispatch();
+        } catch (\Throwable $e) {
+            Log::warning('[SEO] Board post sitemap index sync failed', [
+                'error' => $e->getMessage(),
+                'post_id' => is_object($post) ? ($post->id ?? null) : null,
+            ]);
+        }
+    }
+
+    /**
+     * 게시판의 사이트맵 색인을 증분 갱신합니다.
+     *
+     * 활성(is_active) 이며 'SEO 제공 페이지(게시판)' 토글이 켜져 있으면 색인(upsert),
+     * 아니면 색인 해제(remove)한 뒤 사이트맵 재생성 잡을 디바운스 디스패치합니다.
+     * 색인 규칙은 BoardSitemapContributor 의 게시판 URL 규칙과 일치해야 합니다.
+     *
+     * @param  mixed  $board  Board 모델
+     */
+    private function syncBoardSitemapIndex(mixed $board): void
+    {
+        if (! is_object($board) || ! isset($board->id) || ! isset($board->slug)) {
+            return;
+        }
+
+        try {
+            $indexer = app(SitemapIndexer::class);
+
+            $visible = (bool) ($board->is_active ?? false)
+                && (bool) g7_module_settings('sirsoft-board', 'seo.seo_board', true);
+
+            if ($visible) {
+                $indexer->indexResource('board', $board->id, 'sirsoft-board', [[
+                    'url' => "/board/{$board->slug}",
+                    'lastmod' => $board->updated_at?->toW3cString(),
+                    'changefreq' => SitemapChangeFreq::Daily->value,
+                    'priority' => 0.6,
+                ]]);
+            } else {
+                $indexer->deindexResource('board', $board->id);
+            }
+
+            GenerateSitemapJob::dispatch();
+        } catch (\Throwable $e) {
+            Log::warning('[SEO] Board sitemap index sync failed', [
+                'error' => $e->getMessage(),
+                'board_id' => is_object($board) ? ($board->id ?? null) : null,
+            ]);
+        }
     }
 
     /**

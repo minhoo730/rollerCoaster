@@ -3,13 +3,16 @@
 namespace Modules\Sirsoft\Board\Http\Requests\User;
 
 use App\Extension\HookManager;
+use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 use Modules\Sirsoft\Board\Enums\PostStatus;
-use Modules\Sirsoft\Board\Models\Board;
+use Modules\Sirsoft\Board\Http\Requests\Concerns\ResolvesAllowedExtensions;
+use Modules\Sirsoft\Board\Http\Requests\Concerns\ValidatesAttachmentCount;
 use Modules\Sirsoft\Board\Models\Post;
+use Modules\Sirsoft\Board\Repositories\Contracts\BoardRepositoryInterface;
 use Modules\Sirsoft\Board\Rules\BlockedKeywordsRule;
 use Modules\Sirsoft\Board\Rules\CooldownRule;
 use Modules\Sirsoft\Board\Rules\ParentPostValidationRule;
@@ -24,12 +27,39 @@ use Modules\Sirsoft\Board\Rules\ParentPostValidationRule;
  */
 class StorePostRequest extends FormRequest
 {
+    use ResolvesAllowedExtensions;
+    use ValidatesAttachmentCount;
+
     /**
      * 사용자가 이 요청을 수행할 권한이 있는지 확인
+     *
+     * @return bool 항상 true (권한은 미들웨어에서 검증)
      */
     public function authorize(): bool
     {
         return true;
+    }
+
+    /**
+     * 검증 전 입력값을 정규화합니다.
+     *
+     * 비밀글 여부를 문자열 "true"/"false" 로 보내는 클라이언트도 수용하도록
+     * boolean 으로 정규화합니다. (해석 불가값은 유지 → boolean 규칙이 422 처리)
+     */
+    protected function prepareForValidation(): void
+    {
+        $merge = [];
+
+        if ($this->has('is_secret')) {
+            $normalized = filter_var($this->input('is_secret'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            if ($normalized !== null) {
+                $merge['is_secret'] = $normalized;
+            }
+        }
+
+        if ($merge) {
+            $this->merge($merge);
+        }
     }
 
     /**
@@ -40,7 +70,7 @@ class StorePostRequest extends FormRequest
     public function rules(): array
     {
         $slug = $this->route('slug');
-        $board = Board::where('slug', $slug)->first();
+        $board = app(BoardRepositoryInterface::class)->findBySlug((string) $slug);
 
         // 게시판이 없으면 모듈 환경설정 기본값 사용
         $defaults = g7_module_settings('sirsoft-board', 'basic_defaults', []);
@@ -116,7 +146,12 @@ class StorePostRequest extends FormRequest
             $maxFiles = $board->max_file_count ?? $defaults['max_file_count'] ?? 5;
             $maxSizeMB = $board->max_file_size ?? $defaults['max_file_size'] ?? 10;
             $maxSizeKB = $maxSizeMB * 1024;
-            $allowedExtensions = $board->allowed_extensions ?? $defaults['allowed_extensions'] ?? ['jpg', 'jpeg', 'png', 'gif', 'pdf', 'zip'];
+            // 게시판/기본값이 모두 비어 있으면(null 또는 []) 최종 기본 확장자로 폴백한다.
+            // 빈 배열을 그대로 쓰면 'mimes:' 빈 규칙이 되어 전 파일이 거부된다.
+            $allowedExtensions = $this->resolveAllowedExtensions(
+                $board->allowed_extensions,
+                $defaults['allowed_extensions'] ?? null
+            );
             $mimes = implode(',', $allowedExtensions);
 
             $rules['files'] = ['nullable', 'array', 'max:'.$maxFiles];
@@ -183,7 +218,9 @@ class StorePostRequest extends FormRequest
     /**
      * 검증 통과 후 비밀번호를 해싱합니다.
      *
-     * @return array<string, mixed>
+     * @param  string|null  $key  조회할 키 (null 이면 전체)
+     * @param  mixed  $default  키가 없을 때 반환할 기본값
+     * @return array<string, mixed> 해싱이 적용된 검증 통과 데이터
      */
     public function validated($key = null, $default = null): mixed
     {
@@ -200,5 +237,18 @@ class StorePostRequest extends FormRequest
         }
 
         return $validated;
+    }
+
+    /**
+     * 필드 단위 규칙으로 판정할 수 없는 첨부 총합을 검증합니다.
+     *
+     * @param  Validator  $validator  검증기
+     */
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator) {
+            $board = app(BoardRepositoryInterface::class)->findBySlug((string) $this->route('slug'));
+            $this->validateAttachmentTotal($validator, $board);
+        });
     }
 }
